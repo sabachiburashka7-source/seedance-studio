@@ -24,9 +24,11 @@ const DB_FILE       = path.join(__dirname, 'db.json');
 const REDIS_URL     = (process.env.UPSTASH_REDIS_REST_URL  || '').replace(/\/$/, '');
 const REDIS_TOKEN   = process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const REDIS_KEY     = 'seedance_db';
+const RESEND_KEY    = process.env.RESEND_API_KEY || '';
+const APP_URL       = process.env.APP_URL || 'http://localhost:3000';
 
 // ── In-memory DB cache ────────────────────────────────────────────────────────
-let dbCache = { users: {}, emailIndex: {}, sessions: {}, library: {} };
+let dbCache = { users: {}, emailIndex: {}, sessions: {}, library: {}, verifyCodes: {}, resetCodes: {} };
 
 // ── Upstash Redis helpers ─────────────────────────────────────────────────────
 function redisCmd(cmd) {
@@ -93,6 +95,32 @@ async function initDB() {
     catch { /* fresh db */ }
   }
 }
+
+// ── Email (Resend) ────────────────────────────────────────────────────────────
+function sendEmail(to, subject, html) {
+  return new Promise((resolve) => {
+    if (!RESEND_KEY) { console.log('[email] No RESEND_API_KEY — skipping email to', to); return resolve({ skipped: true }); }
+    const body = Buffer.from(JSON.stringify({
+      from: 'Seedance Studio <onboarding@resend.dev>',
+      to:   [to], subject, html
+    }));
+    const opts = {
+      hostname: 'api.resend.com', port: 443, path: '/emails', method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json', 'Content-Length': body.length }
+    };
+    const req = https.request(opts, res => {
+      const ch = []; res.on('data', c => ch.push(c));
+      res.on('end', () => {
+        try { const j = JSON.parse(Buffer.concat(ch).toString()); console.log('[email] sent to', to, '->', j.id || j.name); resolve(j); }
+        catch(e) { console.error('[email] parse error', e.message); resolve({}); }
+      });
+    });
+    req.on('error', e => { console.error('[email] error', e.message); resolve({}); });
+    req.write(body); req.end();
+  });
+}
+
+function makeCode() { return String(Math.floor(100000 + Math.random() * 900000)); }
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
 function hashPass(password, salt) {
@@ -216,12 +244,112 @@ async function handleRequest(req, res) {
     if (password.length < 8)   return sendJSON(res, 400, { error: 'Password must be at least 8 characters' });
     const db  = loadDB();
     const key = email.toLowerCase().trim();
-    if (db.emailIndex[key])    return sendJSON(res, 409, { error: 'Email already registered' });
+    if (db.emailIndex[key])    return sendJSON(res, 409, { error: 'This email is already registered. Try signing in.' });
     const userId = makeId();
     const salt   = crypto.randomBytes(16).toString('hex');
-    db.users[userId]   = { email: key, hash: hashPass(password, salt), salt, createdAt: Date.now() };
+    const needsVerify = !!RESEND_KEY;
+    db.users[userId]   = { email: key, hash: hashPass(password, salt), salt, createdAt: Date.now(), verified: !needsVerify };
     db.emailIndex[key] = userId;
     db.library[userId] = [];
+    if (!db.verifyCodes) db.verifyCodes = {};
+    if (!db.resetCodes)  db.resetCodes  = {};
+    if (needsVerify) {
+      const code = makeCode();
+      db.verifyCodes[key] = { code, expires: Date.now() + 15 * 60 * 1000 };
+      saveDB(db);
+      await sendEmail(key, 'Verify your Seedance Studio account',
+        `<div style="font-family:sans-serif;max-width:480px;margin:auto">
+          <h2>🎬 Verify your email</h2>
+          <p>Your verification code is:</p>
+          <div style="font-size:36px;font-weight:bold;letter-spacing:10px;text-align:center;padding:20px;background:#f4f4f4;border-radius:8px">${code}</div>
+          <p style="color:#888;font-size:13px">This code expires in 15 minutes.</p>
+        </div>`);
+      return sendJSON(res, 200, { needsVerify: true, email: key });
+    }
+    const token = makeToken();
+    db.sessions[token] = { userId, createdAt: Date.now() };
+    saveDB(db);
+    return sendJSON(res, 200, { token, email: key, userId });
+  }
+
+  // ── Verify email ──────────────────────────────────────────────────────────
+  if (url === '/auth/verify-email' && method === 'POST') {
+    const { email, code } = await readBody(req);
+    const db  = loadDB();
+    const key = (email || '').toLowerCase().trim();
+    const vc  = (db.verifyCodes || {})[key];
+    if (!vc || vc.code !== code) return sendJSON(res, 400, { error: 'Invalid or expired code. Check your email or request a new code.' });
+    if (Date.now() > vc.expires) return sendJSON(res, 400, { error: 'Code expired. Request a new one.' });
+    const userId = db.emailIndex[key];
+    if (!userId) return sendJSON(res, 400, { error: 'Account not found' });
+    db.users[userId].verified = true;
+    delete db.verifyCodes[key];
+    const token = makeToken();
+    db.sessions[token] = { userId, createdAt: Date.now() };
+    saveDB(db);
+    return sendJSON(res, 200, { token, email: key, userId });
+  }
+
+  // ── Resend verification code ───────────────────────────────────────────────
+  if (url === '/auth/resend-verify' && method === 'POST') {
+    const { email } = await readBody(req);
+    const db  = loadDB();
+    const key = (email || '').toLowerCase().trim();
+    const userId = db.emailIndex[key];
+    if (!userId) return sendJSON(res, 404, { error: 'Email not found' });
+    if (db.users[userId].verified) return sendJSON(res, 400, { error: 'Already verified' });
+    if (!db.verifyCodes) db.verifyCodes = {};
+    const code = makeCode();
+    db.verifyCodes[key] = { code, expires: Date.now() + 15 * 60 * 1000 };
+    saveDB(db);
+    await sendEmail(key, 'Your new Seedance Studio verification code',
+      `<div style="font-family:sans-serif;max-width:480px;margin:auto">
+        <h2>🎬 New verification code</h2>
+        <div style="font-size:36px;font-weight:bold;letter-spacing:10px;text-align:center;padding:20px;background:#f4f4f4;border-radius:8px">${code}</div>
+        <p style="color:#888;font-size:13px">This code expires in 15 minutes.</p>
+      </div>`);
+    return sendJSON(res, 200, { ok: true });
+  }
+
+  // ── Forgot password ───────────────────────────────────────────────────────
+  if (url === '/auth/forgot-password' && method === 'POST') {
+    const { email } = await readBody(req);
+    const db  = loadDB();
+    const key = (email || '').toLowerCase().trim();
+    const userId = db.emailIndex[key];
+    // Always return ok to not leak whether email exists
+    if (userId && RESEND_KEY) {
+      if (!db.resetCodes) db.resetCodes = {};
+      const code = makeCode();
+      db.resetCodes[key] = { code, expires: Date.now() + 15 * 60 * 1000 };
+      saveDB(db);
+      await sendEmail(key, 'Reset your Seedance Studio password',
+        `<div style="font-family:sans-serif;max-width:480px;margin:auto">
+          <h2>🎬 Password reset</h2>
+          <p>Your reset code is:</p>
+          <div style="font-size:36px;font-weight:bold;letter-spacing:10px;text-align:center;padding:20px;background:#f4f4f4;border-radius:8px">${code}</div>
+          <p style="color:#888;font-size:13px">This code expires in 15 minutes. If you didn't request this, ignore this email.</p>
+        </div>`);
+    }
+    return sendJSON(res, 200, { ok: true });
+  }
+
+  // ── Reset password ────────────────────────────────────────────────────────
+  if (url === '/auth/reset-password' && method === 'POST') {
+    const { email, code, password } = await readBody(req);
+    if (!password || password.length < 8) return sendJSON(res, 400, { error: 'Password must be at least 8 characters' });
+    const db  = loadDB();
+    const key = (email || '').toLowerCase().trim();
+    const rc  = (db.resetCodes || {})[key];
+    if (!rc || rc.code !== code) return sendJSON(res, 400, { error: 'Invalid or expired code.' });
+    if (Date.now() > rc.expires) return sendJSON(res, 400, { error: 'Code expired. Request a new one.' });
+    const userId = db.emailIndex[key];
+    if (!userId) return sendJSON(res, 400, { error: 'Account not found' });
+    const salt = crypto.randomBytes(16).toString('hex');
+    db.users[userId].hash = hashPass(password, salt);
+    db.users[userId].salt = salt;
+    db.users[userId].verified = true;
+    delete db.resetCodes[key];
     const token = makeToken();
     db.sessions[token] = { userId, createdAt: Date.now() };
     saveDB(db);
@@ -233,11 +361,13 @@ async function handleRequest(req, res) {
     const { email, password } = await readBody(req);
     if (!email || !password) return sendJSON(res, 400, { error: 'Email and password required' });
     const db     = loadDB();
-    const userId = db.emailIndex[email.toLowerCase().trim()];
+    const key    = email.toLowerCase().trim();
+    const userId = db.emailIndex[key];
     if (!userId)             return sendJSON(res, 401, { error: 'Invalid email or password' });
     const user   = db.users[userId];
     if (hashPass(password, user.salt) !== user.hash)
                              return sendJSON(res, 401, { error: 'Invalid email or password' });
+    if (RESEND_KEY && !user.verified) return sendJSON(res, 403, { error: 'Please verify your email first.', needsVerify: true, email: key });
     const token = makeToken();
     db.sessions[token] = { userId, createdAt: Date.now() };
     saveDB(db);

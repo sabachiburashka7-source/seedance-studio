@@ -381,7 +381,7 @@ input[type=range] {
 .auth-card {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 36px;
-  width: 380px; max-width: 92vw;
+  width: 400px; max-width: 92vw;
 }
 .auth-logo {
   display: flex; align-items: center; justify-content: center; gap: 10px;
@@ -406,23 +406,43 @@ input[type=range] {
 }
 .auth-tab.active { background: var(--accent); color: #fff; }
 .auth-input {
-  width: 100%; padding: 11px 14px;
+  width: 100%; padding: 11px 14px; box-sizing: border-box;
   background: var(--surface2); border: 1px solid var(--border);
   border-radius: var(--radius-sm); color: var(--text);
   font-size: 14px; font-family: 'DM Sans', sans-serif;
   margin-bottom: 10px; transition: border-color 0.2s; display: block;
 }
 .auth-input:focus { outline: none; border-color: var(--accent); }
-.auth-err { font-size: 12px; color: var(--red); min-height: 18px; margin-bottom: 8px; }
+.auth-err  { font-size: 12px; color: var(--red);   min-height: 18px; margin-bottom: 8px; }
+.auth-ok   { font-size: 12px; color: var(--green); min-height: 18px; margin-bottom: 8px; }
 .auth-btn {
   width: 100%; padding: 13px;
   background: linear-gradient(135deg, var(--accent) 0%, #8b7cf8 100%);
   border: none; border-radius: var(--radius-sm);
   color: #fff; font-size: 15px; font-weight: 600;
   font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.2s;
+  margin-bottom: 4px;
 }
 .auth-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(108,92,231,0.45); }
 .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.auth-link {
+  background: none; border: none; color: var(--text3); font-size: 12px;
+  cursor: pointer; font-family: 'DM Sans', sans-serif;
+  text-decoration: underline; padding: 4px;
+}
+.auth-link:hover { color: var(--text); }
+.auth-pass-row { position: relative; }
+.auth-pass-row .auth-input { padding-right: 42px; margin-bottom: 10px; }
+.auth-eye {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-60%);
+  background: none; border: none; cursor: pointer; font-size: 16px;
+  color: var(--text3); padding: 2px; line-height: 1;
+}
+.auth-eye:hover { color: var(--text); }
+.auth-match { font-size: 11px; margin-top: -6px; margin-bottom: 8px; min-height: 16px; }
+.auth-screen-title { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+.auth-screen-sub   { font-size: 13px; color: var(--text2); margin-bottom: 18px; line-height: 1.5; }
+.auth-code-input { text-align: center; letter-spacing: 10px; font-size: 26px; font-weight: 700; }
 
 /* ─── USER AREA (nav) ─────────────────────────────────────────────── */
 .user-area { display: flex; align-items: center; gap: 10px; }
@@ -456,7 +476,7 @@ input[type=range] {
 <!-- API BAR -->
 <div class="api-bar">
   <label>API Key</label>
-  <input class="api-input" type="password" id="apikey" placeholder="Paste your BytePlus API key..." oninput="checkKey()">
+  <input class="api-input" type="password" id="apikey" placeholder="Paste your BytePlus API key..." oninput="checkKey()" autocomplete="off" data-lpignore="true" data-form-type="other">
   <span class="api-pill bad" id="keypill">Not set</span>
 </div>
 
@@ -606,20 +626,85 @@ input[type=range] {
 <!-- AUTH MODAL -->
 <div id="auth-overlay">
   <div class="auth-card">
-    <div class="auth-logo">
-      <div class="auth-logo-icon">🎬</div>
-      Seedance Studio
+    <div class="auth-logo"><div class="auth-logo-icon">🎬</div> Seedance Studio</div>
+
+    <!-- SCREEN: Sign in / Sign up -->
+    <div id="auth-screen-main">
+      <div class="auth-tabs">
+        <button class="auth-tab active" onclick="switchAuthTab('login')">Sign in</button>
+        <button class="auth-tab" onclick="switchAuthTab('register')">Sign up</button>
+      </div>
+      <input class="auth-input" id="auth-email" type="email" placeholder="Email address"
+             autocomplete="email" onkeydown="if(event.key==='Enter')document.getElementById('auth-pass').focus()">
+      <div class="auth-pass-row">
+        <input class="auth-input" id="auth-pass" type="password" placeholder="Password (min. 8 characters)"
+               autocomplete="current-password" onkeydown="authPassKey(event)">
+        <button type="button" class="auth-eye" onclick="toggleEye('auth-pass',this)" title="Show/hide">👁</button>
+      </div>
+      <div id="auth-confirm-wrap" style="display:none">
+        <div class="auth-pass-row">
+          <input class="auth-input" id="auth-pass2" type="password" placeholder="Confirm password"
+                 autocomplete="new-password" oninput="checkPassMatch()" onkeydown="if(event.key==='Enter')submitAuth()">
+          <button type="button" class="auth-eye" onclick="toggleEye('auth-pass2',this)" title="Show/hide">👁</button>
+        </div>
+        <div class="auth-match" id="auth-match"></div>
+      </div>
+      <div class="auth-err" id="auth-err"></div>
+      <button class="auth-btn" id="auth-btn" onclick="submitAuth()">Sign in</button>
+      <div style="text-align:center;margin-top:8px">
+        <button class="auth-link" id="auth-forgot-link" onclick="showScreen('forgot')">Forgot password?</button>
+      </div>
     </div>
-    <div class="auth-tabs">
-      <button class="auth-tab active" onclick="switchAuthTab('login')">Sign in</button>
-      <button class="auth-tab" onclick="switchAuthTab('register')">Sign up</button>
+
+    <!-- SCREEN: Verify email -->
+    <div id="auth-screen-verify" style="display:none">
+      <div class="auth-screen-title">Check your email 📬</div>
+      <div class="auth-screen-sub">We sent a 6-digit code to <b id="verify-email-label"></b><br>It expires in 15 minutes.</div>
+      <input class="auth-input auth-code-input" id="auth-code" type="text" inputmode="numeric"
+             maxlength="6" placeholder="000000" autocomplete="one-time-code"
+             onkeydown="if(event.key==='Enter')submitVerify()">
+      <div class="auth-err" id="verify-err"></div>
+      <button class="auth-btn" onclick="submitVerify()">Verify Email</button>
+      <div style="text-align:center;margin-top:8px">
+        <button class="auth-link" onclick="resendVerify()">Didn't get it? Resend code</button>
+      </div>
     </div>
-    <input class="auth-input" id="auth-email" type="email" placeholder="Email address"
-           onkeydown="if(event.key==='Enter')document.getElementById('auth-pass').focus()">
-    <input class="auth-input" id="auth-pass" type="password" placeholder="Password (min. 8 characters)"
-           onkeydown="if(event.key==='Enter')submitAuth()">
-    <div class="auth-err" id="auth-err"></div>
-    <button class="auth-btn" id="auth-btn" onclick="submitAuth()">Sign in</button>
+
+    <!-- SCREEN: Forgot password -->
+    <div id="auth-screen-forgot" style="display:none">
+      <div class="auth-screen-title">Reset password 🔑</div>
+      <div class="auth-screen-sub">Enter your email and we'll send you a reset code.</div>
+      <input class="auth-input" id="forgot-email" type="email" placeholder="Email address"
+             autocomplete="email" onkeydown="if(event.key==='Enter')submitForgot()">
+      <div class="auth-err" id="forgot-err"></div>
+      <div class="auth-ok"  id="forgot-ok"></div>
+      <button class="auth-btn" onclick="submitForgot()">Send reset code</button>
+      <div style="text-align:center;margin-top:8px">
+        <button class="auth-link" onclick="showScreen('main')">← Back to sign in</button>
+      </div>
+    </div>
+
+    <!-- SCREEN: Reset password (enter code + new password) -->
+    <div id="auth-screen-reset" style="display:none">
+      <div class="auth-screen-title">Set new password 🔒</div>
+      <div class="auth-screen-sub">Enter the code we sent to your email, then choose a new password.</div>
+      <input class="auth-input auth-code-input" id="reset-code" type="text" inputmode="numeric"
+             maxlength="6" placeholder="000000" autocomplete="one-time-code">
+      <div class="auth-pass-row">
+        <input class="auth-input" id="reset-pass" type="password" placeholder="New password (min. 8 chars)" autocomplete="new-password">
+        <button type="button" class="auth-eye" onclick="toggleEye('reset-pass',this)">👁</button>
+      </div>
+      <div class="auth-pass-row">
+        <input class="auth-input" id="reset-pass2" type="password" placeholder="Confirm new password"
+               autocomplete="new-password" onkeydown="if(event.key==='Enter')submitReset()">
+        <button type="button" class="auth-eye" onclick="toggleEye('reset-pass2',this)">👁</button>
+      </div>
+      <div class="auth-err" id="reset-err"></div>
+      <button class="auth-btn" onclick="submitReset()">Reset password</button>
+      <div style="text-align:center;margin-top:8px">
+        <button class="auth-link" onclick="showScreen('forgot')">← Resend code</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -923,6 +1008,9 @@ function hideProg() {
 }
 
 // ══ AUTH ═══════════════════════════════════════════════════════════════
+let pendingVerifyEmail = '';
+let pendingResetEmail  = '';
+
 async function initAuth() {
   if (!authToken) { showAuthModal(); return; }
   try {
@@ -940,7 +1028,6 @@ function showAuthModal() {
   document.getElementById('auth-overlay').classList.remove('hidden');
   document.getElementById('user-area').style.display = 'none';
 }
-
 function hideAuthModal() {
   document.getElementById('auth-overlay').classList.add('hidden');
   document.getElementById('user-area').style.display = 'flex';
@@ -948,12 +1035,44 @@ function hideAuthModal() {
   calcCost(); badge(); renderLib();
 }
 
+function showScreen(name) {
+  ['main','verify','forgot','reset'].forEach(s =>
+    document.getElementById('auth-screen-' + s).style.display = s === name ? '' : 'none');
+}
+
 function switchAuthTab(mode) {
   authMode = mode;
   document.querySelectorAll('.auth-tab').forEach((t, i) =>
     t.classList.toggle('active', i === (mode === 'login' ? 0 : 1)));
-  document.getElementById('auth-btn').textContent = mode === 'login' ? 'Sign in' : 'Create account';
-  document.getElementById('auth-err').textContent = '';
+  document.getElementById('auth-btn').textContent   = mode === 'login' ? 'Sign in' : 'Create account';
+  document.getElementById('auth-err').textContent   = '';
+  document.getElementById('auth-match').textContent = '';
+  document.getElementById('auth-confirm-wrap').style.display = mode === 'register' ? '' : 'none';
+  document.getElementById('auth-forgot-link').style.display  = mode === 'login'    ? '' : 'none';
+  // switch autocomplete hint for password
+  document.getElementById('auth-pass').autocomplete = mode === 'login' ? 'current-password' : 'new-password';
+}
+
+function toggleEye(inputId, btn) {
+  const inp = document.getElementById(inputId);
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  btn.textContent = show ? '🙈' : '👁';
+}
+
+function checkPassMatch() {
+  const p1 = document.getElementById('auth-pass').value;
+  const p2 = document.getElementById('auth-pass2').value;
+  const el = document.getElementById('auth-match');
+  if (!p2) { el.textContent = ''; return; }
+  if (p1 === p2) { el.style.color = 'var(--green)'; el.textContent = '✓ Passwords match'; }
+  else           { el.style.color = 'var(--red)';   el.textContent = '✗ Passwords do not match'; }
+}
+
+function authPassKey(e) {
+  if (e.key !== 'Enter') return;
+  if (authMode === 'register') document.getElementById('auth-pass2').focus();
+  else submitAuth();
 }
 
 async function submitAuth() {
@@ -962,28 +1081,117 @@ async function submitAuth() {
   const err   = document.getElementById('auth-err');
   const btn   = document.getElementById('auth-btn');
   if (!email || !pass) { err.textContent = 'Email and password are required'; return; }
-  btn.disabled = true; btn.textContent = 'Please wait...'; err.textContent = '';
+  if (authMode === 'register') {
+    const pass2 = document.getElementById('auth-pass2').value;
+    if (pass !== pass2) { err.textContent = 'Passwords do not match'; return; }
+  }
+  btn.disabled = true; btn.textContent = 'Please wait…'; err.textContent = '';
   try {
     const r = await fetch(authMode === 'login' ? '/auth/login' : '/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password: pass })
     });
     const j = await r.json();
-    if (!j.token) throw new Error(j.error || 'Something went wrong');
-    authToken = j.token; localStorage.setItem('sd_token', authToken);
-    currentUser = { email: j.email, userId: j.userId };
-    if (authMode === 'register') {
-      lib = [];
-    } else {
-      await loadLib(j.userId);
+    if (j.needsVerify) {
+      pendingVerifyEmail = j.email || email;
+      document.getElementById('verify-email-label').textContent = pendingVerifyEmail;
+      document.getElementById('verify-err').textContent = '';
+      document.getElementById('auth-code').value = '';
+      showScreen('verify');
+      btn.disabled = false; btn.textContent = authMode === 'login' ? 'Sign in' : 'Create account';
+      return;
     }
-    hideAuthModal();
+    if (!j.token) throw new Error(j.error || 'Something went wrong');
+    await onLoggedIn(j);
   } catch(e) {
     err.textContent = e.message;
     btn.disabled = false;
     btn.textContent = authMode === 'login' ? 'Sign in' : 'Create account';
   }
+}
+
+async function submitVerify() {
+  const code = document.getElementById('auth-code').value.trim();
+  const err  = document.getElementById('verify-err');
+  if (code.length !== 6) { err.textContent = 'Enter the 6-digit code from your email'; return; }
+  err.textContent = 'Verifying…';
+  try {
+    const r = await fetch('/auth/verify-email', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: pendingVerifyEmail, code })
+    });
+    const j = await r.json();
+    if (!j.token) throw new Error(j.error || 'Verification failed');
+    await onLoggedIn(j);
+  } catch(e) { err.textContent = e.message; }
+}
+
+async function resendVerify() {
+  const err = document.getElementById('verify-err');
+  err.style.color = 'var(--text3)'; err.textContent = 'Sending…';
+  try {
+    await fetch('/auth/resend-verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: pendingVerifyEmail })
+    });
+    err.style.color = 'var(--green)'; err.textContent = '✓ New code sent!';
+  } catch(e) { err.style.color = 'var(--red)'; err.textContent = e.message; }
+}
+
+function showForgotScreen() { // keep backward compat alias
+  document.getElementById('forgot-email').value = '';
+  document.getElementById('forgot-err').textContent  = '';
+  document.getElementById('forgot-ok').textContent   = '';
+  showScreen('forgot');
+}
+
+async function submitForgot() {
+  const email = document.getElementById('forgot-email').value.trim();
+  const err   = document.getElementById('forgot-err');
+  const ok    = document.getElementById('forgot-ok');
+  if (!email) { err.textContent = 'Enter your email address'; return; }
+  err.textContent = ''; ok.textContent = 'Sending…';
+  try {
+    await fetch('/auth/forgot-password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    pendingResetEmail = email;
+    ok.textContent = '';
+    document.getElementById('reset-code').value  = '';
+    document.getElementById('reset-pass').value  = '';
+    document.getElementById('reset-pass2').value = '';
+    document.getElementById('reset-err').textContent = '';
+    showScreen('reset');
+  } catch(e) { ok.textContent = ''; err.textContent = e.message; }
+}
+
+async function submitReset() {
+  const code  = document.getElementById('reset-code').value.trim();
+  const pass  = document.getElementById('reset-pass').value;
+  const pass2 = document.getElementById('reset-pass2').value;
+  const err   = document.getElementById('reset-err');
+  if (code.length !== 6) { err.textContent = 'Enter the 6-digit code'; return; }
+  if (pass.length < 8)   { err.textContent = 'Password must be at least 8 characters'; return; }
+  if (pass !== pass2)    { err.textContent = 'Passwords do not match'; return; }
+  err.textContent = 'Resetting…';
+  try {
+    const r = await fetch('/auth/reset-password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: pendingResetEmail, code, password: pass })
+    });
+    const j = await r.json();
+    if (!j.token) throw new Error(j.error || 'Reset failed');
+    await onLoggedIn(j);
+  } catch(e) { err.textContent = e.message; }
+}
+
+async function onLoggedIn(j) {
+  authToken = j.token; localStorage.setItem('sd_token', authToken);
+  currentUser = { email: j.email, userId: j.userId };
+  await loadLib(j.userId);
+  hideAuthModal();
+  showScreen('main');
 }
 
 async function logout() {
