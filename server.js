@@ -250,8 +250,9 @@ async function handleRequest(req, res) {
     return res.end('ok');
   }
 
-  // Frontend
-  if (url === '/' || url === '/index.html') return serveHTML(res);
+  // Frontend — strip query strings/fragments so messenger tracking params (?fbclid= etc.) don't break it
+  const pathname = url.split('?')[0].split('#')[0];
+  if (pathname === '/' || pathname === '/index.html') return serveHTML(res);
 
   // ── Register ──────────────────────────────────────────────────────────────
   if (url === '/auth/register' && method === 'POST') {
