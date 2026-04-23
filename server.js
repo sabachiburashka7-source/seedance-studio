@@ -3,8 +3,11 @@
  *
  * - Serves the HTML frontend
  * - Auth: /auth/register, /auth/login, /auth/logout, /auth/me
- * - Library: GET /library, POST /library  (per-user, stored in db.json)
+ * - Library: GET /library, POST /library  (per-user)
  * - Proxy: /proxy/* → BytePlus ModelArk API
+ *
+ * Database: Upstash Redis (via REST API) when env vars are set,
+ *           falls back to local db.json for development.
  *
  * No npm install needed — uses only built-in Node.js modules.
  */
@@ -15,17 +18,80 @@ const fs     = require('fs');
 const path   = require('path');
 const crypto = require('crypto');
 
-const PORT     = process.env.PORT || 3000;
-const BYTEPLUS = 'ark.ap-southeast.bytepluses.com';
-const DB_FILE  = path.join(__dirname, 'db.json');
+const PORT          = process.env.PORT || 3000;
+const BYTEPLUS      = 'ark.ap-southeast.bytepluses.com';
+const DB_FILE       = path.join(__dirname, 'db.json');
+const REDIS_URL     = (process.env.UPSTASH_REDIS_REST_URL  || '').replace(/\/$/, '');
+const REDIS_TOKEN   = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+const REDIS_KEY     = 'seedance_db';
 
-// ── Database ──────────────────────────────────────────────────────────────────
-function loadDB() {
-  try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
-  catch { return { users: {}, emailIndex: {}, sessions: {}, library: {} }; }
+// ── In-memory DB cache ────────────────────────────────────────────────────────
+let dbCache = { users: {}, emailIndex: {}, sessions: {}, library: {} };
+
+// ── Upstash Redis helpers ─────────────────────────────────────────────────────
+function redisCmd(cmd) {
+  return new Promise((resolve, reject) => {
+    if (!REDIS_URL || !REDIS_TOKEN) return reject(new Error('No Redis config'));
+    const u    = new URL(REDIS_URL);
+    const body = Buffer.from(JSON.stringify(cmd));
+    const opts = {
+      hostname: u.hostname, port: 443, path: u.pathname || '/',
+      method: 'POST',
+      headers: {
+        'Authorization':  'Bearer ' + REDIS_TOKEN,
+        'Content-Type':   'application/json',
+        'Content-Length': body.length,
+      }
+    };
+    const req = https.request(opts, res => {
+      const ch = []; res.on('data', c => ch.push(c));
+      res.on('end', () => {
+        try { resolve(JSON.parse(Buffer.concat(ch).toString())); }
+        catch(e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.write(body); req.end();
+  });
 }
+
+async function redisSave(db) {
+  try {
+    await redisCmd(['SET', REDIS_KEY, JSON.stringify(db)]);
+  } catch(e) { console.error('[redis] save error:', e.message); }
+}
+
+async function redisLoad() {
+  try {
+    const r = await redisCmd(['GET', REDIS_KEY]);
+    if (r.result) return JSON.parse(r.result);
+  } catch(e) { console.error('[redis] load error:', e.message); }
+  return null;
+}
+
+// ── Database (sync interface, async persistence) ──────────────────────────────
+function loadDB() { return dbCache; }
+
 function saveDB(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+  dbCache = db;
+  if (REDIS_URL && REDIS_TOKEN) {
+    redisSave(db); // async, fire-and-forget
+  } else {
+    try { fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8'); } catch {}
+  }
+}
+
+async function initDB() {
+  if (REDIS_URL && REDIS_TOKEN) {
+    console.log('[db] Using Upstash Redis');
+    const data = await redisLoad();
+    if (data) { dbCache = data; console.log('[db] Loaded from Redis'); }
+    else       { console.log('[db] Fresh DB (nothing in Redis yet)'); }
+  } else {
+    console.log('[db] Using local db.json');
+    try { dbCache = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
+    catch { /* fresh db */ }
+  }
 }
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
@@ -89,7 +155,7 @@ function proxy(req, res, bodyBuffer) {
   for (const [k, v] of Object.entries(req.headers)) {
     if (!skip.has(k.toLowerCase())) options.headers[k] = v;
   }
-  options.headers['accept-encoding'] = 'identity'; // force plain JSON, no gzip
+  options.headers['accept-encoding'] = 'identity';
 
   const proxyReq = https.request(options, proxyRes => {
     const outHeaders = {
@@ -213,65 +279,50 @@ async function handleRequest(req, res) {
     return sendJSON(res, 200, { ok: true });
   }
 
-  // ── File URL resolver: poll until ready, return download URL ─────────────
+  // ── File URL resolver ─────────────────────────────────────────────────────
   if (url.startsWith('/file-url/') && method === 'GET') {
     const fileId = url.slice(10);
     const apiKey = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
     if (!apiKey) return sendJSON(res, 401, { error: 'Missing API key' });
 
-    function byteplusGet(path) {
+    function byteplusGet(p) {
       return new Promise((resolve, reject) => {
-        const opts = { hostname: BYTEPLUS, port: 443, path, method: 'GET',
+        const opts = { hostname: BYTEPLUS, port: 443, path: p, method: 'GET',
           headers: { 'Authorization': 'Bearer ' + apiKey, 'accept-encoding': 'identity' } };
         const r = https.request(opts, resp => {
           const chunks = [];
           resp.on('data', c => chunks.push(c));
           resp.on('end', () => resolve({ status: resp.statusCode, headers: resp.headers, body: Buffer.concat(chunks).toString() }));
         });
-        r.on('error', reject);
-        r.end();
+        r.on('error', reject); r.end();
       });
     }
 
-    async function resolveFileUrl() {
-      // Poll file status up to 30s
+    try {
       for (let i = 0; i < 10; i++) {
         const meta = await byteplusGet('/api/v3/files/' + fileId);
-        console.log('[file-url] GET /api/v3/files/' + fileId + ' ->', meta.status, meta.body.substring(0, 300));
         const j = JSON.parse(meta.body);
-        if (j.url)          return j.url;
-        if (j.download_url) return j.download_url;
+        if (j.url || j.download_url) return sendJSON(res, 200, { url: j.url || j.download_url });
         if (j.status !== 'processing') break;
         await new Promise(r => setTimeout(r, 3000));
       }
-      // Try /content endpoint — may redirect to actual file URL
-      const content = await byteplusGet('/api/v3/files/' + fileId + '/content');
-      console.log('[file-url] /content ->', content.status, content.headers.location || content.body.substring(0, 200));
-      if (content.headers.location) return content.headers.location;
-      return null;
-    }
-
-    try {
-      const fileUrl = await resolveFileUrl();
-      if (fileUrl) return sendJSON(res, 200, { url: fileUrl });
       return sendJSON(res, 404, { error: 'Could not resolve download URL for ' + fileId });
     } catch(e) {
       return sendJSON(res, 500, { error: e.message });
     }
   }
 
-  // ── Temp video upload → transfer.sh (fallback: 0x0.st) ──────────────────
+  // ── Temp video upload ─────────────────────────────────────────────────────
   if (url.startsWith('/upload-temp') && method === 'POST') {
-    const qs      = url.includes('?') ? url.split('?')[1] : '';
-    const params  = new URLSearchParams(qs);
-    const name    = params.get('name') || 'video.mp4';
-    const ctype   = req.headers['content-type'] || 'video/mp4';
+    const qs     = url.includes('?') ? url.split('?')[1] : '';
+    const params = new URLSearchParams(qs);
+    const name   = params.get('name') || 'video.mp4';
+    const ctype  = req.headers['content-type'] || 'video/mp4';
 
     const chunks = [];
     req.on('data', c => chunks.push(c));
     req.on('end', () => {
       const body = Buffer.concat(chunks);
-      console.log('[upload-temp] received', body.length, 'bytes, name:', name);
 
       function buildMultipart(fields, fileField, fileName, fileType, fileBody) {
         const boundary = '----TmpBnd' + Date.now();
@@ -285,11 +336,11 @@ async function handleRequest(req, res) {
         return { boundary, body: Buffer.concat(parts) };
       }
 
-      function postMultipart(hostname, path, fields, fileField, fileName, fileType, fileBody) {
+      function postMultipart(hostname, p, fields, fileField, fileName, fileType, fileBody) {
         return new Promise((resolve, reject) => {
           const { boundary, body: mp } = buildMultipart(fields, fileField, fileName, fileType, fileBody);
           const opts = {
-            hostname, port: 443, path, method: 'POST',
+            hostname, port: 443, path: p, method: 'POST',
             headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': mp.length }
           };
           const r = https.request(opts, resp => {
@@ -300,23 +351,19 @@ async function handleRequest(req, res) {
         });
       }
 
-      // Provider 1: litterbox.catbox.moe — media hosting, 24h expiry
       function tryLitterbox() {
         return postMultipart('litterbox.catbox.moe', '/resources/internals/api.php',
           { reqtype: 'fileupload', time: '24h' }, 'fileToUpload', name, ctype, body)
           .then(({ status, text }) => {
-            console.log('[upload-temp] litterbox ->', status, text.substring(0, 100));
             if (text.startsWith('http')) return text;
             throw new Error('litterbox: ' + text.substring(0, 120));
           });
       }
 
-      // Provider 2: tmpfiles.org — 60 min expiry
       function tryTmpfiles() {
         return postMultipart('tmpfiles.org', '/api/v1/upload',
           {}, 'file', name, ctype, body)
           .then(({ status, text }) => {
-            console.log('[upload-temp] tmpfiles ->', status, text.substring(0, 100));
             try {
               const j = JSON.parse(text);
               const u = j.data?.url || j.url;
@@ -327,9 +374,9 @@ async function handleRequest(req, res) {
       }
 
       tryLitterbox()
-        .catch(e => { console.warn('[upload-temp] litterbox failed:', e.message, '— trying tmpfiles'); return tryTmpfiles(); })
+        .catch(() => tryTmpfiles())
         .then(fileUrl => sendJSON(res, 200, { url: fileUrl }))
-        .catch(e => { console.error('[upload-temp] all providers failed:', e.message); sendJSON(res, 500, { error: e.message }); });
+        .catch(e => sendJSON(res, 500, { error: e.message }));
     });
     return;
   }
@@ -345,20 +392,23 @@ async function handleRequest(req, res) {
   res.writeHead(404); res.end('Not found');
 }
 
-const server = http.createServer((req, res) => {
-  handleRequest(req, res).catch(e => {
-    console.error('Server error:', e);
-    if (!res.headersSent) { res.writeHead(500); res.end(JSON.stringify({ error: 'Internal server error' })); }
+// ── Start ─────────────────────────────────────────────────────────────────────
+initDB().then(() => {
+  const server = http.createServer((req, res) => {
+    handleRequest(req, res).catch(e => {
+      console.error('Server error:', e);
+      if (!res.headersSent) { res.writeHead(500); res.end(JSON.stringify({ error: 'Internal server error' })); }
+    });
   });
-});
 
-server.listen(PORT, () => {
-  console.log('');
-  console.log('  ╔══════════════════════════════════════╗');
-  console.log('  ║   🎬  Seedance Studio is running!    ║');
-  console.log('  ╠══════════════════════════════════════╣');
-  console.log('  ║   Open: http://localhost:' + PORT + '         ║');
-  console.log('  ║   Stop: Ctrl+C                       ║');
-  console.log('  ╚══════════════════════════════════════╝');
-  console.log('');
+  server.listen(PORT, () => {
+    console.log('');
+    console.log('  ╔══════════════════════════════════════╗');
+    console.log('  ║   🎬  Seedance Studio is running!    ║');
+    console.log('  ╠══════════════════════════════════════╣');
+    console.log('  ║   Open: http://localhost:' + PORT + '         ║');
+    console.log('  ║   Stop: Ctrl+C                       ║');
+    console.log('  ╚══════════════════════════════════════╝');
+    console.log('');
+  });
 });
