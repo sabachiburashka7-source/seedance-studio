@@ -244,6 +244,12 @@ async function handleRequest(req, res) {
     return res.end();
   }
 
+  // Health check (Render uses this)
+  if (url === '/health' || url === '/healthz') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    return res.end('ok');
+  }
+
   // Frontend
   if (url === '/' || url === '/index.html') return serveHTML(res);
 
@@ -543,7 +549,7 @@ initDB()
     });
   });
 
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log('');
     console.log('  ╔══════════════════════════════════════╗');
     console.log('  ║   🎬  Seedance Studio is running!    ║');
