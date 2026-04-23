@@ -84,15 +84,25 @@ function saveDB(db) {
 }
 
 async function initDB() {
-  if (REDIS_URL && REDIS_TOKEN) {
-    console.log('[db] Using Upstash Redis');
-    const data = await redisLoad();
-    if (data) { dbCache = data; console.log('[db] Loaded from Redis'); }
-    else       { console.log('[db] Fresh DB (nothing in Redis yet)'); }
-  } else {
-    console.log('[db] Using local db.json');
-    try { dbCache = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
-    catch { /* fresh db */ }
+  try {
+    if (REDIS_URL && REDIS_TOKEN) {
+      console.log('[db] Using Upstash Redis');
+      const data = await redisLoad();
+      if (data) {
+        dbCache = { verifyCodes: {}, resetCodes: {}, ...data };
+        console.log('[db] Loaded from Redis');
+      } else {
+        console.log('[db] Fresh DB in Redis');
+      }
+    } else {
+      console.log('[db] Using local db.json');
+      try {
+        const raw = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+        dbCache = { verifyCodes: {}, resetCodes: {}, ...raw };
+      } catch { /* fresh db */ }
+    }
+  } catch(e) {
+    console.error('[db] initDB error (continuing with empty db):', e.message);
   }
 }
 
@@ -523,7 +533,9 @@ async function handleRequest(req, res) {
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────
-initDB().then(() => {
+initDB()
+  .catch(e => console.error('[db] initDB rejected (server will still start):', e.message))
+  .then(() => {
   const server = http.createServer((req, res) => {
     handleRequest(req, res).catch(e => {
       console.error('Server error:', e);
