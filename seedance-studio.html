@@ -370,6 +370,70 @@ input[type=range] {
   nav, .api-bar, .page { padding-left: 16px; padding-right: 16px; }
 }
 
+/* ─── MOBILE MODE ─────────────────────────────────────────────────── */
+.layout-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  color: var(--text2);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: all 0.2s;
+  font-family: 'DM Sans', sans-serif;
+}
+.layout-btn:hover { border-color: var(--accent); color: var(--accent2); }
+.layout-btn.mobile-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+body.mobile-mode .gen-grid { grid-template-columns: 1fr !important; }
+body.mobile-mode nav  { padding: 0 12px; }
+body.mobile-mode .api-bar { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+body.mobile-mode .api-input { max-width: 100%; width: 100%; flex: 1 1 180px; }
+body.mobile-mode .page { padding: 12px; }
+body.mobile-mode .panel { padding: 14px; margin-bottom: 12px; }
+
+/* 16px on inputs stops iOS Safari from zooming when you tap */
+body.mobile-mode textarea,
+body.mobile-mode select,
+body.mobile-mode input:not([type=range]):not([type=checkbox]) { font-size: 16px !important; }
+
+/* Bigger tap targets */
+body.mobile-mode .tab { padding: 9px 14px; }
+body.mobile-mode select { min-height: 38px; }
+body.mobile-mode textarea { min-height: 110px; }
+
+/* Settings rows: stack label + control vertically */
+body.mobile-mode .srow { flex-direction: column; align-items: flex-start; gap: 8px; padding: 13px 0; }
+body.mobile-mode .srow select { width: 100%; }
+body.mobile-mode input[type=range] { width: 100%; max-width: 200px; }
+body.mobile-mode .srow .tog { align-self: flex-start; } /* keep toggle compact */
+
+/* Sticky generate button floats above content */
+body.mobile-mode .btn-gen {
+  position: sticky;
+  bottom: 12px;
+  z-index: 50;
+  font-size: 16px;
+  padding: 16px;
+  box-shadow: 0 4px 28px rgba(108,92,231,0.6);
+  margin-top: 16px;
+}
+
+/* Library */
+body.mobile-mode .vid-grid { grid-template-columns: 1fr; }
+body.mobile-mode .vbtn { min-height: 42px; font-size: 13px; }
+body.mobile-mode .vid-btns { flex-wrap: wrap; }
+
+/* Auth card */
+body.mobile-mode .auth-card { padding: 24px 18px; }
+body.mobile-mode .auth-input,
+body.mobile-mode .auth-btn { font-size: 16px !important; }
+
+/* Nav right area */
+body.mobile-mode .user-email { max-width: 90px; font-size: 11px; }
+body.mobile-mode .logout-btn { font-size: 11px; padding: 5px 8px; }
+
 /* ─── AUTH MODAL ──────────────────────────────────────────────────── */
 #auth-overlay {
   position: fixed; inset: 0; z-index: 500;
@@ -467,9 +531,12 @@ input[type=range] {
     <button class="tab active" onclick="goPage('generate',this)">Generate</button>
     <button class="tab" onclick="goPage('library',this)">Library<span id="badge"></span></button>
   </div>
-  <div class="user-area" id="user-area" style="display:none">
-    <span class="user-email" id="user-email"></span>
-    <button class="logout-btn" onclick="logout()">Sign out</button>
+  <div style="display:flex;align-items:center;gap:8px">
+    <button class="layout-btn" id="mobile-btn" onclick="toggleMobileMode()" title="Toggle mobile/desktop UI"></button>
+    <div class="user-area" id="user-area" style="display:none">
+      <span class="user-email" id="user-email"></span>
+      <button class="logout-btn" onclick="logout()">Sign out</button>
+    </div>
   </div>
 </nav>
 
@@ -1312,7 +1379,30 @@ function toast(msg, type='ok') {
   setTimeout(() => el.remove(), 6000);
 }
 
+// ══ MOBILE MODE ════════════════════════════════════════════════════════
+const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+  || window.innerWidth < 600;
+let mobileMode = localStorage.getItem('sd_mobile') !== null
+  ? localStorage.getItem('sd_mobile') === '1'
+  : isMobileDevice;
+
+function applyMobileMode() {
+  document.body.classList.toggle('mobile-mode', mobileMode);
+  const btn = document.getElementById('mobile-btn');
+  btn.textContent = mobileMode ? '🖥️' : '📱';
+  btn.title       = mobileMode ? 'Switch to desktop layout' : 'Switch to mobile layout';
+  btn.classList.toggle('mobile-active', mobileMode);
+}
+
+function toggleMobileMode() {
+  mobileMode = !mobileMode;
+  localStorage.setItem('sd_mobile', mobileMode ? '1' : '0');
+  applyMobileMode();
+  toast(mobileMode ? '📱 Mobile layout on' : '🖥️ Desktop layout on', 'ok');
+}
+
 // ══ INIT ═══════════════════════════════════════════════════════════════
+applyMobileMode();
 calcCost();
 initAuth();
 setInterval(() => { if (jobs.length) renderLib(); }, 1000);
