@@ -32,8 +32,12 @@ const APP_URL       = process.env.APP_URL || 'http://localhost:3000';
 // ── In-memory DB cache ────────────────────────────────────────────────────────
 let dbCache = { users: {}, emailIndex: {}, sessions: {}, library: {}, verifyCodes: {}, resetCodes: {} };
 
+// Safety flag: only write to Redis AFTER we've confirmed Redis responded at startup.
+// This prevents wiping Redis with an empty DB when Redis was temporarily unreachable on boot.
+let redisReady = false;
+
 // ── Upstash Redis helpers ─────────────────────────────────────────────────────
-function redisCmd(cmd) {
+function redisCmd(cmd, timeoutMs = 12000) {
   return new Promise((resolve, reject) => {
     if (!REDIS_URL || !REDIS_TOKEN) return reject(new Error('No Redis config'));
     const u    = new URL(REDIS_URL);
@@ -54,6 +58,8 @@ function redisCmd(cmd) {
         catch(e) { reject(e); }
       });
     });
+    // Abort if Redis hangs — prevents server from stalling on boot
+    req.setTimeout(timeoutMs, () => req.destroy(new Error('Redis timeout after ' + timeoutMs + 'ms')));
     req.on('error', reject);
     req.write(body); req.end();
   });
@@ -62,15 +68,20 @@ function redisCmd(cmd) {
 async function redisSave(db) {
   try {
     await redisCmd(['SET', REDIS_KEY, JSON.stringify(db)]);
+    console.log('[redis] saved OK');
   } catch(e) { console.error('[redis] save error:', e.message); }
 }
 
 async function redisLoad() {
+  // Returns { data, ok } — ok=true means Redis responded (even if no data yet)
   try {
     const r = await redisCmd(['GET', REDIS_KEY]);
-    if (r.result) return JSON.parse(r.result);
-  } catch(e) { console.error('[redis] load error:', e.message); }
-  return null;
+    const data = r.result ? JSON.parse(r.result) : null;
+    return { data, ok: true };
+  } catch(e) {
+    console.error('[redis] load error:', e.message);
+    return { data: null, ok: false };
+  }
 }
 
 // ── Database (sync interface, async persistence) ──────────────────────────────
@@ -79,6 +90,11 @@ function loadDB() { return dbCache; }
 function saveDB(db) {
   dbCache = db;
   if (REDIS_URL && REDIS_TOKEN) {
+    if (!redisReady) {
+      // Redis didn't respond at startup — refuse to overwrite Redis with potentially stale data
+      console.warn('[db] saveDB: skipping Redis write — Redis was unreachable at startup. Data saved in-memory only.');
+      return;
+    }
     redisSave(db); // async, fire-and-forget
   } else {
     try { fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8'); } catch {}
@@ -88,13 +104,20 @@ function saveDB(db) {
 async function initDB() {
   try {
     if (REDIS_URL && REDIS_TOKEN) {
-      console.log('[db] Using Upstash Redis');
-      const data = await redisLoad();
-      if (data) {
-        dbCache = { verifyCodes: {}, resetCodes: {}, ...data };
-        console.log('[db] Loaded from Redis');
+      console.log('[db] Using Upstash Redis — loading...');
+      const { data, ok } = await redisLoad();
+      if (ok) {
+        redisReady = true; // Redis is reachable — safe to write
+        if (data) {
+          dbCache = { verifyCodes: {}, resetCodes: {}, ...data };
+          const userCount = Object.keys(data.users || {}).length;
+          console.log(`[db] Loaded from Redis — ${userCount} user(s)`);
+        } else {
+          console.log('[db] Redis reachable — fresh empty DB');
+        }
       } else {
-        console.log('[db] Fresh DB in Redis');
+        redisReady = false;
+        console.error('[db] Redis unreachable at startup — running with empty in-memory DB. Writes are BLOCKED to protect Redis data.');
       }
     } else {
       console.log('[db] Using local db.json');
