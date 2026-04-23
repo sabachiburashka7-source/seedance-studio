@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seedance 2.0 Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #080810;
+  --bg2: #0e0e1a;
+  --surface: #12121f;
+  --surface2: #1a1a2e;
+  --surface3: #22223a;
+  --border: #2d2d4a;
+  --border2: #3d3d5c;
+  --accent: #6c5ce7;
+  --accent2: #a29bfe;
+  --accent3: #fd79a8;
+  --text: #e2e2f0;
+  --text2: #9898b8;
+  --text3: #5a5a7a;
+  --green: #00b894;
+  --red: #e17055;
+  --yellow: #fdcb6e;
+  --radius: 14px;
+  --radius-sm: 8px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Ambient background */
+body::before {
+  content: '';
+  position: fixed;
+  top: -200px; left: -200px;
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(108,92,231,0.08) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+body::after {
+  content: '';
+  position: fixed;
+  bottom: -200px; right: -200px;
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(253,121,168,0.06) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ─── NAV ─────────────────────────────────────────────────────────── */
+nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(8,8,16,0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 32px;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 60px;
+}
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 16px; font-weight: 700; letter-spacing: -0.02em;
+  color: var(--text);
+}
+.logo-icon {
+  width: 32px; height: 32px;
+  background: linear-gradient(135deg, var(--accent), var(--accent3));
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+}
+.tabs {
+  display: flex; gap: 2px;
+  background: var(--surface2);
+  padding: 3px; border-radius: 10px;
+  border: 1px solid var(--border);
+}
+.tab {
+  padding: 7px 18px;
+  border-radius: 7px; border: none;
+  background: transparent; color: var(--text3);
+  cursor: pointer; font-size: 13px; font-weight: 500;
+  font-family: 'DM Sans', sans-serif;
+  transition: all 0.2s;
+}
+.tab.active { background: var(--accent); color: #fff; }
+.tab:hover:not(.active) { color: var(--text); }
+
+/* ─── API BAR ─────────────────────────────────────────────────────── */
+.api-bar {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 32px;
+  display: flex; align-items: center; gap: 12px;
+  position: relative; z-index: 10;
+}
+.api-bar label { font-size: 12px; color: var(--text3); white-space: nowrap; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+.api-input {
+  flex: 1; max-width: 400px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  color: var(--text); font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  transition: border-color 0.2s;
+}
+.api-input:focus { outline: none; border-color: var(--accent); }
+.api-pill {
+  font-size: 11px; padding: 4px 10px;
+  border-radius: 20px; font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.api-pill.ok { background: rgba(0,184,148,0.15); color: var(--green); }
+.api-pill.bad { background: rgba(253,203,110,0.12); color: var(--yellow); }
+
+/* ─── PAGES ───────────────────────────────────────────────────────── */
+.page { display: none; padding: 28px 32px; max-width: 1100px; margin: 0 auto; position: relative; z-index: 1; }
+.page.active { display: block; }
+
+/* ─── GENERATE LAYOUT ─────────────────────────────────────────────── */
+.gen-grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start; }
+
+/* ─── PANELS ──────────────────────────────────────────────────────── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+  margin-bottom: 16px;
+}
+.panel-label {
+  font-size: 11px; font-weight: 700;
+  color: var(--text3); text-transform: uppercase; letter-spacing: 0.1em;
+  margin-bottom: 14px;
+}
+
+/* ─── TEXTAREA ────────────────────────────────────────────────────── */
+textarea {
+  width: 100%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  color: var(--text); font-size: 14px; font-family: 'DM Sans', sans-serif;
+  line-height: 1.6; resize: vertical; min-height: 130px;
+  transition: border-color 0.2s;
+}
+textarea:focus { outline: none; border-color: var(--accent); }
+textarea::placeholder { color: var(--text3); }
+
+/* ─── IMAGE UPLOAD ────────────────────────────────────────────────── */
+.img-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.thumb-wrap { position: relative; }
+.thumb {
+  width: 60px; height: 60px;
+  border-radius: 8px; object-fit: cover;
+  border: 2px solid var(--border);
+  display: block;
+}
+.thumb-del {
+  position: absolute; top: -5px; right: -5px;
+  width: 18px; height: 18px;
+  background: var(--red); border: none; border-radius: 50%;
+  color: #fff; font-size: 10px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.2s;
+}
+.thumb-wrap:hover .thumb-del { opacity: 1; }
+.add-img-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--surface2); border: 1px dashed var(--border2);
+  border-radius: var(--radius-sm); padding: 8px 14px;
+  color: var(--text2); font-size: 13px; font-family: 'DM Sans', sans-serif;
+  cursor: pointer; transition: all 0.2s;
+}
+.add-img-btn:hover { border-color: var(--accent); color: var(--accent2); }
+.add-img-btn input { display: none; }
+
+/* ─── VIDEO UPLOAD ────────────────────────────────────────────────── */
+.vid-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-sm);
+  padding: 22px 16px;
+  text-align: center; cursor: pointer;
+  transition: all 0.2s; position: relative;
+}
+.vid-zone:hover { border-color: var(--accent); background: rgba(108,92,231,0.04); }
+.vid-zone.filled { border-color: var(--green); border-style: solid; background: rgba(0,184,148,0.05); }
+.vid-zone input { display: none; }
+.vid-icon { font-size: 28px; margin-bottom: 6px; }
+.vid-text { font-size: 12px; color: var(--text2); }
+.vid-name { font-size: 12px; color: var(--green); margin-top: 4px; word-break: break-all; }
+.vid-del {
+  position: absolute; top: 8px; right: 10px;
+  background: none; border: none; color: var(--text3);
+  font-size: 18px; cursor: pointer; line-height: 1;
+  transition: color 0.2s;
+}
+.vid-del:hover { color: var(--red); }
+
+/* ─── TIP BOX ─────────────────────────────────────────────────────── */
+.tip {
+  background: rgba(108,92,231,0.07);
+  border: 1px solid rgba(108,92,231,0.2);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px; margin-top: 14px;
+  font-size: 12px; color: var(--accent2); line-height: 1.6;
+}
+.tip b { display: block; margin-bottom: 3px; font-weight: 600; }
+
+/* ─── SETTINGS ────────────────────────────────────────────────────── */
+.srow {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 0; border-bottom: 1px solid var(--border);
+}
+.srow:last-child { border-bottom: none; }
+.slabel { font-size: 13px; color: var(--text); }
+.ssub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+select {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 6px 10px;
+  color: var(--text); font-size: 13px; cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+}
+select:focus { outline: none; border-color: var(--accent); }
+
+input[type=range] {
+  width: 110px; accent-color: var(--accent);
+  cursor: pointer;
+}
+.rval { font-size: 13px; color: var(--accent2); font-weight: 600; min-width: 32px; text-align: right; font-family: 'JetBrains Mono', monospace; }
+
+/* ─── TOGGLE ──────────────────────────────────────────────────────── */
+.tog { position: relative; width: 42px; height: 22px; }
+.tog input { display: none; }
+.tog-track {
+  position: absolute; inset: 0;
+  background: var(--border); border-radius: 22px; cursor: pointer; transition: 0.2s;
+}
+.tog-track::before {
+  content: ''; position: absolute;
+  width: 16px; height: 16px; left: 3px; top: 3px;
+  background: #fff; border-radius: 50%; transition: 0.2s;
+}
+.tog input:checked + .tog-track { background: var(--accent); }
+.tog input:checked + .tog-track::before { transform: translateX(20px); }
+
+/* ─── COST BOX ────────────────────────────────────────────────────── */
+.cost-row {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px; margin-top: 16px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.cost-lbl { font-size: 12px; color: var(--text3); }
+.cost-sub { font-size: 11px; color: var(--text3); margin-top: 3px; }
+.cost-val { font-size: 18px; font-weight: 700; color: var(--accent2); font-family: 'JetBrains Mono', monospace; }
+
+/* ─── GEN BUTTON ──────────────────────────────────────────────────── */
+.btn-gen {
+  width: 100%; margin-top: 14px; padding: 15px;
+  background: linear-gradient(135deg, var(--accent) 0%, #8b7cf8 100%);
+  border: none; border-radius: var(--radius-sm);
+  color: #fff; font-size: 15px; font-weight: 600;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer; transition: all 0.2s;
+  letter-spacing: -0.01em;
+}
+.btn-gen:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(108,92,231,0.45); }
+.btn-gen:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ─── PROGRESS ────────────────────────────────────────────────────── */
+.prog-panel { display: none; margin-top: 0; }
+.prog-panel.show { display: block; }
+.prog-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.prog-title { font-size: 14px; font-weight: 600; }
+.badge { font-size: 11px; padding: 4px 10px; border-radius: 20px; font-weight: 600; }
+.badge-run { background: rgba(96,165,250,0.15); color: #60a5fa; }
+.badge-ok  { background: rgba(0,184,148,0.15); color: var(--green); }
+.badge-err { background: rgba(225,112,85,0.15); color: var(--red); }
+.prog-track { background: var(--surface2); border-radius: 10px; height: 5px; overflow: hidden; }
+.prog-fill { height: 100%; border-radius: 10px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 0.8s ease; width: 0%; }
+.prog-msg { font-size: 12px; color: var(--text3); margin-top: 8px; font-family: 'JetBrains Mono', monospace; }
+
+/* ─── LIBRARY ─────────────────────────────────────────────────────── */
+.lib-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+.lib-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+.lib-count { font-size: 12px; color: var(--text3); background: var(--surface2); border: 1px solid var(--border); padding: 4px 12px; border-radius: 20px; }
+
+.empty-state { text-align: center; padding: 80px 20px; color: var(--text3); }
+.empty-state .ei { font-size: 52px; margin-bottom: 14px; opacity: 0.5; }
+.empty-state p { font-size: 14px; }
+
+.vid-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 18px; }
+.vid-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.vid-card:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.5); }
+.vid-preview { width: 100%; aspect-ratio: 16/9; background: var(--surface2); overflow: hidden; }
+.vid-preview.v916 { aspect-ratio: 9/16; max-height: 280px; }
+.vid-preview.v11  { aspect-ratio: 1/1; }
+.vid-preview video { width: 100%; height: 100%; object-fit: cover; }
+.vid-no-url { width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text3);font-size:12px;gap:4px;padding:12px;text-align:center; }
+.vid-body { padding: 14px; }
+.vid-prompt { font-size: 13px; line-height: 1.5; color: var(--text); margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.vid-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.vtag { font-size: 11px; padding: 3px 8px; border-radius: 6px; background: var(--surface2); color: var(--text3); font-weight: 500; }
+.vtag.hi { background: rgba(108,92,231,0.18); color: var(--accent2); }
+.vid-btns { display: flex; gap: 8px; }
+.vbtn {
+  flex: 1; padding: 8px 6px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface2);
+  color: var(--text2); font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: all 0.2s; text-decoration: none;
+  display: flex; align-items: center; justify-content: center; gap: 4px;
+  font-family: 'DM Sans', sans-serif;
+}
+.vbtn:hover { border-color: var(--accent); color: var(--accent2); }
+.vbtn.red:hover { border-color: var(--red); color: var(--red); }
+.vbtn.dl { background: var(--accent); border-color: var(--accent); color: #fff; }
+.vbtn.dl:hover { background: #5b4dcc; }
+
+/* ─── PENDING CARD ────────────────────────────────────────────────── */
+.pend-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+.pend-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px;
+  display: flex; align-items: center; gap: 16px;
+}
+.spin {
+  width: 34px; height: 34px; flex-shrink: 0;
+  border: 3px solid var(--border); border-top-color: var(--accent);
+  border-radius: 50%; animation: rot 0.75s linear infinite;
+}
+@keyframes rot { to { transform: rotate(360deg); } }
+.pend-info { flex: 1; min-width: 0; }
+.pend-prompt { font-size: 13px; color: var(--text); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pend-meta { font-size: 11px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
+
+/* ─── TOASTS ──────────────────────────────────────────────────────── */
+#toasts { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
+.toast {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 12px 16px;
+  font-size: 13px; max-width: 340px; line-height: 1.5;
+  animation: tin 0.3s ease; display: flex; align-items: flex-start; gap: 8px;
+}
+.toast.ok  { border-color: var(--green); }
+.toast.err { border-color: var(--red); }
+@keyframes tin { from { transform: translateX(110%); opacity: 0; } to { transform: none; opacity: 1; } }
+
+@media (max-width: 760px) {
+  .gen-grid { grid-template-columns: 1fr; }
+  nav, .api-bar, .page { padding-left: 16px; padding-right: 16px; }
+}
+
+/* ─── AUTH MODAL ──────────────────────────────────────────────────── */
+#auth-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(0,0,0,0.88);
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(8px);
+}
+#auth-overlay.hidden { display: none; }
+.auth-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 36px;
+  width: 380px; max-width: 92vw;
+}
+.auth-logo {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  font-size: 18px; font-weight: 700; margin-bottom: 28px;
+}
+.auth-logo-icon {
+  width: 36px; height: 36px;
+  background: linear-gradient(135deg, var(--accent), var(--accent3));
+  border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.auth-tabs {
+  display: flex; gap: 2px; background: var(--surface2);
+  border-radius: 10px; padding: 3px; border: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+.auth-tab {
+  flex: 1; padding: 8px; border: none; border-radius: 7px;
+  background: transparent; color: var(--text3);
+  cursor: pointer; font-size: 13px; font-weight: 500;
+  font-family: 'DM Sans', sans-serif; transition: all 0.2s;
+}
+.auth-tab.active { background: var(--accent); color: #fff; }
+.auth-input {
+  width: 100%; padding: 11px 14px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text);
+  font-size: 14px; font-family: 'DM Sans', sans-serif;
+  margin-bottom: 10px; transition: border-color 0.2s; display: block;
+}
+.auth-input:focus { outline: none; border-color: var(--accent); }
+.auth-err { font-size: 12px; color: var(--red); min-height: 18px; margin-bottom: 8px; }
+.auth-btn {
+  width: 100%; padding: 13px;
+  background: linear-gradient(135deg, var(--accent) 0%, #8b7cf8 100%);
+  border: none; border-radius: var(--radius-sm);
+  color: #fff; font-size: 15px; font-weight: 600;
+  font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.2s;
+}
+.auth-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(108,92,231,0.45); }
+.auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ─── USER AREA (nav) ─────────────────────────────────────────────── */
+.user-area { display: flex; align-items: center; gap: 10px; }
+.user-email { font-size: 12px; color: var(--text3); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.logout-btn {
+  font-size: 12px; padding: 6px 12px; border-radius: 20px;
+  border: 1px solid var(--border); background: transparent; color: var(--text3);
+  cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s;
+}
+.logout-btn:hover { border-color: var(--red); color: var(--red); }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="logo">
+    <div class="logo-icon">🎬</div>
+    Seedance Studio
+  </div>
+  <div class="tabs">
+    <button class="tab active" onclick="goPage('generate',this)">Generate</button>
+    <button class="tab" onclick="goPage('library',this)">Library<span id="badge"></span></button>
+  </div>
+  <div class="user-area" id="user-area" style="display:none">
+    <span class="user-email" id="user-email"></span>
+    <button class="logout-btn" onclick="logout()">Sign out</button>
+  </div>
+</nav>
+
+<!-- API BAR -->
+<div class="api-bar">
+  <label>API Key</label>
+  <input class="api-input" type="password" id="apikey" placeholder="Paste your BytePlus API key..." oninput="checkKey()">
+  <span class="api-pill bad" id="keypill">Not set</span>
+</div>
+
+<!-- ═══ GENERATE PAGE ═══════════════════════════════════════════════ -->
+<div class="page active" id="page-generate">
+  <div class="gen-grid">
+
+    <!-- LEFT -->
+    <div>
+      <!-- PROMPT -->
+      <div class="panel">
+        <div class="panel-label">Prompt</div>
+        <textarea id="prompt" rows="5" placeholder="Describe your video in detail. Reference uploaded images as 'Image 1', 'Image 2', etc.&#10;&#10;Example: A woman in Image 1 walks through a neon-lit Tokyo street at night, cinematic slow motion, shallow depth of field"></textarea>
+      </div>
+
+      <!-- IMAGES -->
+      <div class="panel">
+        <div class="panel-label">Reference Images <span style="color:var(--text3);text-transform:none;letter-spacing:0;font-weight:400">(up to 9, optional)</span></div>
+        <div class="img-thumbs" id="img-thumbs"></div>
+        <label class="add-img-btn">
+          <span>＋</span> Add Images
+          <input type="file" id="img-input" accept="image/*" multiple onchange="addImages(this)">
+        </label>
+        <button id="clr-imgs" onclick="clearImgs()" hidden style="margin-left:8px;background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Clear all</button>
+        <div style="margin-top:8px;font-size:11px;color:var(--text3);line-height:1.5;">⚠️ Images with real people are rejected by BytePlus content policy. Use illustrations, renders, or AI-generated images.</div>
+      </div>
+
+      <!-- VIDEO REF -->
+      <div class="panel">
+        <div class="panel-label">Reference Video <span style="color:var(--text3);text-transform:none;letter-spacing:0;font-weight:400">(optional — activates cheaper $4.30/M token rate)</span></div>
+        <div class="vid-zone" id="vid-zone" onclick="document.getElementById('vid-file-input').click()">
+          <input type="file" id="vid-file-input" accept="video/*" style="display:none" onchange="uploadVidFile(this)">
+          <div id="vid-zone-inner">
+            <div class="vid-icon">🎥</div>
+            <div class="vid-text">Click to upload a reference video</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:4px">Uploaded temporarily via transfer.sh</div>
+          </div>
+          <button class="vid-del" id="vid-del" hidden onclick="clearVid(event)">×</button>
+        </div>
+        <div style="margin:8px 0;text-align:center;font-size:11px;color:var(--text3)">— or paste a URL —</div>
+        <div style="position:relative">
+          <input type="url" id="vid-url-input" placeholder="https://... or click 'Use as Reference' on a library video"
+            style="width:100%;box-sizing:border-box;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 36px 10px 12px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s"
+            oninput="onVidUrlInput(this.value)" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor=vidUrl?'var(--green)':'var(--border)'">
+          <button onclick="clearVid()" title="Clear" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;line-height:1;padding:2px 4px">×</button>
+        </div>
+        <div id="vid-url-status" style="margin-top:5px;font-size:11px"></div>
+        <div class="tip" style="margin-top:10px">
+          <b>💡 Multi-scene workflow</b> — Generate Scene 1, then click <b>Use as Reference</b> in the Library to auto-fill this field. Saves ~40% per scene and carries over style, lighting and character consistency.
+        </div>
+      </div>
+
+      <!-- PROGRESS -->
+      <div class="panel prog-panel" id="prog-panel">
+        <div class="prog-top">
+          <div class="prog-title">Generating...</div>
+          <span class="badge badge-run">Running</span>
+        </div>
+        <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+        <div class="prog-msg" id="prog-msg">Initialising...</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: SETTINGS -->
+    <div>
+      <div class="panel">
+        <div class="panel-label">Settings</div>
+
+        <div class="srow">
+          <div><div class="slabel">Model</div><div class="ssub">Fast = cheaper & quicker</div></div>
+          <select id="s-model" onchange="syncRes()">
+            <option value="dreamina-seedance-2-0-260128">Standard</option>
+            <option value="dreamina-seedance-2-0-fast-260128">Fast</option>
+          </select>
+        </div>
+
+        <div class="srow">
+          <div><div class="slabel">Resolution</div></div>
+          <select id="s-res" onchange="calcCost()">
+            <option value="720p">720p</option>
+            <option value="480p">480p</option>
+            <option value="1080p">1080p</option>
+          </select>
+        </div>
+
+        <div class="srow">
+          <div><div class="slabel">Aspect Ratio</div></div>
+          <select id="s-ratio">
+            <option value="9:16">9:16 Vertical</option>
+            <option value="16:9">16:9 Horizontal</option>
+            <option value="1:1">1:1 Square</option>
+            <option value="4:3">4:3</option>
+            <option value="3:4">3:4</option>
+            <option value="21:9">21:9 Wide</option>
+          </select>
+        </div>
+
+        <div class="srow">
+          <div><div class="slabel">Duration</div><div class="ssub" id="dur-sub">10 seconds</div></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="range" id="s-dur" min="5" max="15" value="10" oninput="setDur(this.value)">
+            <span class="rval" id="dur-val">10s</span>
+          </div>
+        </div>
+
+        <div class="srow">
+          <div><div class="slabel">Audio</div><div class="ssub">Native sound generation</div></div>
+          <label class="tog"><input type="checkbox" id="s-audio" checked><span class="tog-track"></span></label>
+        </div>
+
+        <div class="srow">
+          <div><div class="slabel">Watermark</div></div>
+          <label class="tog"><input type="checkbox" id="s-wm"><span class="tog-track"></span></label>
+        </div>
+
+        <div class="cost-row">
+          <div>
+            <div class="cost-lbl">Estimated cost</div>
+            <div class="cost-sub" id="cost-mode">Text/image · $7.00/M tokens</div>
+          </div>
+          <div class="cost-val" id="cost-val">—</div>
+        </div>
+
+        <button class="btn-gen" id="gen-btn" onclick="doGenerate()">🎬 Generate Video</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ LIBRARY PAGE ════════════════════════════════════════════════ -->
+<div class="page" id="page-library">
+  <div class="lib-head">
+    <div class="lib-title">Library</div>
+    <span class="lib-count" id="lib-count">0 videos</span>
+  </div>
+  <div class="pend-list" id="pend-list"></div>
+  <div class="vid-grid" id="vid-grid"></div>
+  <div class="empty-state" id="lib-empty">
+    <div class="ei">🎞️</div>
+    <p>No videos yet. Generate your first one!</p>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<!-- AUTH MODAL -->
+<div id="auth-overlay">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-icon">🎬</div>
+      Seedance Studio
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchAuthTab('login')">Sign in</button>
+      <button class="auth-tab" onclick="switchAuthTab('register')">Sign up</button>
+    </div>
+    <input class="auth-input" id="auth-email" type="email" placeholder="Email address"
+           onkeydown="if(event.key==='Enter')document.getElementById('auth-pass').focus()">
+    <input class="auth-input" id="auth-pass" type="password" placeholder="Password (min. 8 characters)"
+           onkeydown="if(event.key==='Enter')submitAuth()">
+    <div class="auth-err" id="auth-err"></div>
+    <button class="auth-btn" id="auth-btn" onclick="submitAuth()">Sign in</button>
+  </div>
+</div>
+
+<script>
+// ══ STATE ══════════════════════════════════════════════════════════════
+let lib        = [];
+let jobs       = [];
+let imgs       = [];
+let vidUrl     = '';
+let progTmr    = null;
+let authToken  = localStorage.getItem('sd_token') || null;
+let currentUser = null;
+let authMode   = 'login';
+
+// ══ API KEY ════════════════════════════════════════════════════════════
+const key = () => document.getElementById('apikey').value.trim();
+function checkKey() {
+  const ok = key().length > 20;
+  const el = document.getElementById('keypill');
+  el.textContent = ok ? '✓ Set' : 'Not set';
+  el.className   = 'api-pill ' + (ok ? 'ok' : 'bad');
+}
+
+// ══ NAVIGATION ═════════════════════════════════════════════════════════
+function goPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'library') renderLib();
+}
+
+// ══ SETTINGS ══════════════════════════════════════════════════════════
+function syncRes() {
+  const fast   = document.getElementById('s-model').value.includes('fast');
+  const elRes  = document.getElementById('s-res');
+  const elDur  = document.getElementById('s-dur');
+  Array.from(elRes.options).forEach(o => { if (o.value === '1080p') o.disabled = fast; });
+  if (fast && elRes.value === '1080p') elRes.value = '720p';
+  // Fast model max duration is 10s
+  elDur.max = fast ? 10 : 15;
+  if (fast && +elDur.value > 10) { elDur.value = 10; setDur(10); }
+  calcCost();
+}
+function setDur(v) {
+  document.getElementById('dur-val').textContent  = v + 's';
+  document.getElementById('dur-sub').textContent  = v + ' seconds';
+  calcCost();
+}
+function calcCost() {
+  const dur  = +document.getElementById('s-dur').value;
+  const res  = document.getElementById('s-res').value;
+  const hasV = vidUrl.trim().startsWith('http');
+  const d    = {'480p':[864,496],'720p':[1280,720],'1080p':[1920,1080]};
+  const [w,h]= d[res] || [1280,720];
+  const tok  = (hasV ? 5+dur : dur) * w * h * 24 / 1024;
+  const rate = hasV ? 4.3e-6 : 7.0e-6;
+  const usd  = tok * rate;
+  const gel  = usd * 2.74;
+  document.getElementById('cost-val').textContent  = `$${usd.toFixed(2)} · ${gel.toFixed(2)}₾`;
+  document.getElementById('cost-mode').textContent = hasV
+    ? 'With video ref · $4.30/M tokens'
+    : 'Text/image only · $7.00/M tokens';
+}
+
+// ══ IMAGES ════════════════════════════════════════════════════════════
+function addImages(inp) {
+  imgs = [...imgs, ...Array.from(inp.files)].slice(0, 9);
+  inp.value = '';
+  renderThumbs();
+}
+function clearImgs() { imgs = []; renderThumbs(); }
+function removeImg(i) { imgs.splice(i, 1); renderThumbs(); }
+function renderThumbs() {
+  const g = document.getElementById('img-thumbs');
+  g.innerHTML = '';
+  imgs.forEach((f, i) => {
+    const w = document.createElement('div'); w.className = 'thumb-wrap';
+    const img = document.createElement('img'); img.className = 'thumb'; img.src = URL.createObjectURL(f); img.title = f.name;
+    const del = document.createElement('button'); del.className = 'thumb-del'; del.textContent = '×'; del.onclick = () => removeImg(i);
+    w.appendChild(img); w.appendChild(del); g.appendChild(w);
+  });
+  document.getElementById('clr-imgs').hidden = !imgs.length;
+}
+
+// ══ VIDEO ══════════════════════════════════════════════════════════════
+async function uploadVidFile(inp) {
+  const file = inp.files[0]; if (!file) return;
+  if (file.size > 512 * 1024 * 1024) return toast('Video too large (max 512 MB)', 'err');
+
+  const zone = document.getElementById('vid-zone');
+  const inner = document.getElementById('vid-zone-inner');
+  const st = document.getElementById('vid-url-status');
+  zone.classList.add('filled');
+  inner.innerHTML = `<div class="vid-icon">⏳</div><div class="vid-text">Uploading ${file.name}…</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${(file.size/1024/1024).toFixed(1)} MB — please wait</div>`;
+  document.getElementById('vid-del').hidden = false;
+  st.style.color = 'var(--text3)'; st.textContent = 'Uploading to temporary host…';
+
+  try {
+    const r = await fetch('/upload-temp?name=' + encodeURIComponent(file.name), {
+      method: 'POST',
+      headers: { 'Content-Type': file.type || 'video/mp4' },
+      body: file
+    });
+    const j = await r.json();
+    if (!j.url) throw new Error(j.error || 'No URL returned');
+    vidUrl = j.url;
+    document.getElementById('vid-url-input').value = vidUrl;
+    inner.innerHTML = `<div class="vid-icon">✅</div><div class="vid-text" style="color:var(--green)">${file.name}</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Ready · expires in 24h</div>`;
+    st.style.color = 'var(--green)'; st.textContent = '✓ Uploaded — URL ready';
+    calcCost();
+  } catch(e) {
+    zone.classList.remove('filled');
+    inner.innerHTML = `<div class="vid-icon">🎥</div><div class="vid-text">Click to upload a reference video</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Uploaded temporarily via transfer.sh</div>`;
+    document.getElementById('vid-del').hidden = true;
+    st.style.color = 'var(--red)'; st.textContent = '⚠️ Upload failed: ' + e.message;
+    inp.value = '';
+  }
+}
+
+function onVidUrlInput(val) {
+  vidUrl = val.trim();
+  const st = document.getElementById('vid-url-status');
+  if (!vidUrl) { st.textContent = ''; calcCost(); return; }
+  if (!vidUrl.startsWith('http')) {
+    st.style.color = 'var(--red)'; st.textContent = '⚠️ Must be a public https:// URL'; calcCost(); return;
+  }
+  st.style.color = 'var(--green)'; st.textContent = '✓ Reference video set';
+  calcCost();
+}
+function clearVid(e) {
+  e && e.stopPropagation();
+  vidUrl = '';
+  document.getElementById('vid-url-input').value = '';
+  document.getElementById('vid-url-status').textContent = '';
+  document.getElementById('vid-file-input').value = '';
+  document.getElementById('vid-zone').classList.remove('filled');
+  document.getElementById('vid-del').hidden = true;
+  document.getElementById('vid-zone-inner').innerHTML = `<div class="vid-icon">🎥</div><div class="vid-text">Click to upload a reference video</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Uploaded temporarily via transfer.sh</div>`;
+  calcCost();
+}
+function useAsReference(url) {
+  vidUrl = url;
+  document.getElementById('vid-url-input').value = url;
+  onVidUrlInput(url);
+  // Switch to Generate tab
+  goPage('generate', document.querySelectorAll('.tab')[0]);
+  toast('Reference video set! Write your Scene 2 prompt and generate.', 'ok');
+}
+
+// ══ SAFE JSON ═════════════════════════════════════════════════════════
+async function safeJson(r) {
+  const text = await r.text();
+  if (!text) throw new Error(`HTTP ${r.status} — empty response body`);
+  try { return JSON.parse(text); }
+  catch(e) { throw new Error(`HTTP ${r.status} — non-JSON response: ${text.substring(0, 300)}`); }
+}
+
+// ══ FILE → BASE64 DATA URL (bypasses Files API entirely) ══════════════
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result); // "data:<mime>;base64,<data>"
+    reader.onerror = () => reject(new Error('Failed to read file: ' + file.name));
+    reader.readAsDataURL(file);
+  });
+}
+
+// ══ BUILD PAYLOAD ═════════════════════════════════════════════════════
+function buildPayload(model, content, audio, ratio, dur, wm, res) {
+  const sizeMap = {
+    '720p':  {'9:16':'720x1280','16:9':'1280x720','1:1':'960x960','4:3':'960x720','3:4':'720x960','21:9':'1280x544'},
+    '480p':  {'9:16':'480x864', '16:9':'864x480', '1:1':'640x640','4:3':'640x480','3:4':'480x640','21:9':'864x368'},
+    '1080p': {'9:16':'1080x1920','16:9':'1920x1080','1:1':'1440x1440','4:3':'1440x1080','3:4':'1080x1440','21:9':'1920x816'}
+  };
+  const size = (sizeMap[res] || sizeMap['720p'])[ratio] || '720x1280';
+  return { model, content, generate_audio: audio, ratio, duration: dur, watermark: wm, size };
+}
+
+// ══ GENERATE ══════════════════════════════════════════════════════════
+async function doGenerate() {
+  if (!key())  return toast('Enter your API key first', 'err');
+  const pt = document.getElementById('prompt').value.trim();
+  if (!pt)     return toast('Enter a prompt', 'err');
+
+  const model = document.getElementById('s-model').value;
+  const res   = document.getElementById('s-res').value;
+  const ratio = document.getElementById('s-ratio').value;
+  const dur   = +document.getElementById('s-dur').value;
+  const audio = document.getElementById('s-audio').checked;
+  const wm    = document.getElementById('s-wm').checked;
+
+  const btn = document.getElementById('gen-btn');
+  btn.disabled = true; btn.textContent = '⏳ Working...';
+  showProg('Preparing files...');
+
+  try {
+    const content = [{ type: 'text', text: pt }];
+
+    for (let i = 0; i < imgs.length; i++) {
+      showProg(`Reading image ${i+1}/${imgs.length}...`);
+      const dataUrl = await fileToDataUrl(imgs[i]);
+      content.push({ type: 'image_url', image_url: { url: dataUrl }, role: 'reference_image' });
+    }
+    if (vidUrl.trim().startsWith('http')) {
+      content.push({ type: 'video_url', video_url: { url: vidUrl.trim() }, role: 'reference_video' });
+    }
+
+    showProg('Submitting generation task...');
+    const r = await fetch('/proxy/api/v3/contents/generations/tasks', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + key(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildPayload(model, content, audio, ratio, dur, wm, res))
+    });
+    const j = await safeJson(r);
+    const taskId = j.id || j.task_id;
+    if (!taskId) throw new Error(j.error?.message || j.error?.code || JSON.stringify(j).substring(0, 400));
+
+    toast('Task submitted! Polling for result...', 'ok');
+    const job = { id: taskId, prompt: pt, model, res, ratio, dur, audio, ts: Date.now(), status: 'running' };
+    jobs.push(job);
+    poll(job);
+
+    btn.disabled = false; btn.textContent = '🎬 Generate Video';
+    hideProg();
+
+  } catch(e) {
+    toast(friendlyErr(e.message), 'err');
+    btn.disabled = false; btn.textContent = '🎬 Generate Video';
+    hideProg();
+  }
+}
+
+// ══ POLLING ════════════════════════════════════════════════════════════
+function poll(job) {
+  let n = 0;
+  const run = async () => {
+    if (++n > 80) { finish(job, null, 'Timed out'); return; }
+    try {
+      const r = await fetch('/proxy/api/v3/contents/generations/tasks/' + job.id, {
+        headers: { 'Authorization': 'Bearer ' + key() }
+      });
+      const d = await safeJson(r);
+      console.log('[poll]', job.id, JSON.stringify(d));
+      const status = (d.status || '').toLowerCase();
+      if (status === 'succeeded' || status === 'success' || status === 'completed') {
+        const url = d.content?.video_url                    // ← actual shape
+          || d.content?.[0]?.video_url?.url || d.content?.[0]?.url
+          || d.outputs?.[0]?.url || d.output?.url || d.result?.url || '';
+        finish(job, url, null);
+      } else if (status === 'failed' || status === 'error' || status === 'cancelled') {
+        finish(job, null, d.error?.message || d.message || 'Status: ' + d.status);
+      } else {
+        console.log('[poll] status =', d.status, '— waiting 30s');
+        renderLib();
+        setTimeout(run, 30000);
+      }
+    } catch(e) {
+      console.warn('[poll] error:', e.message);
+      setTimeout(run, 30000);
+    }
+  };
+  setTimeout(run, 8000); // first check after 8s
+}
+
+function friendlyErr(msg) {
+  if (!msg) return msg;
+  if (msg.toLowerCase().includes('real person') || msg.toLowerCase().includes('real people'))
+    return '🚫 Image rejected — BytePlus detected a real person. Use illustrations, 3D renders, or AI-generated images instead.';
+  if (msg.toLowerCase().includes('copyright'))
+    return '🚫 Rejected — output may contain copyrighted content. Try a different prompt.';
+  if (msg.toLowerCase().includes('sensitive'))
+    return '🚫 Rejected — content policy violation. Adjust your prompt or images.';
+  return msg;
+}
+
+function finish(job, url, err) {
+  jobs = jobs.filter(j => j.id !== job.id);
+  if (err) { toast(friendlyErr(err), 'err'); renderLib(); return; }
+  lib.unshift({ id: job.id, prompt: job.prompt, url, res: job.res, ratio: job.ratio,
+    dur: job.dur, audio: job.audio, model: job.model, ts: job.ts, done: Date.now() });
+  saveLib(); renderLib(); badge();
+  toast('✅ Video ready! Check your Library.', 'ok');
+}
+
+// ══ PROGRESS ══════════════════════════════════════════════════════════
+function showProg(msg) {
+  document.getElementById('prog-panel').classList.add('show');
+  document.getElementById('prog-msg').textContent = msg;
+  let w = 0;
+  clearInterval(progTmr);
+  progTmr = setInterval(() => { w = Math.min(w+1,90); document.getElementById('prog-fill').style.width = w+'%'; }, 500);
+}
+function hideProg() {
+  clearInterval(progTmr);
+  document.getElementById('prog-fill').style.width = '100%';
+  setTimeout(() => {
+    document.getElementById('prog-panel').classList.remove('show');
+    document.getElementById('prog-fill').style.width = '0%';
+  }, 600);
+}
+
+// ══ AUTH ═══════════════════════════════════════════════════════════════
+async function initAuth() {
+  if (!authToken) { showAuthModal(); return; }
+  try {
+    const r = await fetch('/auth/me', { headers: { 'Authorization': 'Bearer ' + authToken } });
+    if (!r.ok) throw new Error('expired');
+    currentUser = await r.json();
+    await loadLib(currentUser.userId);
+    hideAuthModal();
+  } catch {
+    authToken = null; localStorage.removeItem('sd_token'); showAuthModal();
+  }
+}
+
+function showAuthModal() {
+  document.getElementById('auth-overlay').classList.remove('hidden');
+  document.getElementById('user-area').style.display = 'none';
+}
+
+function hideAuthModal() {
+  document.getElementById('auth-overlay').classList.add('hidden');
+  document.getElementById('user-area').style.display = 'flex';
+  document.getElementById('user-email').textContent = currentUser.email;
+  calcCost(); badge(); renderLib();
+}
+
+function switchAuthTab(mode) {
+  authMode = mode;
+  document.querySelectorAll('.auth-tab').forEach((t, i) =>
+    t.classList.toggle('active', i === (mode === 'login' ? 0 : 1)));
+  document.getElementById('auth-btn').textContent = mode === 'login' ? 'Sign in' : 'Create account';
+  document.getElementById('auth-err').textContent = '';
+}
+
+async function submitAuth() {
+  const email = document.getElementById('auth-email').value.trim();
+  const pass  = document.getElementById('auth-pass').value;
+  const err   = document.getElementById('auth-err');
+  const btn   = document.getElementById('auth-btn');
+  if (!email || !pass) { err.textContent = 'Email and password are required'; return; }
+  btn.disabled = true; btn.textContent = 'Please wait...'; err.textContent = '';
+  try {
+    const r = await fetch(authMode === 'login' ? '/auth/login' : '/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass })
+    });
+    const j = await r.json();
+    if (!j.token) throw new Error(j.error || 'Something went wrong');
+    authToken = j.token; localStorage.setItem('sd_token', authToken);
+    currentUser = { email: j.email, userId: j.userId };
+    if (authMode === 'register') {
+      lib = [];
+    } else {
+      await loadLib(j.userId);
+    }
+    hideAuthModal();
+  } catch(e) {
+    err.textContent = e.message;
+    btn.disabled = false;
+    btn.textContent = authMode === 'login' ? 'Sign in' : 'Create account';
+  }
+}
+
+async function logout() {
+  try { await fetch('/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + authToken } }); } catch {}
+  authToken = null; currentUser = null; lib = []; jobs = [];
+  localStorage.removeItem('sd_token');
+  showAuthModal(); renderLib();
+}
+
+// ══ LIBRARY ════════════════════════════════════════════════════════════
+function libLocalKey() { return 'sd_lib_' + (currentUser?.userId || 'anon'); }
+
+async function saveLib() {
+  // Always write local backup first
+  try { localStorage.setItem(libLocalKey(), JSON.stringify(lib)); } catch {}
+  if (!authToken) return;
+  try {
+    const r = await fetch('/library', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+      body: JSON.stringify({ library: lib })
+    });
+    if (!r.ok) console.warn('saveLib server returned', r.status);
+  } catch(e) { console.warn('saveLib error:', e.message); }
+}
+
+async function loadLib(userId) {
+  // Try server first; fall back to localStorage backup
+  try {
+    const r = await fetch('/library', { headers: { 'Authorization': 'Bearer ' + authToken } });
+    if (r.ok) {
+      const j = await r.json();
+      if (Array.isArray(j.library)) { lib = j.library; return; }
+      console.warn('loadLib: unexpected server response', j);
+    } else {
+      console.warn('loadLib: server returned', r.status, '— falling back to localStorage');
+    }
+  } catch(e) { console.warn('loadLib fetch error:', e.message); }
+  // Fallback
+  try { lib = JSON.parse(localStorage.getItem('sd_lib_' + userId) || '[]'); }
+  catch { lib = []; }
+}
+
+function badge() {
+  const n = lib.length + jobs.length;
+  document.getElementById('badge').textContent = n ? ` (${n})` : '';
+  document.getElementById('lib-count').textContent = lib.length + ' video' + (lib.length !== 1 ? 's' : '');
+}
+
+function renderLib() {
+  badge();
+  // Pending
+  const pl = document.getElementById('pend-list'); pl.innerHTML = '';
+  jobs.forEach(j => {
+    const sec = Math.floor((Date.now()-j.ts)/1000);
+    const div = document.createElement('div'); div.className = 'pend-card';
+    div.innerHTML = `<div class="spin"></div>
+      <div class="pend-info">
+        <div class="pend-prompt">${j.prompt.substring(0,70)}${j.prompt.length>70?'...':''}</div>
+        <div class="pend-meta">${j.res} · ${j.ratio} · ${j.dur}s · ${Math.floor(sec/60)}m ${sec%60}s</div>
+      </div>
+      <span class="badge badge-run">Running</span>`;
+    pl.appendChild(div);
+  });
+
+  // Library grid
+  const grid  = document.getElementById('vid-grid');
+  const empty = document.getElementById('lib-empty');
+  grid.innerHTML = '';
+  if (!lib.length && !jobs.length) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  lib.forEach((item, i) => {
+    const cls  = (item.ratio==='9:16'||item.ratio==='3:4') ? 'v916' : item.ratio==='1:1' ? 'v11' : '';
+    const mod  = item.model?.includes('fast') ? 'Fast' : 'Standard';
+    const date = new Date(item.ts).toLocaleDateString();
+    const card = document.createElement('div'); card.className = 'vid-card';
+    card.innerHTML = `
+      <div class="vid-preview ${cls}">
+        ${item.url
+          ? `<video src="${item.url}" controls preload="metadata"></video>`
+          : `<div class="vid-no-url">⚠️<br>No URL returned<br><small style="font-size:10px;opacity:.6">${item.id?.substring(0,20)}...</small></div>`}
+      </div>
+      <div class="vid-body">
+        <div class="vid-prompt">${item.prompt}</div>
+        <div class="vid-tags">
+          <span class="vtag hi">${item.res}</span>
+          <span class="vtag">${item.ratio}</span>
+          <span class="vtag">${item.dur}s</span>
+          <span class="vtag">${mod}</span>
+          ${item.audio ? '<span class="vtag">🔊</span>' : ''}
+          <span class="vtag">${date}</span>
+        </div>
+        <div class="vid-btns">
+          ${item.url
+            ? `<a href="${item.url}" download="seedance_${i+1}.mp4" class="vbtn dl">⬇ Download</a>`
+            : `<button class="vbtn" disabled style="opacity:.35">No URL</button>`}
+          ${item.url ? `<button class="vbtn" onclick="useAsReference('${item.url}')">↩ Use as Ref</button>` : ''}
+          <button class="vbtn red" onclick="del(${i})">🗑</button>
+        </div>
+      </div>`;
+    grid.appendChild(card);
+  });
+}
+
+function del(i) {
+  if (!confirm('Delete this video?')) return;
+  lib.splice(i,1); saveLib(); renderLib(); toast('Deleted','ok');
+}
+
+// ══ TOAST ══════════════════════════════════════════════════════════════
+function toast(msg, type='ok') {
+  const c = document.getElementById('toasts');
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.innerHTML = (type==='ok' ? '✅' : '❌') + ' ' + msg;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 6000);
+}
+
+// ══ INIT ═══════════════════════════════════════════════════════════════
+calcCost();
+initAuth();
+setInterval(() => { if (jobs.length) renderLib(); }, 1000);
+</script>
+</body>
+</html>
