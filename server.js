@@ -25,6 +25,8 @@ const REDIS_URL     = (process.env.UPSTASH_REDIS_REST_URL  || '').replace(/\/$/,
 const REDIS_TOKEN   = process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const REDIS_KEY     = 'seedance_db';
 const RESEND_KEY    = process.env.RESEND_API_KEY || '';
+const BREVO_KEY     = process.env.BREVO_API_KEY  || '';
+const BREVO_SENDER  = process.env.BREVO_SENDER_EMAIL || '';
 const APP_URL       = process.env.APP_URL || 'http://localhost:3000';
 
 // ── In-memory DB cache ────────────────────────────────────────────────────────
@@ -106,27 +108,57 @@ async function initDB() {
   }
 }
 
-// ── Email (Resend) ────────────────────────────────────────────────────────────
+// ── Email (Brevo preferred, Resend fallback) ──────────────────────────────────
 function sendEmail(to, subject, html) {
   return new Promise((resolve) => {
-    if (!RESEND_KEY) { console.log('[email] No RESEND_API_KEY — skipping email to', to); return resolve({ skipped: true }); }
-    const body = Buffer.from(JSON.stringify({
-      from: 'Seedance Studio <onboarding@resend.dev>',
-      to:   [to], subject, html
-    }));
-    const opts = {
-      hostname: 'api.resend.com', port: 443, path: '/emails', method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json', 'Content-Length': body.length }
-    };
-    const req = https.request(opts, res => {
-      const ch = []; res.on('data', c => ch.push(c));
-      res.on('end', () => {
-        try { const j = JSON.parse(Buffer.concat(ch).toString()); console.log('[email] sent to', to, '->', j.id || j.name); resolve(j); }
-        catch(e) { console.error('[email] parse error', e.message); resolve({}); }
+    // ── Brevo ──
+    if (BREVO_KEY && BREVO_SENDER) {
+      const body = Buffer.from(JSON.stringify({
+        sender:      { email: BREVO_SENDER, name: 'Seedance Studio' },
+        to:          [{ email: to }],
+        subject,
+        htmlContent: html
+      }));
+      const opts = {
+        hostname: 'api.brevo.com', port: 443, path: '/v3/smtp/email', method: 'POST',
+        headers: { 'api-key': BREVO_KEY, 'Content-Type': 'application/json', 'Content-Length': body.length }
+      };
+      const req = https.request(opts, res => {
+        const ch = []; res.on('data', c => ch.push(c));
+        res.on('end', () => {
+          try { const j = JSON.parse(Buffer.concat(ch).toString()); console.log('[email/brevo] sent to', to, '->', j.messageId || JSON.stringify(j)); resolve(j); }
+          catch(e) { console.error('[email/brevo] parse error', e.message); resolve({}); }
+        });
       });
-    });
-    req.on('error', e => { console.error('[email] error', e.message); resolve({}); });
-    req.write(body); req.end();
+      req.on('error', e => { console.error('[email/brevo] error', e.message); resolve({}); });
+      req.write(body); req.end();
+      return;
+    }
+
+    // ── Resend fallback ──
+    if (RESEND_KEY) {
+      const body = Buffer.from(JSON.stringify({
+        from: 'Seedance Studio <onboarding@resend.dev>',
+        to:   [to], subject, html
+      }));
+      const opts = {
+        hostname: 'api.resend.com', port: 443, path: '/emails', method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + RESEND_KEY, 'Content-Type': 'application/json', 'Content-Length': body.length }
+      };
+      const req = https.request(opts, res => {
+        const ch = []; res.on('data', c => ch.push(c));
+        res.on('end', () => {
+          try { const j = JSON.parse(Buffer.concat(ch).toString()); console.log('[email/resend] sent to', to, '->', j.id || j.name); resolve(j); }
+          catch(e) { console.error('[email/resend] parse error', e.message); resolve({}); }
+        });
+      });
+      req.on('error', e => { console.error('[email/resend] error', e.message); resolve({}); });
+      req.write(body); req.end();
+      return;
+    }
+
+    console.log('[email] No email provider configured — skipping email to', to);
+    resolve({ skipped: true });
   });
 }
 
