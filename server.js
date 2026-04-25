@@ -615,27 +615,44 @@ async function handleRequest(req, res) {
   if (url === '/api/generate-image' && method === 'POST') {
     const openaiKey = (req.headers['x-openai-key'] || '').trim();
     if (!openaiKey) return sendJSON(res, 401, { error: 'OpenAI API key required. Enter it in the Image tab.' });
-    const { prompt, size, quality } = await readBody(req);
+    const { prompt, size, quality, imageBase64, imageMime } = await readBody(req);
     if (!prompt) return sendJSON(res, 400, { error: 'Prompt required' });
 
-    const payload = {
-      model: 'gpt-image-1',
-      prompt,
-      n: 1,
-      size:    size    || '1024x1024',
-      quality: quality || 'high',
-    };
-    const body = Buffer.from(JSON.stringify(payload));
-    console.log('[openai-image] generating:', size, quality, prompt.substring(0, 80));
+    const useEdit = !!imageBase64;
+    console.log('[openai-image]', useEdit ? 'editing' : 'generating:', size, quality, prompt.substring(0, 80));
+
+    let body, contentType;
+    if (useEdit) {
+      const boundary = '----OAIBoundary' + Date.now().toString(16);
+      contentType = 'multipart/form-data; boundary=' + boundary;
+      const imgBuf  = Buffer.from(imageBase64, 'base64');
+      const mime    = imageMime || 'image/png';
+      const ext     = mime.split('/')[1] || 'png';
+      const parts   = [];
+      const field = (name, value) =>
+        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`);
+      parts.push(field('model',   'gpt-image-1'));
+      parts.push(field('prompt',  prompt));
+      parts.push(field('n',       '1'));
+      parts.push(field('size',    size || '1024x1024'));
+      parts.push(field('quality', quality || 'high'));
+      parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="reference.${ext}"\r\nContent-Type: ${mime}\r\n\r\n`));
+      parts.push(imgBuf);
+      parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+      body = Buffer.concat(parts);
+    } else {
+      contentType = 'application/json';
+      body = Buffer.from(JSON.stringify({ model: 'gpt-image-1', prompt, n: 1, size: size || '1024x1024', quality: quality || 'high' }));
+    }
 
     try {
       const result = await new Promise((resolve, reject) => {
         const opts = {
           hostname: 'api.openai.com', port: 443,
-          path: '/v1/images/generations', method: 'POST',
+          path: useEdit ? '/v1/images/edits' : '/v1/images/generations', method: 'POST',
           headers: {
             'Authorization':  'Bearer ' + openaiKey,
-            'Content-Type':   'application/json',
+            'Content-Type':   contentType,
             'Content-Length': body.length,
           }
         };
