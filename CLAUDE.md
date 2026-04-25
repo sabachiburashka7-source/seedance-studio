@@ -45,16 +45,33 @@ AI video generation app using BytePlus ModelArk (Seedance 2.0).
 - On exhausted retries: preserves token, shows warn toast, tells user to refresh
 - **Fix**: UptimeRobot pings `/health` every 5 min → server never sleeps
 
+## Image generation (OpenAI)
+- Endpoint: `POST /api/generate-image` — proxies to OpenAI `/v1/images/generations`
+- Model: `gpt-image-1` (displayed as "GPT Image 2.0" in UI)
+- User enters their OpenAI API key directly in the Image tab settings (same pattern as BytePlus key for video)
+- Key is sent from frontend as `x-openai-key` request header; server forwards it as `Authorization: Bearer`
+- No env var needed for OpenAI key
+- Quality setting: `low` / `high` (maps to OpenAI `quality` param)
+- Aspect ratio → OpenAI size mapping: `9:16`→`1024x1536`, `16:9`→`1536x1024`, `1:1`→`1024x1024`, `4:3`→`1536x1024`, `3:4`→`1024x1536`, `21:9`→`1536x1024`
+- Response is synchronous (no polling) — image returned as base64 data URL, saved directly to Library
+- `openaiKey()` / `checkOpenAIKey()` mirror `key()` / `checkKey()` used for BytePlus
+
 ## Known BytePlus limitations
 - Real people in images rejected by content policy
 - `file://` scheme rejected for `video_url` (must be public HTTPS URL)
 - `draft` parameter not supported on Seedance 2.0
 
+## Workflow
+- After every code change: `git add <files> && git commit && git push origin main`
+- Render auto-deploys on push — no manual deploy step needed
+- Always deploy automatically after finishing a change, without waiting for the user to ask
+
 ## Current state (as of last session)
 All core features working and deployed:
 - Auth (register, login, logout, email verify via Brevo)
-- Video generation (text-to-video, image-to-video)
-- Library (save/delete generated videos, per user, synced to Redis)
+- Video generation (text-to-video, image-to-video) via BytePlus proxy
+- Image generation via OpenAI GPT Image 2.0 (user-supplied key in UI)
+- Library (save/delete generated videos + images, per user, synced to Redis)
 - Mobile/desktop UI toggle with auto-detection
 - Professional dark UI with button groups for model/resolution/ratio settings
 - Redis data safety (redisReady flag + 12s timeout)
