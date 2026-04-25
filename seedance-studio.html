@@ -386,7 +386,7 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
   nav, .api-bar, .page { padding-left: 16px; padding-right: 16px; }
 }
 
-/* ─── MOBILE MODE ─────────────────────────────────────────────────── */
+/* ─── LAYOUT TOGGLE BUTTON ─────────────────────────────────────────── */
 .layout-btn {
   background: var(--surface2);
   border: 1px solid var(--border);
@@ -402,53 +402,106 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 .layout-btn:hover { border-color: var(--accent); color: var(--accent2); }
 .layout-btn.mobile-active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-body.mobile-mode .gen-grid { grid-template-columns: 1fr !important; }
-body.mobile-mode nav  { padding: 0 12px; }
-body.mobile-mode .api-bar { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
-body.mobile-mode .api-input { max-width: 100%; width: 100%; flex: 1 1 180px; }
-body.mobile-mode .page { padding: 12px; }
-body.mobile-mode .panel { padding: 14px; margin-bottom: 12px; }
+/* ─── MOBILE TAB STRIP ─────────────────────────────────────────────── */
+#mobile-tab-strip {
+  display: none;
+  position: sticky; top: 50px; z-index: 99;
+  background: rgba(6,6,15,0.96);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+#mobile-tab-strip .mtab-row {
+  display: flex;
+}
+#mobile-tab-strip .mtab {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; padding: 10px 6px;
+  border: none; background: transparent;
+  color: var(--text3); font-family: 'DM Sans', sans-serif;
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: color 0.2s; position: relative; min-height: 52px;
+}
+#mobile-tab-strip .mtab-icon { font-size: 18px; line-height: 1; }
+#mobile-tab-strip .mtab.active { color: var(--accent2); }
+#mobile-tab-strip .mtab.active::after {
+  content: '';
+  position: absolute; bottom: 0; left: 25%; right: 25%; height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent3));
+  border-radius: 2px 2px 0 0;
+}
 
-/* 16px on inputs stops iOS Safari from zooming when you tap */
+/* ─── MOBILE MODE ─────────────────────────────────────────────────── */
+body.mobile-mode #mobile-tab-strip { display: block; }
+body.mobile-mode .tabs { display: none !important; }
+body.mobile-mode .logo-text { display: none; }
+body.mobile-mode .gen-grid { grid-template-columns: 1fr !important; }
+body.mobile-mode nav { padding: 0 12px; height: 50px; }
+body.mobile-mode .page { padding: 12px 12px 24px; }
+body.mobile-mode .panel { padding: 14px; margin-bottom: 10px; }
+
+/* 16px on inputs stops iOS Safari from zooming */
 body.mobile-mode textarea,
 body.mobile-mode select,
 body.mobile-mode input:not([type=range]):not([type=checkbox]) { font-size: 16px !important; }
 
-/* Bigger tap targets */
-body.mobile-mode .tab { padding: 9px 14px; }
-body.mobile-mode select { min-height: 38px; }
+/* Touch targets */
 body.mobile-mode textarea { min-height: 110px; }
+body.mobile-mode input[type=range] { width: 100%; }
+body.mobile-mode .dur-row { gap: 8px; }
 
-/* Settings rows: stack label + control vertically */
-body.mobile-mode .srow { flex-direction: column; align-items: flex-start; gap: 8px; padding: 13px 0; }
-body.mobile-mode .srow select { width: 100%; }
-body.mobile-mode input[type=range] { width: 100%; max-width: 200px; }
-body.mobile-mode .srow .tog { align-self: flex-start; } /* keep toggle compact */
+/* Button groups full-width */
+body.mobile-mode .btn-group { gap: 5px; }
+body.mobile-mode .bg-btn { flex: 1; min-height: 44px; font-size: 13px; padding: 8px 10px; }
+body.mobile-mode .ratio-grid { grid-template-columns: repeat(3,1fr); gap: 6px; }
+body.mobile-mode .ratio-btn { min-height: 54px; font-size: 12px; padding: 10px 4px; }
 
-/* Sticky generate button floats above content */
+/* Settings toggles */
+body.mobile-mode .opt-row { padding: 12px 0; }
+body.mobile-mode .opt-label { font-size: 14px; }
+body.mobile-mode .tog { width: 46px; height: 26px; }
+body.mobile-mode .tog-track::before { width: 18px; height: 18px; }
+body.mobile-mode .tog input:checked + .tog-track::before { transform: translateX(20px); }
+
+/* Cost box */
+body.mobile-mode .cost-box { flex-direction: column; gap: 4px; align-items: flex-start; padding: 12px 14px; }
+body.mobile-mode .cost-val { font-size: 18px; }
+
+/* Sticky generate button */
 body.mobile-mode .btn-gen {
-  position: sticky;
-  bottom: 12px;
-  z-index: 50;
-  font-size: 16px;
-  padding: 16px;
+  position: sticky; bottom: 12px; z-index: 50;
+  font-size: 16px; padding: 16px; margin-top: 14px;
   box-shadow: 0 4px 28px rgba(108,92,231,0.6);
-  margin-top: 16px;
 }
+
+/* Thumb delete always visible on touch devices */
+body.mobile-mode .thumb-del { opacity: 1; width: 22px; height: 22px; font-size: 12px; }
+
+/* Video upload zone compact */
+body.mobile-mode .vid-zone { padding: 16px 12px; }
 
 /* Library */
 body.mobile-mode .vid-grid { grid-template-columns: 1fr; }
-body.mobile-mode .vbtn { min-height: 42px; font-size: 13px; }
+body.mobile-mode .vbtn { min-height: 44px; font-size: 13px; }
 body.mobile-mode .vid-btns { flex-wrap: wrap; }
+body.mobile-mode .lib-title { font-size: 18px; }
+
+/* API key input full-width */
+body.mobile-mode .api-input { max-width: 100% !important; width: 100%; }
+body.mobile-mode .setting-group [style*="display:flex"] { flex-wrap: wrap; gap: 8px !important; }
 
 /* Auth card */
-body.mobile-mode .auth-card { padding: 24px 18px; }
+body.mobile-mode .auth-card { padding: 24px 18px; margin: 12px; width: auto; max-width: calc(100vw - 24px); }
 body.mobile-mode .auth-input,
 body.mobile-mode .auth-btn { font-size: 16px !important; }
+body.mobile-mode .auth-btn { padding: 15px; min-height: 50px; }
 
 /* Nav right area */
-body.mobile-mode .user-email { max-width: 90px; font-size: 11px; }
+body.mobile-mode .user-email { max-width: 80px; font-size: 11px; }
 body.mobile-mode .logout-btn { font-size: 11px; padding: 5px 8px; }
+
+/* Toasts above sticky button */
+body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100%; }
 
 /* ─── AUTH MODAL ──────────────────────────────────────────────────── */
 #auth-overlay {
@@ -554,12 +607,12 @@ body.mobile-mode .logout-btn { font-size: 11px; padding: 5px 8px; }
 <nav>
   <div class="logo">
     <div class="logo-icon">🎬</div>
-    Seedance Studio
+    <span class="logo-text">Seedance Studio</span>
   </div>
   <div class="tabs">
-    <button class="tab" onclick="goPage('image',this)">Image</button>
-    <button class="tab active" id="tab-generate" onclick="goPage('generate',this)">Video</button>
-    <button class="tab" onclick="goPage('library',this)">Library<span id="badge"></span></button>
+    <button class="tab" data-page="image" onclick="goPage('image',this)">Image</button>
+    <button class="tab active" id="tab-generate" data-page="generate" onclick="goPage('generate',this)">Video</button>
+    <button class="tab" data-page="library" onclick="goPage('library',this)">Library<span id="badge"></span></button>
   </div>
   <div style="display:flex;align-items:center;gap:8px">
     <button class="layout-btn" id="mobile-btn" onclick="toggleMobileMode()" title="Toggle mobile/desktop UI"></button>
@@ -569,6 +622,21 @@ body.mobile-mode .logout-btn { font-size: 11px; padding: 5px 8px; }
     </div>
   </div>
 </nav>
+
+<!-- MOBILE TAB STRIP (shown below nav in mobile mode) -->
+<div id="mobile-tab-strip">
+  <div class="mtab-row">
+    <button class="mtab" data-page="image" onclick="goPage('image',null)">
+      <span class="mtab-icon">🖼</span>Image
+    </button>
+    <button class="mtab active" data-page="generate" onclick="goPage('generate',null)">
+      <span class="mtab-icon">🎬</span>Video
+    </button>
+    <button class="mtab" data-page="library" onclick="goPage('library',null)">
+      <span class="mtab-icon">📚</span>Library<span id="badge-m"></span>
+    </button>
+  </div>
+</div>
 
 <!-- ═══ IMAGE PAGE ════════════════════════════════════════════════ -->
 <div class="page" id="page-image">
@@ -957,7 +1025,10 @@ function goPage(name, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
-  btn.classList.add('active');
+  if (btn) btn.classList.add('active');
+  // Keep mobile tab strip in sync
+  document.querySelectorAll('#mobile-tab-strip .mtab').forEach(b =>
+    b.classList.toggle('active', b.dataset.page === name));
   if (name === 'library') renderLib();
 }
 
@@ -1582,6 +1653,8 @@ async function loadLib(userId) {
 function badge() {
   const n = lib.length + jobs.length;
   document.getElementById('badge').textContent = n ? ` (${n})` : '';
+  const bm = document.getElementById('badge-m');
+  if (bm) bm.textContent = n ? ` (${n})` : '';
   const vids = lib.filter(x => x.type !== 'image').length;
   const imgs = lib.filter(x => x.type === 'image').length;
   let countTxt = vids && imgs ? `${vids} video${vids!==1?'s':''} · ${imgs} image${imgs!==1?'s':''}`
@@ -1665,7 +1738,7 @@ function toast(msg, type='ok', duration=5000) {
 
 // ══ MOBILE MODE ════════════════════════════════════════════════════════
 const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-  || window.innerWidth < 600;
+  || window.innerWidth < 768;
 let mobileMode = localStorage.getItem('sd_mobile') !== null
   ? localStorage.getItem('sd_mobile') === '1'
   : isMobileDevice;
