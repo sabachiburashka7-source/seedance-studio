@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Seedance 2.0 Studio</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -32,7 +32,7 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
   min-height: 100vh;
   overflow-x: hidden;
 }
@@ -80,7 +80,7 @@ nav {
   padding: 7px 20px; border-radius: 7px; border: none;
   background: transparent; color: var(--text3);
   cursor: pointer; font-size: 13px; font-weight: 500;
-  font-family: 'DM Sans', sans-serif; transition: all 0.2s;
+  font-family: 'Space Grotesk', sans-serif; transition: all 0.2s;
 }
 .tab.active { background: var(--accent); color: #fff; box-shadow: 0 2px 12px rgba(124,110,247,0.4); }
 .tab:hover:not(.active) { color: var(--text2); }
@@ -96,7 +96,7 @@ nav {
   flex: 1; max-width: 380px;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 7px 12px;
-  color: var(--text); font-size: 13px; font-family: 'JetBrains Mono', monospace;
+  color: var(--text); font-size: 13px; font-family: 'Space Mono', monospace;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 .api-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,110,247,0.12); }
@@ -132,7 +132,7 @@ textarea {
   width: 100%;
   background: var(--surface2); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 14px;
-  color: var(--text); font-size: 14px; font-family: 'DM Sans', sans-serif;
+  color: var(--text); font-size: 14px; font-family: 'Space Grotesk', sans-serif;
   line-height: 1.65; resize: vertical; min-height: 140px;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -161,7 +161,7 @@ textarea::placeholder { color: var(--text3); }
   display: inline-flex; align-items: center; gap: 6px;
   background: var(--surface2); border: 1px dashed var(--border2);
   border-radius: var(--radius-sm); padding: 8px 14px;
-  color: var(--text2); font-size: 13px; font-family: 'DM Sans', sans-serif;
+  color: var(--text2); font-size: 13px; font-family: 'Space Grotesk', sans-serif;
   cursor: pointer; transition: all 0.2s;
 }
 .add-img-btn:hover { border-color: var(--accent); color: var(--accent2); }
@@ -210,7 +210,7 @@ textarea::placeholder { color: var(--text3); }
   padding: 7px 14px; border-radius: 8px;
   border: 1.5px solid var(--border2); background: var(--surface2);
   color: var(--text2); font-size: 12px; font-weight: 600;
-  font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.18s;
+  font-family: 'Space Grotesk', sans-serif; cursor: pointer; transition: all 0.18s;
 }
 .bg-btn:hover:not(.active):not([disabled]) { border-color: var(--accent); color: var(--accent2); background: rgba(124,110,247,0.08); }
 .bg-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 2px 12px rgba(124,110,247,0.35); }
@@ -221,7 +221,7 @@ textarea::placeholder { color: var(--text3); }
   padding: 9px 4px; border-radius: 8px;
   border: 1.5px solid var(--border2); background: var(--surface2);
   color: var(--text2); font-size: 11px; font-weight: 600;
-  font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.18s; text-align: center; line-height: 1.3;
+  font-family: 'Space Grotesk', sans-serif; cursor: pointer; transition: all 0.18s; text-align: center; line-height: 1.3;
 }
 .ratio-btn:hover:not(.active) { border-color: var(--accent); color: var(--accent2); background: rgba(124,110,247,0.08); }
 .ratio-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 2px 10px rgba(124,110,247,0.35); }
@@ -229,7 +229,7 @@ textarea::placeholder { color: var(--text3); }
 
 input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 .dur-row { display: flex; align-items: center; gap: 10px; }
-.rval { font-size: 13px; color: var(--accent2); font-weight: 700; min-width: 34px; text-align: right; font-family: 'JetBrains Mono', monospace; }
+.rval { font-size: 13px; color: var(--accent2); font-weight: 700; min-width: 34px; text-align: right; font-family: 'Space Mono', monospace; }
 
 /* ─── TOGGLE ──────────────────────────────────────────────────────── */
 .tog { position: relative; width: 42px; height: 22px; flex-shrink: 0; }
@@ -264,7 +264,7 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 }
 .cost-lbl { font-size: 12px; color: var(--text3); font-weight: 500; }
 .cost-sub { font-size: 11px; color: var(--text3); margin-top: 3px; }
-.cost-val { font-size: 20px; font-weight: 800; color: var(--accent2); font-family: 'JetBrains Mono', monospace; letter-spacing: -0.02em; }
+.cost-val { font-size: 20px; font-weight: 800; color: var(--accent2); font-family: 'Space Mono', monospace; letter-spacing: -0.02em; }
 
 /* ─── GEN BUTTON ──────────────────────────────────────────────────── */
 .btn-gen {
@@ -273,7 +273,7 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
   background-size: 200% 200%;
   border: none; border-radius: var(--radius-sm);
   color: #fff; font-size: 15px; font-weight: 700;
-  font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.3s;
+  font-family: 'Space Grotesk', sans-serif; cursor: pointer; transition: all 0.3s;
   letter-spacing: -0.01em;
   box-shadow: 0 4px 20px rgba(124,110,247,0.4);
   animation: gradShift 5s ease infinite;
@@ -294,7 +294,7 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 .badge-err { background: rgba(240,112,96,0.12); color: var(--red); }
 .prog-track { background: var(--surface2); border-radius: 10px; height: 6px; overflow: hidden; }
 .prog-fill { height: 100%; border-radius: 10px; background: linear-gradient(90deg, var(--accent), var(--accent3)); transition: width 0.8s ease; width: 0%; box-shadow: 0 0 10px rgba(124,110,247,0.5); }
-.prog-msg { font-size: 12px; color: var(--text3); margin-top: 8px; font-family: 'JetBrains Mono', monospace; }
+.prog-msg { font-size: 12px; color: var(--text3); margin-top: 8px; font-family: 'Space Mono', monospace; }
 
 /* ─── LIBRARY ─────────────────────────────────────────────────────── */
 .lib-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
@@ -330,7 +330,7 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
   color: var(--text2); font-size: 12px; font-weight: 500;
   cursor: pointer; transition: all 0.18s; text-decoration: none;
   display: flex; align-items: center; justify-content: center; gap: 4px;
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
 }
 .vbtn:hover { border-color: var(--accent); color: var(--accent2); background: rgba(124,110,247,0.07); }
 .vbtn.red:hover { border-color: var(--red); color: var(--red); background: rgba(240,112,96,0.07); }
@@ -352,7 +352,7 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 @keyframes rot { to { transform: rotate(360deg); } }
 .pend-info { flex: 1; min-width: 0; }
 .pend-prompt { font-size: 13px; color: var(--text); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pend-meta { font-size: 11px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
+.pend-meta { font-size: 11px; color: var(--text3); font-family: 'Space Mono', monospace; }
 
 /* ─── TOASTS ──────────────────────────────────────────────────────── */
 #toasts { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; max-width: 360px; }
@@ -397,7 +397,7 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
   font-size: 16px;
   line-height: 1;
   transition: all 0.2s;
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Space Grotesk', sans-serif;
 }
 .layout-btn:hover { border-color: var(--accent); color: var(--accent2); }
 .layout-btn.mobile-active { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -418,7 +418,7 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
   display: flex; align-items: center; justify-content: center;
   padding: 0 8px;
   border: none; background: transparent;
-  color: var(--text3); font-family: 'DM Sans', sans-serif;
+  color: var(--text3); font-family: 'Space Grotesk', sans-serif;
   font-size: 13px; font-weight: 500; cursor: pointer;
   transition: color 0.2s; position: relative; height: 42px;
 }
@@ -540,14 +540,14 @@ body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100
   flex: 1; padding: 9px; border: none; border-radius: 7px;
   background: transparent; color: var(--text3);
   cursor: pointer; font-size: 13px; font-weight: 600;
-  font-family: 'DM Sans', sans-serif; transition: all 0.2s;
+  font-family: 'Space Grotesk', sans-serif; transition: all 0.2s;
 }
 .auth-tab.active { background: var(--accent); color: #fff; box-shadow: 0 2px 10px rgba(124,110,247,0.4); }
 .auth-input {
   width: 100%; padding: 12px 14px; box-sizing: border-box;
   background: var(--surface2); border: 1.5px solid var(--border);
   border-radius: var(--radius-sm); color: var(--text);
-  font-size: 14px; font-family: 'DM Sans', sans-serif;
+  font-size: 14px; font-family: 'Space Grotesk', sans-serif;
   margin-bottom: 10px; transition: border-color 0.2s, box-shadow 0.2s; display: block;
 }
 .auth-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,110,247,0.12); }
@@ -558,14 +558,14 @@ body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100
   background: linear-gradient(135deg, var(--accent) 0%, #9b8cf8 100%);
   border: none; border-radius: var(--radius-sm);
   color: #fff; font-size: 15px; font-weight: 700;
-  font-family: 'DM Sans', sans-serif; cursor: pointer; transition: all 0.2s;
+  font-family: 'Space Grotesk', sans-serif; cursor: pointer; transition: all 0.2s;
   margin-bottom: 4px; box-shadow: 0 4px 16px rgba(124,110,247,0.35);
 }
 .auth-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(124,110,247,0.45); }
 .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .auth-link {
   background: none; border: none; color: var(--text3); font-size: 12px;
-  cursor: pointer; font-family: 'DM Sans', sans-serif;
+  cursor: pointer; font-family: 'Space Grotesk', sans-serif;
   text-decoration: underline; padding: 4px; transition: color 0.2s;
 }
 .auth-link:hover { color: var(--text2); }
@@ -588,7 +588,7 @@ body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100
 .logout-btn {
   font-size: 12px; padding: 6px 12px; border-radius: 20px;
   border: 1px solid var(--border2); background: transparent; color: var(--text3);
-  cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all 0.2s;
+  cursor: pointer; font-family: 'Space Grotesk', sans-serif; transition: all 0.2s;
 }
 .logout-btn:hover { border-color: var(--red); color: var(--red); background: rgba(240,112,96,0.06); }
 </style>
@@ -731,7 +731,7 @@ body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100
           <span>＋</span> Add Images
           <input type="file" id="img-input" accept="image/*" multiple onchange="addImages(this)">
         </label>
-        <button id="clr-imgs" onclick="clearImgs()" hidden style="margin-left:8px;background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:'DM Sans',sans-serif;">Clear all</button>
+        <button id="clr-imgs" onclick="clearImgs()" hidden style="margin-left:8px;background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:'Space Grotesk',sans-serif;">Clear all</button>
       </div>
 
       <!-- VIDEO REF -->
@@ -747,7 +747,7 @@ body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100
         </div>
         <div style="position:relative">
           <input type="url" id="vid-url-input" placeholder="https://... or click 'Use as Reference' on a library video"
-            style="width:100%;box-sizing:border-box;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 36px 10px 12px;color:var(--text);font-size:13px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color 0.2s"
+            style="width:100%;box-sizing:border-box;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:10px 36px 10px 12px;color:var(--text);font-size:13px;font-family:'Space Grotesk',sans-serif;outline:none;transition:border-color 0.2s"
             oninput="onVidUrlInput(this.value)" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor=vidUrl?'var(--green)':'var(--border)'">
           <button onclick="clearVid()" title="Clear" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;line-height:1;padding:2px 4px">×</button>
         </div>
