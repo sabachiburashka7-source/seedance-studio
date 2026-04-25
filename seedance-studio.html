@@ -316,6 +316,7 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 .vid-preview.v916 { aspect-ratio: 9/16; max-height: 300px; }
 .vid-preview.v11  { aspect-ratio: 1/1; }
 .vid-preview video { width: 100%; height: 100%; object-fit: cover; }
+.vid-preview img  { width: 100%; height: 100%; object-fit: cover; }
 .vid-no-url { width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text3);font-size:12px;gap:6px;padding:12px;text-align:center; }
 .vid-body { padding: 14px; }
 .vid-prompt { font-size: 13px; line-height: 1.55; color: var(--text2); margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -556,7 +557,8 @@ body.mobile-mode .logout-btn { font-size: 11px; padding: 5px 8px; }
     Seedance Studio
   </div>
   <div class="tabs">
-    <button class="tab active" onclick="goPage('generate',this)">Generate</button>
+    <button class="tab" onclick="goPage('image',this)">Image</button>
+    <button class="tab active" id="tab-generate" onclick="goPage('generate',this)">Video</button>
     <button class="tab" onclick="goPage('library',this)">Library<span id="badge"></span></button>
   </div>
   <div style="display:flex;align-items:center;gap:8px">
@@ -573,6 +575,71 @@ body.mobile-mode .logout-btn { font-size: 11px; padding: 5px 8px; }
   <label>API Key</label>
   <input class="api-input" type="password" id="apikey" placeholder="Paste your BytePlus API key..." oninput="checkKey()" autocomplete="off" data-lpignore="true" data-form-type="other">
   <span class="api-pill bad" id="keypill">Not set</span>
+</div>
+
+<!-- ═══ IMAGE PAGE ════════════════════════════════════════════════ -->
+<div class="page" id="page-image">
+  <div class="gen-grid">
+
+    <!-- LEFT -->
+    <div>
+      <div class="panel">
+        <div class="panel-label">Prompt</div>
+        <textarea id="img-prompt" rows="5" placeholder="Describe the image you want to generate...&#10;&#10;Example: A futuristic city skyline at dusk, neon reflections on wet streets, cinematic wide shot"></textarea>
+      </div>
+
+      <div class="panel">
+        <div class="panel-label">Reference Image <span style="color:var(--text3);text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></div>
+        <label class="add-img-btn" id="img-ref-label">
+          <span>＋</span> Add Reference Image
+          <input type="file" id="img-ref-input" accept="image/*" onchange="setImgRef(this)">
+        </label>
+        <div id="img-ref-preview" style="display:none;margin-top:10px;position:relative;display:inline-flex;align-items:center;gap:10px">
+          <img id="img-ref-thumb" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:2px solid var(--border)">
+          <button onclick="clearImgRef()" style="background:var(--red);border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer;padding:4px 8px;font-family:'DM Sans',sans-serif;">Remove</button>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:var(--text3);line-height:1.5;">⚠️ Images with real people may be rejected by BytePlus content policy.</div>
+      </div>
+
+      <div class="panel prog-panel" id="img-prog-panel">
+        <div class="prog-top">
+          <div class="prog-title">Generating...</div>
+          <span class="badge badge-run">Running</span>
+        </div>
+        <div class="prog-track"><div class="prog-fill" id="img-prog-fill"></div></div>
+        <div class="prog-msg" id="img-prog-msg">Initialising...</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: SETTINGS -->
+    <div>
+      <div class="panel" style="margin-bottom:0">
+
+        <div class="setting-group">
+          <span class="setting-label">Model</span>
+          <div class="btn-group" id="img-model-group">
+            <button class="bg-btn active" data-value="seedream-3-0" onclick="onBtnGroup(this,'img-model-group')">Seedream 3.0</button>
+          </div>
+          <div class="setting-sub">BytePlus text-to-image · high quality</div>
+        </div>
+
+        <div class="setting-group">
+          <span class="setting-label">Aspect Ratio</span>
+          <div class="ratio-grid" id="img-ratio-group">
+            <button class="ratio-btn active" data-value="9:16" onclick="onBtnGroup(this,'img-ratio-group')">9:16<span class="ratio-sub">Vertical</span></button>
+            <button class="ratio-btn" data-value="16:9" onclick="onBtnGroup(this,'img-ratio-group')">16:9<span class="ratio-sub">Wide</span></button>
+            <button class="ratio-btn" data-value="1:1" onclick="onBtnGroup(this,'img-ratio-group')">1:1<span class="ratio-sub">Square</span></button>
+            <button class="ratio-btn" data-value="4:3" onclick="onBtnGroup(this,'img-ratio-group')">4:3<span class="ratio-sub">Classic</span></button>
+            <button class="ratio-btn" data-value="3:4" onclick="onBtnGroup(this,'img-ratio-group')">3:4<span class="ratio-sub">Portrait</span></button>
+            <button class="ratio-btn" data-value="21:9" onclick="onBtnGroup(this,'img-ratio-group')">21:9<span class="ratio-sub">Ultra</span></button>
+          </div>
+        </div>
+
+        <button class="btn-gen" id="img-gen-btn" onclick="doGenerateImage()">🖼 Generate Image</button>
+      </div>
+    </div>
+
+  </div>
 </div>
 
 <!-- ═══ GENERATE PAGE ═══════════════════════════════════════════════ -->
@@ -814,9 +881,12 @@ body.mobile-mode .logout-btn { font-size: 11px; padding: 5px 8px; }
 // ══ STATE ══════════════════════════════════════════════════════════════
 let lib        = [];
 let jobs       = [];
+let imgJobs    = [];
 let imgs       = [];
+let imgRefFile = null;
 let vidUrl     = '';
 let progTmr    = null;
+let imgProgTmr = null;
 let authToken  = localStorage.getItem('sd_token') || null;
 let currentUser = null;
 let authMode   = 'login';
@@ -967,8 +1037,7 @@ function useAsReference(url) {
   vidUrl = url;
   document.getElementById('vid-url-input').value = url;
   onVidUrlInput(url);
-  // Switch to Generate tab
-  goPage('generate', document.querySelectorAll('.tab')[0]);
+  goPage('generate', document.getElementById('tab-generate'));
   toast('Reference video set! Write your Scene 2 prompt and generate.', 'ok');
 }
 
@@ -1122,6 +1191,125 @@ function hideProg() {
     document.getElementById('prog-panel').classList.remove('show');
     document.getElementById('prog-fill').style.width = '0%';
   }, 600);
+}
+
+// ══ IMAGE GENERATION ══════════════════════════════════════════════════
+function setImgRef(input) {
+  if (!input.files.length) return;
+  imgRefFile = input.files[0];
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('img-ref-thumb').src = e.target.result;
+    document.getElementById('img-ref-preview').style.display = 'inline-flex';
+    document.getElementById('img-ref-label').style.display = 'none';
+  };
+  reader.readAsDataURL(imgRefFile);
+}
+
+function clearImgRef() {
+  imgRefFile = null;
+  document.getElementById('img-ref-input').value = '';
+  document.getElementById('img-ref-preview').style.display = 'none';
+  document.getElementById('img-ref-label').style.display = '';
+}
+
+function showImgProg(msg) {
+  document.getElementById('img-prog-panel').classList.add('show');
+  document.getElementById('img-prog-msg').textContent = msg;
+  let w = 0; clearInterval(imgProgTmr);
+  imgProgTmr = setInterval(() => { w = Math.min(w+2,90); document.getElementById('img-prog-fill').style.width = w+'%'; }, 400);
+}
+function hideImgProg() {
+  clearInterval(imgProgTmr);
+  document.getElementById('img-prog-fill').style.width = '100%';
+  setTimeout(() => {
+    document.getElementById('img-prog-panel').classList.remove('show');
+    document.getElementById('img-prog-fill').style.width = '0%';
+  }, 600);
+}
+
+async function doGenerateImage() {
+  if (!key()) return toast('Enter your API key first', 'err');
+  const pt = document.getElementById('img-prompt').value.trim();
+  if (!pt)  return toast('Enter a prompt', 'err');
+
+  const model = getBtnGroupValue('img-model-group') || 'seedream-3-0';
+  const ratio = getBtnGroupValue('img-ratio-group') || '1:1';
+
+  const btn = document.getElementById('img-gen-btn');
+  btn.disabled = true; btn.textContent = '⏳ Working...';
+  showImgProg('Preparing...');
+
+  try {
+    const content = [{ type: 'text', text: pt }];
+    if (imgRefFile) {
+      showImgProg('Reading reference image...');
+      const dataUrl = await fileToDataUrl(imgRefFile);
+      content.push({ type: 'image_url', image_url: { url: dataUrl }, role: 'reference_image' });
+    }
+
+    showImgProg('Submitting image generation task...');
+    const r = await fetch('/proxy/api/v3/contents/generations/tasks', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + key(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, content, ratio })
+    });
+    const j = await safeJson(r);
+    const taskId = j.id || j.task_id;
+    if (!taskId) throw new Error(j.error?.message || j.error?.code || JSON.stringify(j).substring(0, 400));
+
+    toast('Image task submitted! Polling...', 'ok');
+    const job = { id: taskId, prompt: pt, model, ratio, ts: Date.now(), status: 'running', type: 'image' };
+    imgJobs.push(job);
+    pollImage(job);
+
+    btn.disabled = false; btn.textContent = '🖼 Generate Image';
+    hideImgProg();
+
+  } catch(e) {
+    toast(friendlyErr(e.message), 'err');
+    btn.disabled = false; btn.textContent = '🖼 Generate Image';
+    hideImgProg();
+  }
+}
+
+function pollImage(job) {
+  let n = 0;
+  const run = async () => {
+    if (++n > 80) { finishImage(job, null, 'Timed out'); return; }
+    try {
+      const r = await fetch('/proxy/api/v3/contents/generations/tasks/' + job.id, {
+        headers: { 'Authorization': 'Bearer ' + key() }
+      });
+      const d = await safeJson(r);
+      console.log('[pollImage]', job.id, JSON.stringify(d));
+      const status = (d.status || '').toLowerCase();
+      if (status === 'succeeded' || status === 'success' || status === 'completed') {
+        const url = d.content?.image_url
+          || d.content?.[0]?.image_url?.url || d.content?.[0]?.url
+          || d.outputs?.[0]?.url || d.output?.url || d.result?.url || '';
+        finishImage(job, url, null);
+      } else if (status === 'failed' || status === 'error' || status === 'cancelled') {
+        finishImage(job, null, d.error?.message || d.message || 'Status: ' + d.status);
+      } else {
+        console.log('[pollImage] status =', d.status, '— waiting 15s');
+        renderLib();
+        setTimeout(run, 15000);
+      }
+    } catch(e) {
+      console.warn('[pollImage] error:', e.message);
+      setTimeout(run, 15000);
+    }
+  };
+  setTimeout(run, 5000);
+}
+
+function finishImage(job, url, err) {
+  imgJobs = imgJobs.filter(j => j.id !== job.id);
+  if (err) { toast(friendlyErr(err), 'err'); renderLib(); return; }
+  lib.unshift({ id: job.id, prompt: job.prompt, url, ratio: job.ratio, model: job.model, ts: job.ts, done: Date.now(), type: 'image' });
+  saveLib(); renderLib(); badge();
+  toast('✅ Image ready! Check your Library.', 'ok');
 }
 
 // ══ AUTH ═══════════════════════════════════════════════════════════════
@@ -1347,7 +1535,7 @@ async function onLoggedIn(j) {
 
 async function logout() {
   try { await fetch('/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + authToken } }); } catch {}
-  authToken = null; currentUser = null; lib = []; jobs = [];
+  authToken = null; currentUser = null; lib = []; jobs = []; imgJobs = [];
   localStorage.removeItem('sd_token');
   showAuthModal(); renderLib();
 }
@@ -1387,9 +1575,13 @@ async function loadLib(userId) {
 }
 
 function badge() {
-  const n = lib.length + jobs.length;
+  const n = lib.length + jobs.length + imgJobs.length;
   document.getElementById('badge').textContent = n ? ` (${n})` : '';
-  document.getElementById('lib-count').textContent = lib.length + ' video' + (lib.length !== 1 ? 's' : '');
+  const vids = lib.filter(x => x.type !== 'image').length;
+  const imgs = lib.filter(x => x.type === 'image').length;
+  let countTxt = vids && imgs ? `${vids} video${vids!==1?'s':''} · ${imgs} image${imgs!==1?'s':''}`
+    : vids ? `${vids} video${vids!==1?'s':''}` : imgs ? `${imgs} image${imgs!==1?'s':''}` : '0 items';
+  document.getElementById('lib-count').textContent = countTxt;
 }
 
 function renderLib() {
@@ -1407,6 +1599,17 @@ function renderLib() {
       <span class="badge badge-run">Running</span>`;
     pl.appendChild(div);
   });
+  imgJobs.forEach(j => {
+    const sec = Math.floor((Date.now()-j.ts)/1000);
+    const div = document.createElement('div'); div.className = 'pend-card';
+    div.innerHTML = `<div class="spin"></div>
+      <div class="pend-info">
+        <div class="pend-prompt">${j.prompt.substring(0,70)}${j.prompt.length>70?'...':''}</div>
+        <div class="pend-meta">Image · ${j.ratio} · ${Math.floor(sec/60)}m ${sec%60}s</div>
+      </div>
+      <span class="badge badge-run">Running</span>`;
+    pl.appendChild(div);
+  });
 
   // Library grid
   const grid  = document.getElementById('vid-grid');
@@ -1416,31 +1619,34 @@ function renderLib() {
   empty.style.display = 'none';
 
   lib.forEach((item, i) => {
-    const cls  = (item.ratio==='9:16'||item.ratio==='3:4') ? 'v916' : item.ratio==='1:1' ? 'v11' : '';
-    const mod  = item.model?.includes('fast') ? 'Fast' : 'Standard';
-    const date = new Date(item.ts).toLocaleDateString();
-    const card = document.createElement('div'); card.className = 'vid-card';
+    const isImg = item.type === 'image';
+    const cls   = (item.ratio==='9:16'||item.ratio==='3:4') ? 'v916' : item.ratio==='1:1' ? 'v11' : '';
+    const mod   = item.model?.includes('fast') ? 'Fast' : item.model?.includes('seedream') ? 'Seedream' : 'Standard';
+    const date  = new Date(item.ts).toLocaleDateString();
+    const card  = document.createElement('div'); card.className = 'vid-card';
     card.innerHTML = `
       <div class="vid-preview ${cls}">
         ${item.url
-          ? `<video src="${item.url}" controls preload="metadata"></video>`
+          ? (isImg
+              ? `<img src="${item.url}" alt="${item.prompt.substring(0,40).replace(/"/g,'')}">`
+              : `<video src="${item.url}" controls preload="metadata"></video>`)
           : `<div class="vid-no-url">⚠️<br>No URL returned<br><small style="font-size:10px;opacity:.6">${item.id?.substring(0,20)}...</small></div>`}
       </div>
       <div class="vid-body">
         <div class="vid-prompt">${item.prompt}</div>
         <div class="vid-tags">
-          <span class="vtag hi">${item.res}</span>
+          <span class="vtag hi">${isImg ? 'Image' : (item.res || '')}</span>
           <span class="vtag">${item.ratio}</span>
-          <span class="vtag">${item.dur}s</span>
+          ${!isImg ? `<span class="vtag">${item.dur}s</span>` : ''}
           <span class="vtag">${mod}</span>
           ${item.audio ? '<span class="vtag">🔊</span>' : ''}
           <span class="vtag">${date}</span>
         </div>
         <div class="vid-btns">
           ${item.url
-            ? `<a href="${item.url}" download="seedance_${i+1}.mp4" class="vbtn dl">⬇ Download</a>`
+            ? `<a href="${item.url}" download="seedance_${isImg?'img':'vid'}_${i+1}.${isImg?'jpg':'mp4'}" class="vbtn dl">⬇ Download</a>`
             : `<button class="vbtn" disabled style="opacity:.35">No URL</button>`}
-          ${item.url ? `<button class="vbtn" onclick="useAsReference('${item.url}')">↩ Use as Ref</button>` : ''}
+          ${item.url && !isImg ? `<button class="vbtn" onclick="useAsReference('${item.url}')">↩ Use as Ref</button>` : ''}
           <button class="vbtn red" onclick="del(${i})">🗑</button>
         </div>
       </div>`;
@@ -1490,7 +1696,7 @@ function toggleMobileMode() {
 applyMobileMode();
 calcCost();
 initAuth();
-setInterval(() => { if (jobs.length) renderLib(); }, 1000);
+setInterval(() => { if (jobs.length || imgJobs.length) renderLib(); }, 1000);
 </script>
 </body>
 </html>
