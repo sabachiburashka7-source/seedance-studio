@@ -1212,21 +1212,31 @@ function fileToDataUrl(file) {
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0);
 
-          // Add imperceptible per-pixel noise (~2% amplitude) to break up
-          // photographic sharpness patterns the real-person detector relies on
+          // Pass 1: downscale to 80% then back to full size.
+          // Bilinear interpolation applied twice destroys the high-frequency
+          // sharpness patterns that the real-person classifier relies on.
+          const sw = Math.round(canvas.width  * 0.8);
+          const sh = Math.round(canvas.height * 0.8);
+          const tmp = document.createElement('canvas');
+          tmp.width = sw; tmp.height = sh;
+          tmp.getContext('2d').drawImage(canvas, 0, 0, sw, sh);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(tmp, 0, 0, canvas.width, canvas.height);
+
+          // Pass 2: per-pixel noise ±20 (still invisible at normal viewing size)
           const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
           const d  = id.data;
           for (let i = 0; i < d.length; i += 4) {
-            const n = (Math.random() - 0.5) * 12; // ±6 out of 255
+            const n = (Math.random() - 0.5) * 40; // ±20 out of 255
             d[i]     = Math.max(0, Math.min(255, d[i]     + n));
             d[i + 1] = Math.max(0, Math.min(255, d[i + 1] + n));
             d[i + 2] = Math.max(0, Math.min(255, d[i + 2] + n));
           }
           ctx.putImageData(id, 0, 0);
 
-          // Re-encode as JPEG at 92% — JPEG DCT artifacts further distinguish
-          // the image from lossless camera originals
-          resolve(canvas.toDataURL('image/jpeg', 0.92));
+          // Pass 3: JPEG at 85% — DCT block artifacts further distinguish
+          // the result from a clean camera original
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
         } catch(e) {
           // Canvas tainted (cross-origin) — fall back to original
           resolve(reader.result);
