@@ -611,6 +611,66 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // ── OpenAI image generation ───────────────────────────────────────────────
+  if (url === '/api/generate-image' && method === 'POST') {
+    const openaiKey = (req.headers['x-openai-key'] || '').trim();
+    if (!openaiKey) return sendJSON(res, 401, { error: 'OpenAI API key required. Enter it in the Image tab.' });
+    const { prompt, size, quality } = await readBody(req);
+    if (!prompt) return sendJSON(res, 400, { error: 'Prompt required' });
+
+    const payload = {
+      model: 'gpt-image-1',
+      prompt,
+      n: 1,
+      size:    size    || '1024x1024',
+      quality: quality || 'high',
+    };
+    const body = Buffer.from(JSON.stringify(payload));
+    console.log('[openai-image] generating:', size, quality, prompt.substring(0, 80));
+
+    try {
+      const result = await new Promise((resolve, reject) => {
+        const opts = {
+          hostname: 'api.openai.com', port: 443,
+          path: '/v1/images/generations', method: 'POST',
+          headers: {
+            'Authorization':  'Bearer ' + openaiKey,
+            'Content-Type':   'application/json',
+            'Content-Length': body.length,
+          }
+        };
+        const r = https.request(opts, resp => {
+          const ch = [];
+          resp.on('data', c => ch.push(c));
+          resp.on('end', () => {
+            try { resolve({ status: resp.statusCode, body: JSON.parse(Buffer.concat(ch).toString()) }); }
+            catch(e) { reject(new Error('OpenAI parse error: ' + e.message)); }
+          });
+        });
+        r.on('error', reject);
+        r.write(body); r.end();
+      });
+
+      if (result.status !== 200) {
+        const errMsg = result.body?.error?.message || JSON.stringify(result.body).substring(0, 400);
+        console.error('[openai-image] error', result.status, errMsg);
+        return sendJSON(res, result.status >= 400 && result.status < 600 ? result.status : 500, { error: errMsg });
+      }
+
+      const imgData = result.body.data?.[0];
+      if (!imgData) return sendJSON(res, 500, { error: 'No image data returned by OpenAI' });
+
+      const dataUrl = imgData.b64_json
+        ? 'data:image/png;base64,' + imgData.b64_json
+        : imgData.url || '';
+      console.log('[openai-image] done, dataUrl length:', dataUrl.length);
+      return sendJSON(res, 200, { url: dataUrl });
+    } catch(e) {
+      console.error('[openai-image] request error:', e.message);
+      return sendJSON(res, 502, { error: 'OpenAI request failed: ' + e.message });
+    }
+  }
+
   // ── BytePlus proxy ────────────────────────────────────────────────────────
   if (url.startsWith('/proxy/')) {
     const chunks = [];

@@ -573,7 +573,7 @@ body.mobile-mode .logout-btn { font-size: 11px; padding: 5px 8px; }
 <!-- API BAR -->
 <div class="api-bar">
   <label>API Key</label>
-  <input class="api-input" type="password" id="apikey" placeholder="Paste your BytePlus API key..." oninput="checkKey()" autocomplete="off" data-lpignore="true" data-form-type="other">
+  <input class="api-input" type="password" id="apikey" placeholder="Paste your BytePlus API key (for video generation)..." oninput="checkKey()" autocomplete="off" data-lpignore="true" data-form-type="other">
   <span class="api-pill bad" id="keypill">Not set</span>
 </div>
 
@@ -588,17 +588,8 @@ body.mobile-mode .logout-btn { font-size: 11px; padding: 5px 8px; }
         <textarea id="img-prompt" rows="5" placeholder="Describe the image you want to generate...&#10;&#10;Example: A futuristic city skyline at dusk, neon reflections on wet streets, cinematic wide shot"></textarea>
       </div>
 
-      <div class="panel">
-        <div class="panel-label">Reference Image <span style="color:var(--text3);text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></div>
-        <label class="add-img-btn" id="img-ref-label">
-          <span>＋</span> Add Reference Image
-          <input type="file" id="img-ref-input" accept="image/*" onchange="setImgRef(this)">
-        </label>
-        <div id="img-ref-preview" style="display:none;margin-top:10px;position:relative;display:inline-flex;align-items:center;gap:10px">
-          <img id="img-ref-thumb" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:2px solid var(--border)">
-          <button onclick="clearImgRef()" style="background:var(--red);border:none;border-radius:6px;color:#fff;font-size:11px;cursor:pointer;padding:4px 8px;font-family:'DM Sans',sans-serif;">Remove</button>
-        </div>
-        <div style="margin-top:8px;font-size:11px;color:var(--text3);line-height:1.5;">⚠️ Images with real people may be rejected by BytePlus content policy.</div>
+      <div class="panel" style="font-size:12px;color:var(--text3);line-height:1.6;">
+        Powered by OpenAI · GPT Image 2.0 · Results saved to your Library.
       </div>
 
       <div class="panel prog-panel" id="img-prog-panel">
@@ -616,11 +607,28 @@ body.mobile-mode .logout-btn { font-size: 11px; padding: 5px 8px; }
       <div class="panel" style="margin-bottom:0">
 
         <div class="setting-group">
+          <span class="setting-label">OpenAI API Key</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input class="api-input" type="password" id="openai-apikey" placeholder="Paste your OpenAI API key..." oninput="checkOpenAIKey()" autocomplete="off" data-lpignore="true" data-form-type="other" style="flex:1;max-width:100%">
+            <span class="api-pill bad" id="openai-keypill">Not set</span>
+          </div>
+        </div>
+
+        <div class="setting-group">
           <span class="setting-label">Model</span>
           <div class="btn-group" id="img-model-group">
-            <button class="bg-btn active" data-value="seedream-3-0" onclick="onBtnGroup(this,'img-model-group')">Seedream 3.0</button>
+            <button class="bg-btn active" data-value="gpt-image-1" onclick="onBtnGroup(this,'img-model-group')">GPT Image 2.0</button>
           </div>
-          <div class="setting-sub">BytePlus text-to-image · high quality</div>
+          <div class="setting-sub">OpenAI · high-quality image generation</div>
+        </div>
+
+        <div class="setting-group">
+          <span class="setting-label">Quality</span>
+          <div class="btn-group" id="img-quality-group">
+            <button class="bg-btn" data-value="low" onclick="onBtnGroup(this,'img-quality-group')">Low</button>
+            <button class="bg-btn active" data-value="high" onclick="onBtnGroup(this,'img-quality-group')">High</button>
+          </div>
+          <div class="setting-sub">High = best detail · Low = faster &amp; cheaper</div>
         </div>
 
         <div class="setting-group">
@@ -786,7 +794,7 @@ body.mobile-mode .logout-btn { font-size: 11px; padding: 5px 8px; }
   <div class="vid-grid" id="vid-grid"></div>
   <div class="empty-state" id="lib-empty">
     <div class="ei">🎞️</div>
-    <p>No videos yet. Generate your first one!</p>
+    <p>No content yet. Generate a video or image!</p>
   </div>
 </div>
 
@@ -881,9 +889,7 @@ body.mobile-mode .logout-btn { font-size: 11px; padding: 5px 8px; }
 // ══ STATE ══════════════════════════════════════════════════════════════
 let lib        = [];
 let jobs       = [];
-let imgJobs    = [];
 let imgs       = [];
-let imgRefFile = null;
 let vidUrl     = '';
 let progTmr    = null;
 let imgProgTmr = null;
@@ -896,6 +902,14 @@ const key = () => document.getElementById('apikey').value.trim();
 function checkKey() {
   const ok = key().length > 20;
   const el = document.getElementById('keypill');
+  el.textContent = ok ? '✓ Set' : 'Not set';
+  el.className   = 'api-pill ' + (ok ? 'ok' : 'bad');
+}
+
+const openaiKey = () => document.getElementById('openai-apikey').value.trim();
+function checkOpenAIKey() {
+  const ok = openaiKey().length > 20;
+  const el = document.getElementById('openai-keypill');
   el.textContent = ok ? '✓ Set' : 'Not set';
   el.className   = 'api-pill ' + (ok ? 'ok' : 'bad');
 }
@@ -1194,24 +1208,6 @@ function hideProg() {
 }
 
 // ══ IMAGE GENERATION ══════════════════════════════════════════════════
-function setImgRef(input) {
-  if (!input.files.length) return;
-  imgRefFile = input.files[0];
-  const reader = new FileReader();
-  reader.onload = e => {
-    document.getElementById('img-ref-thumb').src = e.target.result;
-    document.getElementById('img-ref-preview').style.display = 'inline-flex';
-    document.getElementById('img-ref-label').style.display = 'none';
-  };
-  reader.readAsDataURL(imgRefFile);
-}
-
-function clearImgRef() {
-  imgRefFile = null;
-  document.getElementById('img-ref-input').value = '';
-  document.getElementById('img-ref-preview').style.display = 'none';
-  document.getElementById('img-ref-label').style.display = '';
-}
 
 function showImgProg(msg) {
   document.getElementById('img-prog-panel').classList.add('show');
@@ -1228,89 +1224,49 @@ function hideImgProg() {
   }, 600);
 }
 
-async function doGenerateImage() {
-  if (!key()) return toast('Enter your API key first', 'err');
-  const pt = document.getElementById('img-prompt').value.trim();
-  if (!pt)  return toast('Enter a prompt', 'err');
+const IMG_RATIO_TO_SIZE = {
+  '9:16':  '1024x1536',
+  '16:9':  '1536x1024',
+  '1:1':   '1024x1024',
+  '4:3':   '1536x1024',
+  '3:4':   '1024x1536',
+  '21:9':  '1536x1024',
+};
 
-  const model = getBtnGroupValue('img-model-group') || 'seedream-3-0';
-  const ratio = getBtnGroupValue('img-ratio-group') || '1:1';
+async function doGenerateImage() {
+  if (!openaiKey()) return toast('Enter your OpenAI API key in the Image tab settings', 'err');
+  const pt = document.getElementById('img-prompt').value.trim();
+  if (!pt) return toast('Enter a prompt', 'err');
+
+  const ratio   = getBtnGroupValue('img-ratio-group')   || '1:1';
+  const quality = getBtnGroupValue('img-quality-group') || 'high';
+  const size    = IMG_RATIO_TO_SIZE[ratio] || '1024x1024';
 
   const btn = document.getElementById('img-gen-btn');
-  btn.disabled = true; btn.textContent = '⏳ Working...';
-  showImgProg('Preparing...');
+  btn.disabled = true; btn.textContent = '⏳ Generating...';
+  showImgProg('Sending to OpenAI...');
 
   try {
-    const content = [{ type: 'text', text: pt }];
-    if (imgRefFile) {
-      showImgProg('Reading reference image...');
-      const dataUrl = await fileToDataUrl(imgRefFile);
-      content.push({ type: 'image_url', image_url: { url: dataUrl }, role: 'reference_image' });
-    }
-
-    showImgProg('Submitting image generation task...');
-    const r = await fetch('/proxy/api/v3/contents/generations/tasks', {
+    const r = await fetch('/api/generate-image', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + key(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, content, ratio })
+      headers: { 'Content-Type': 'application/json', 'x-openai-key': openaiKey() },
+      body: JSON.stringify({ prompt: pt, size, quality })
     });
     const j = await safeJson(r);
-    const taskId = j.id || j.task_id;
-    if (!taskId) throw new Error(j.error?.message || j.error?.code || JSON.stringify(j).substring(0, 400));
+    if (!r.ok || j.error) throw new Error(j.error || JSON.stringify(j).substring(0, 400));
 
-    toast('Image task submitted! Polling...', 'ok');
-    const job = { id: taskId, prompt: pt, model, ratio, ts: Date.now(), status: 'running', type: 'image' };
-    imgJobs.push(job);
-    pollImage(job);
-
-    btn.disabled = false; btn.textContent = '🖼 Generate Image';
-    hideImgProg();
-
+    const jobId = 'img-' + Date.now();
+    lib.unshift({ id: jobId, prompt: pt, url: j.url, ratio, model: 'gpt-image-1', ts: Date.now(), done: Date.now(), type: 'image' });
+    saveLib(); renderLib(); badge();
+    toast('✅ Image ready! Check your Library.', 'ok');
   } catch(e) {
     toast(friendlyErr(e.message), 'err');
+  } finally {
     btn.disabled = false; btn.textContent = '🖼 Generate Image';
     hideImgProg();
   }
 }
 
-function pollImage(job) {
-  let n = 0;
-  const run = async () => {
-    if (++n > 80) { finishImage(job, null, 'Timed out'); return; }
-    try {
-      const r = await fetch('/proxy/api/v3/contents/generations/tasks/' + job.id, {
-        headers: { 'Authorization': 'Bearer ' + key() }
-      });
-      const d = await safeJson(r);
-      console.log('[pollImage]', job.id, JSON.stringify(d));
-      const status = (d.status || '').toLowerCase();
-      if (status === 'succeeded' || status === 'success' || status === 'completed') {
-        const url = d.content?.image_url
-          || d.content?.[0]?.image_url?.url || d.content?.[0]?.url
-          || d.outputs?.[0]?.url || d.output?.url || d.result?.url || '';
-        finishImage(job, url, null);
-      } else if (status === 'failed' || status === 'error' || status === 'cancelled') {
-        finishImage(job, null, d.error?.message || d.message || 'Status: ' + d.status);
-      } else {
-        console.log('[pollImage] status =', d.status, '— waiting 15s');
-        renderLib();
-        setTimeout(run, 15000);
-      }
-    } catch(e) {
-      console.warn('[pollImage] error:', e.message);
-      setTimeout(run, 15000);
-    }
-  };
-  setTimeout(run, 5000);
-}
-
-function finishImage(job, url, err) {
-  imgJobs = imgJobs.filter(j => j.id !== job.id);
-  if (err) { toast(friendlyErr(err), 'err'); renderLib(); return; }
-  lib.unshift({ id: job.id, prompt: job.prompt, url, ratio: job.ratio, model: job.model, ts: job.ts, done: Date.now(), type: 'image' });
-  saveLib(); renderLib(); badge();
-  toast('✅ Image ready! Check your Library.', 'ok');
-}
 
 // ══ AUTH ═══════════════════════════════════════════════════════════════
 let pendingVerifyEmail = '';
@@ -1544,7 +1500,7 @@ async function onLoggedIn(j) {
 
 async function logout() {
   try { await fetch('/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + authToken } }); } catch {}
-  authToken = null; currentUser = null; lib = []; jobs = []; imgJobs = [];
+  authToken = null; currentUser = null; lib = []; jobs = [];
   localStorage.removeItem('sd_token');
   showAuthModal(); renderLib();
 }
@@ -1584,7 +1540,7 @@ async function loadLib(userId) {
 }
 
 function badge() {
-  const n = lib.length + jobs.length + imgJobs.length;
+  const n = lib.length + jobs.length;
   document.getElementById('badge').textContent = n ? ` (${n})` : '';
   const vids = lib.filter(x => x.type !== 'image').length;
   const imgs = lib.filter(x => x.type === 'image').length;
@@ -1608,18 +1564,6 @@ function renderLib() {
       <span class="badge badge-run">Running</span>`;
     pl.appendChild(div);
   });
-  imgJobs.forEach(j => {
-    const sec = Math.floor((Date.now()-j.ts)/1000);
-    const div = document.createElement('div'); div.className = 'pend-card';
-    div.innerHTML = `<div class="spin"></div>
-      <div class="pend-info">
-        <div class="pend-prompt">${j.prompt.substring(0,70)}${j.prompt.length>70?'...':''}</div>
-        <div class="pend-meta">Image · ${j.ratio} · ${Math.floor(sec/60)}m ${sec%60}s</div>
-      </div>
-      <span class="badge badge-run">Running</span>`;
-    pl.appendChild(div);
-  });
-
   // Library grid
   const grid  = document.getElementById('vid-grid');
   const empty = document.getElementById('lib-empty');
@@ -1705,7 +1649,7 @@ function toggleMobileMode() {
 applyMobileMode();
 calcCost();
 initAuth();
-setInterval(() => { if (jobs.length || imgJobs.length) renderLib(); }, 1000);
+setInterval(() => { if (jobs.length) renderLib(); }, 1000);
 </script>
 </body>
 </html>
