@@ -415,14 +415,13 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 }
 #mobile-tab-strip .mtab {
   flex: 1;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 3px; padding: 10px 6px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 8px;
   border: none; background: transparent;
   color: var(--text3); font-family: 'DM Sans', sans-serif;
-  font-size: 11px; font-weight: 600; cursor: pointer;
-  transition: color 0.2s; position: relative; min-height: 52px;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: color 0.2s; position: relative; height: 42px;
 }
-#mobile-tab-strip .mtab-icon { font-size: 18px; line-height: 1; }
 #mobile-tab-strip .mtab.active { color: var(--accent2); }
 #mobile-tab-strip .mtab.active::after {
   content: '';
@@ -626,15 +625,9 @@ body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100
 <!-- MOBILE TAB STRIP (shown below nav in mobile mode) -->
 <div id="mobile-tab-strip">
   <div class="mtab-row">
-    <button class="mtab" data-page="image" onclick="goPage('image',null)">
-      <span class="mtab-icon">🖼</span>Image
-    </button>
-    <button class="mtab active" data-page="generate" onclick="goPage('generate',null)">
-      <span class="mtab-icon">🎬</span>Video
-    </button>
-    <button class="mtab" data-page="library" onclick="goPage('library',null)">
-      <span class="mtab-icon">📚</span>Library<span id="badge-m"></span>
-    </button>
+    <button class="mtab" data-page="image" onclick="goPage('image',null)">Image</button>
+    <button class="mtab active" data-page="generate" onclick="goPage('generate',null)">Video</button>
+    <button class="mtab" data-page="library" onclick="goPage('library',null)">Library<span id="badge-m"></span></button>
   </div>
 </div>
 
