@@ -570,13 +570,6 @@ body.mobile-mode .logout-btn { font-size: 11px; padding: 5px 8px; }
   </div>
 </nav>
 
-<!-- API BAR -->
-<div class="api-bar">
-  <label>API Key</label>
-  <input class="api-input" type="password" id="apikey" placeholder="Paste your BytePlus API key (for video generation)..." oninput="checkKey()" autocomplete="off" data-lpignore="true" data-form-type="other">
-  <span class="api-pill bad" id="keypill">Not set</span>
-</div>
-
 <!-- ═══ IMAGE PAGE ════════════════════════════════════════════════ -->
 <div class="page" id="page-image">
   <div class="gen-grid">
@@ -713,6 +706,15 @@ body.mobile-mode .logout-btn { font-size: 11px; padding: 5px 8px; }
     <!-- RIGHT: SETTINGS -->
     <div>
       <div class="panel" style="margin-bottom:0">
+
+        <!-- BytePlus API Key -->
+        <div class="setting-group">
+          <span class="setting-label">BytePlus API Key</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input class="api-input" type="password" id="apikey" placeholder="Paste your BytePlus API key..." oninput="checkKey()" autocomplete="off" data-lpignore="true" data-form-type="other" style="flex:1;max-width:100%">
+            <span class="api-pill bad" id="keypill">Not set</span>
+          </div>
+        </div>
 
         <!-- Model -->
         <div class="setting-group">
