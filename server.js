@@ -107,7 +107,7 @@ async function initDB() {
       console.log('[db] Using Upstash Redis — loading...');
       const { data, ok } = await redisLoad();
       if (ok) {
-        redisReady = true; // Redis is reachable — safe to write
+        redisReady = true;
         if (data) {
           dbCache = { verifyCodes: {}, resetCodes: {}, ...data };
           const userCount = Object.keys(data.users || {}).length;
@@ -117,7 +117,8 @@ async function initDB() {
         }
       } else {
         redisReady = false;
-        console.error('[db] Redis unreachable at startup — running with empty in-memory DB. Writes are BLOCKED to protect Redis data.');
+        console.error('[db] Redis unreachable at startup — starting background retry...');
+        retryRedisBackground();
       }
     } else {
       console.log('[db] Using local db.json');
@@ -129,6 +130,33 @@ async function initDB() {
   } catch(e) {
     console.error('[db] initDB error (continuing with empty db):', e.message);
   }
+}
+
+// Keeps retrying Redis every 10s until it responds, then restores dbCache.
+// Safe to overwrite because redisReady=false blocks all writes, so in-memory
+// state has no new data worth keeping.
+async function retryRedisBackground() {
+  for (let i = 1; i <= 30; i++) {
+    await new Promise(r => setTimeout(r, 10000));
+    if (redisReady) return;
+    console.log('[redis] background retry attempt', i);
+    try {
+      const { data, ok } = await redisLoad();
+      if (ok) {
+        redisReady = true;
+        if (data) {
+          dbCache = { verifyCodes: {}, resetCodes: {}, ...data };
+          console.log('[redis] background retry succeeded —', Object.keys(data.users || {}).length, 'users restored');
+        } else {
+          console.log('[redis] background retry succeeded — empty DB');
+        }
+        return;
+      }
+    } catch(e) {
+      console.error('[redis] background retry error:', e.message);
+    }
+  }
+  console.error('[redis] background retry exhausted after 30 attempts (~5 min)');
 }
 
 // ── Email (Brevo preferred, Resend fallback) ──────────────────────────────────
