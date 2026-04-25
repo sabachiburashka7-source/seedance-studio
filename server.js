@@ -127,9 +127,19 @@ async function initDB() {
         dbCache = { verifyCodes: {}, resetCodes: {}, ...raw };
       } catch { /* fresh db */ }
     }
+    migrateCredits();
   } catch(e) {
     console.error('[db] initDB error (continuing with empty db):', e.message);
   }
+}
+
+function migrateCredits() {
+  if (!dbCache.users) return;
+  let n = 0;
+  for (const uid of Object.keys(dbCache.users)) {
+    if (dbCache.users[uid].credits === undefined) { dbCache.users[uid].credits = 1000; n++; }
+  }
+  if (n > 0) { console.log(`[db] Granted 1000 starting credits to ${n} existing user(s)`); saveDB(dbCache); }
 }
 
 // Keeps retrying Redis every 10s until it responds, then restores dbCache.
@@ -147,6 +157,7 @@ async function retryRedisBackground() {
         if (data) {
           dbCache = { verifyCodes: {}, resetCodes: {}, ...data };
           console.log('[redis] background retry succeeded —', Object.keys(data.users || {}).length, 'users restored');
+          migrateCredits();
         } else {
           console.log('[redis] background retry succeeded — empty DB');
         }
@@ -348,7 +359,7 @@ async function handleRequest(req, res) {
     const userId = makeId();
     const salt   = crypto.randomBytes(16).toString('hex');
     const needsVerify = !!RESEND_KEY;
-    db.users[userId]   = { email: key, hash: hashPass(password, salt), salt, createdAt: Date.now(), verified: !needsVerify };
+    db.users[userId]   = { email: key, hash: hashPass(password, salt), salt, createdAt: Date.now(), verified: !needsVerify, credits: 1000 };
     db.emailIndex[key] = userId;
     db.library[userId] = [];
     if (!db.verifyCodes) db.verifyCodes = {};
@@ -387,7 +398,7 @@ async function handleRequest(req, res) {
     const token = makeToken();
     db.sessions[token] = { userId, createdAt: Date.now() };
     saveDB(db);
-    return sendJSON(res, 200, { token, email: key, userId });
+    return sendJSON(res, 200, { token, email: key, userId, credits: db.users[userId].credits ?? 1000 });
   }
 
   // ── Resend verification code ───────────────────────────────────────────────
@@ -453,7 +464,7 @@ async function handleRequest(req, res) {
     const token = makeToken();
     db.sessions[token] = { userId, createdAt: Date.now() };
     saveDB(db);
-    return sendJSON(res, 200, { token, email: key, userId });
+    return sendJSON(res, 200, { token, email: key, userId, credits: db.users[userId].credits ?? 1000 });
   }
 
   // ── Login ─────────────────────────────────────────────────────────────────
@@ -471,7 +482,7 @@ async function handleRequest(req, res) {
     const token = makeToken();
     db.sessions[token] = { userId, createdAt: Date.now() };
     saveDB(db);
-    return sendJSON(res, 200, { token, email: user.email, userId });
+    return sendJSON(res, 200, { token, email: user.email, userId, credits: user.credits ?? 1000 });
   }
 
   // ── Logout ────────────────────────────────────────────────────────────────
@@ -487,7 +498,7 @@ async function handleRequest(req, res) {
     if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
     const db   = loadDB();
     const user = db.users[sess.userId];
-    return sendJSON(res, 200, { email: user.email, userId: sess.userId });
+    return sendJSON(res, 200, { email: user.email, userId: sess.userId, credits: user.credits ?? 1000 });
   }
 
   // ── Get library ───────────────────────────────────────────────────────────
@@ -611,11 +622,41 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // ── Credits ───────────────────────────────────────────────────────────
+  if (url === '/api/credits' && method === 'GET') {
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
+    const db   = loadDB();
+    return sendJSON(res, 200, { credits: db.users[sess.userId].credits ?? 1000 });
+  }
+
+  if (url === '/api/deduct-credits' && method === 'POST') {
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
+    const { amount } = await readBody(req);
+    if (!amount || amount <= 0) return sendJSON(res, 400, { error: 'Invalid amount' });
+    const db   = loadDB();
+    const user = db.users[sess.userId];
+    const cur  = user.credits ?? 1000;
+    if (cur < amount) return sendJSON(res, 402, { error: `Not enough credits. Need ${amount}, have ${cur}.`, credits: cur });
+    user.credits = Math.round((cur - amount) * 100) / 100;
+    saveDB(db);
+    return sendJSON(res, 200, { credits: user.credits });
+  }
+
   // ── OpenAI image generation ───────────────────────────────────────────────
   if (url === '/api/generate-image' && method === 'POST') {
     const openaiKey = (req.headers['x-openai-key'] || '').trim();
     if (!openaiKey) return sendJSON(res, 401, { error: 'OpenAI API key required. Enter it in the Image tab.' });
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Sign in to generate images.' });
     const { prompt, size, quality, imageBase64, imageMime } = await readBody(req);
+    const imgCost = quality === 'low' ? 0.5 : 2.5;
+    {
+      const db  = loadDB();
+      const cur = db.users[sess.userId].credits ?? 1000;
+      if (cur < imgCost) return sendJSON(res, 402, { error: `Not enough credits. Need ${imgCost}, have ${cur}.`, credits: cur });
+    }
     if (!prompt) return sendJSON(res, 400, { error: 'Prompt required' });
 
     const useEdit = !!imageBase64;
@@ -681,7 +722,12 @@ async function handleRequest(req, res) {
         ? 'data:image/png;base64,' + imgData.b64_json
         : imgData.url || '';
       console.log('[openai-image] done, dataUrl length:', dataUrl.length);
-      return sendJSON(res, 200, { url: dataUrl });
+      const db2  = loadDB();
+      const usr2 = db2.users[sess.userId];
+      const cur2 = usr2.credits ?? 1000;
+      usr2.credits = Math.round((cur2 - imgCost) * 100) / 100;
+      saveDB(db2);
+      return sendJSON(res, 200, { url: dataUrl, credits: usr2.credits });
     } catch(e) {
       console.error('[openai-image] request error:', e.message);
       return sendJSON(res, 502, { error: 'OpenAI request failed: ' + e.message });

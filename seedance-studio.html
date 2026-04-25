@@ -616,6 +616,7 @@ body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100
     <button class="layout-btn" id="mobile-btn" onclick="toggleMobileMode()" title="Toggle mobile/desktop UI"></button>
     <div class="user-area" id="user-area" style="display:none">
       <span class="user-email" id="user-email"></span>
+      <span id="credits-badge" style="font-size:12px;color:var(--accent2);font-weight:700;font-family:'Fira Code',monospace;background:rgba(124,110,247,0.12);padding:4px 10px;border-radius:20px;border:1px solid rgba(124,110,247,0.2);white-space:nowrap"></span>
       <button class="logout-btn" onclick="logout()">Sign out</button>
     </div>
   </div>
@@ -685,8 +686,8 @@ body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100
         <div class="setting-group">
           <span class="setting-label">Quality</span>
           <div class="btn-group" id="img-quality-group">
-            <button class="bg-btn" data-value="low" onclick="onBtnGroup(this,'img-quality-group')">Low</button>
-            <button class="bg-btn active" data-value="high" onclick="onBtnGroup(this,'img-quality-group')">High</button>
+            <button class="bg-btn" data-value="low" onclick="onBtnGroup(this,'img-quality-group');calcImgCost()">Low</button>
+            <button class="bg-btn active" data-value="high" onclick="onBtnGroup(this,'img-quality-group');calcImgCost()">High</button>
           </div>
         </div>
 
@@ -702,6 +703,13 @@ body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100
           </div>
         </div>
 
+        <div class="cost-box" style="margin-bottom:12px">
+          <div>
+            <div class="cost-lbl">Credits cost</div>
+            <div class="cost-sub" id="img-cost-mode">High quality</div>
+          </div>
+          <div class="cost-val" id="img-cost-val">2.5 cr</div>
+        </div>
         <button class="btn-gen" id="img-gen-btn" onclick="doGenerateImage()">Generate Image</button>
       </div>
     </div>
@@ -947,15 +955,16 @@ body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100
 
 <script>
 // ══ STATE ══════════════════════════════════════════════════════════════
-let lib        = [];
-let jobs       = [];
-let imgs       = [];
-let vidUrl     = '';
-let progTmr    = null;
-let imgProgTmr = null;
-let authToken  = localStorage.getItem('sd_token') || null;
+let lib         = [];
+let jobs        = [];
+let imgs        = [];
+let vidUrl      = '';
+let progTmr     = null;
+let imgProgTmr  = null;
+let authToken   = localStorage.getItem('sd_token') || null;
 let currentUser = null;
-let authMode   = 'login';
+let authMode    = 'login';
+let userCredits = null;
 
 // ══ API KEY ════════════════════════════════════════════════════════════
 const key = () => document.getElementById('apikey').value.trim();
@@ -1054,7 +1063,7 @@ function setDur(v) {
   document.getElementById('dur-sub').textContent = v + ' seconds';
   calcCost();
 }
-function calcCost() {
+function computeVideoCost() {
   const dur  = +document.getElementById('s-dur').value;
   const res  = getBtnGroupValue('res-group') || '720p';
   const hasV = vidUrl.trim().startsWith('http');
@@ -1064,10 +1073,31 @@ function calcCost() {
   const rate = hasV ? 4.3e-6 : 7.0e-6;
   const usd  = tok * rate;
   const gel  = usd * 2.74;
-  document.getElementById('cost-val').textContent  = `$${usd.toFixed(2)} · ${gel.toFixed(2)}₾`;
+  const cr   = Math.round(gel * 10 * 10) / 10;
+  return { usd, gel, cr, hasV };
+}
+function calcCost() {
+  const { usd, gel, cr, hasV } = computeVideoCost();
+  document.getElementById('cost-val').textContent  = `$${usd.toFixed(2)} · ${gel.toFixed(2)}₾ · ${cr} cr`;
   document.getElementById('cost-mode').textContent = hasV
     ? 'With video ref · $4.30/M tokens'
     : 'Text/image only · $7.00/M tokens';
+}
+function calcImgCost() {
+  const q  = getBtnGroupValue('img-quality-group') || 'high';
+  const cr = q === 'low' ? 0.5 : 2.5;
+  document.getElementById('img-cost-val').textContent  = cr + ' cr';
+  document.getElementById('img-cost-mode').textContent = q === 'low' ? 'Low quality' : 'High quality';
+}
+function updateCreditsDisplay() {
+  const badge = document.getElementById('credits-badge');
+  if (!badge) return;
+  if (userCredits === null) { badge.textContent = ''; return; }
+  badge.textContent = userCredits + ' cr';
+  const low = userCredits < 10;
+  badge.style.color       = low ? 'var(--red)'              : 'var(--accent2)';
+  badge.style.borderColor = low ? 'rgba(240,112,96,0.3)'    : 'rgba(124,110,247,0.2)';
+  badge.style.background  = low ? 'rgba(240,112,96,0.1)'    : 'rgba(124,110,247,0.12)';
 }
 
 // ══ IMAGES ════════════════════════════════════════════════════════════
@@ -1198,9 +1228,21 @@ async function doGenerate() {
 
   const btn = document.getElementById('gen-btn');
   btn.disabled = true; btn.textContent = 'Working...';
-  showProg('Preparing files...');
+  showProg('Checking credits...');
 
   try {
+    const { cr: creditsNeeded } = computeVideoCost();
+    const cr = await fetch('/api/deduct-credits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+      body: JSON.stringify({ amount: creditsNeeded })
+    });
+    const cj = await safeJson(cr);
+    if (!cr.ok) throw new Error(cj.error || 'Not enough credits');
+    userCredits = cj.credits;
+    updateCreditsDisplay();
+
+    showProg('Preparing files...');
     const content = [{ type: 'text', text: pt }];
 
     for (let i = 0; i < imgs.length; i++) {
@@ -1350,11 +1392,12 @@ async function doGenerateImage() {
     if (imgRefBase64) { body.imageBase64 = imgRefBase64; body.imageMime = imgRefMime; }
     const r = await fetch('/api/generate-image', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-openai-key': openaiKey() },
+      headers: { 'Content-Type': 'application/json', 'x-openai-key': openaiKey(), 'Authorization': 'Bearer ' + authToken },
       body: JSON.stringify(body)
     });
     const j = await safeJson(r);
     if (!r.ok || j.error) throw new Error(j.error || JSON.stringify(j).substring(0, 400));
+    if (j.credits !== undefined) { userCredits = j.credits; updateCreditsDisplay(); }
 
     const jobId = 'img-' + Date.now();
     lib.unshift({ id: jobId, prompt: pt, url: j.url, ratio, model: 'gpt-image-1', ts: Date.now(), done: Date.now(), type: 'image' });
@@ -1409,6 +1452,7 @@ async function initAuth() {
       if (!r.ok) throw new Error('server_error'); // 5xx — retry
 
       currentUser = await r.json();
+      if (currentUser.credits !== undefined) { userCredits = currentUser.credits; updateCreditsDisplay(); }
       await loadLib(currentUser.userId);
       hideWakeupBanner();
       hideAuthModal();
@@ -1594,6 +1638,7 @@ async function submitReset() {
 async function onLoggedIn(j) {
   authToken = j.token; localStorage.setItem('sd_token', authToken);
   currentUser = { email: j.email, userId: j.userId };
+  if (j.credits !== undefined) { userCredits = j.credits; updateCreditsDisplay(); }
   await loadLib(j.userId);
   hideAuthModal();
   showScreen('main');
@@ -1601,8 +1646,9 @@ async function onLoggedIn(j) {
 
 async function logout() {
   try { await fetch('/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + authToken } }); } catch {}
-  authToken = null; currentUser = null; lib = []; jobs = [];
+  authToken = null; currentUser = null; lib = []; jobs = []; userCredits = null;
   localStorage.removeItem('sd_token');
+  updateCreditsDisplay();
   showAuthModal(); renderLib();
 }
 
@@ -1750,6 +1796,7 @@ function toggleMobileMode() {
 // ══ INIT ═══════════════════════════════════════════════════════════════
 applyMobileMode();
 calcCost();
+calcImgCost();
 initAuth();
 setInterval(() => { if (jobs.length) renderLib(); }, 1000);
 </script>
