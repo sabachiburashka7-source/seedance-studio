@@ -510,6 +510,52 @@ body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100
   backdrop-filter: blur(12px);
 }
 #auth-overlay.hidden { display: none; }
+#buy-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(0,0,0,0.88);
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(12px);
+}
+#buy-overlay.hidden { display: none; }
+.buy-card {
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: 20px; padding: 36px;
+  width: 480px; max-width: 94vw;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+  position: relative; overflow: hidden;
+}
+.buy-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent3));
+}
+.buy-title { font-size: 18px; font-weight: 700; margin-bottom: 4px; letter-spacing: -0.02em; }
+.buy-sub   { font-size: 13px; color: var(--text2); margin-bottom: 24px; }
+.buy-packages { display: flex; flex-direction: column; gap: 10px; }
+.buy-pkg {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; border-radius: 14px;
+  border: 1px solid var(--border2); background: var(--surface2);
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  position: relative;
+}
+.buy-pkg:hover { border-color: var(--accent); background: rgba(124,110,247,0.08); }
+.buy-pkg-left  { display: flex; flex-direction: column; gap: 2px; }
+.buy-pkg-name  { font-size: 15px; font-weight: 700; }
+.buy-pkg-desc  { font-size: 12px; color: var(--text2); }
+.buy-pkg-price { font-size: 16px; font-weight: 700; color: var(--accent2); }
+.buy-badge {
+  position: absolute; top: -8px; right: 14px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
+  background: linear-gradient(90deg, var(--accent), var(--accent3));
+  color: #fff; padding: 2px 8px; border-radius: 20px;
+}
+.buy-close {
+  position: absolute; top: 14px; right: 18px;
+  background: none; border: none; color: var(--text2);
+  font-size: 20px; cursor: pointer; line-height: 1;
+}
+.buy-close:hover { color: var(--text); }
+.buy-err { font-size: 13px; color: var(--red); margin-top: 14px; min-height: 18px; text-align: center; }
 .auth-card {
   background: var(--surface); border: 1px solid var(--border2);
   border-radius: 20px; padding: 36px;
@@ -617,6 +663,7 @@ body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100
     <div class="user-area" id="user-area" style="display:none">
       <span class="user-email" id="user-email"></span>
       <span id="credits-badge" style="font-size:12px;color:var(--accent2);font-weight:700;font-family:'Fira Code',monospace;background:rgba(124,110,247,0.12);padding:4px 10px;border-radius:20px;border:1px solid rgba(124,110,247,0.2);white-space:nowrap"></span>
+      <button onclick="openBuyModal()" title="Buy Credits" style="font-size:13px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid rgba(124,110,247,0.4);background:rgba(124,110,247,0.15);color:var(--accent2);cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='rgba(124,110,247,0.28)'" onmouseout="this.style.background='rgba(124,110,247,0.15)'">+ Buy</button>
       <button class="logout-btn" onclick="logout()">Sign out</button>
     </div>
   </div>
@@ -863,6 +910,40 @@ body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100
   <div class="empty-state" id="lib-empty">
     <div class="ei"></div>
     <p>No content yet. Generate a video or image!</p>
+  </div>
+</div>
+
+<!-- BUY CREDITS MODAL -->
+<div id="buy-overlay" class="hidden">
+  <div class="buy-card">
+    <button class="buy-close" onclick="closeBuyModal()">×</button>
+    <div class="buy-title">Buy Credits</div>
+    <div class="buy-sub">Credits are used for video and image generation. They never expire.</div>
+    <div class="buy-packages">
+      <div class="buy-pkg" onclick="buyCredits('starter')">
+        <div class="buy-pkg-left">
+          <div class="buy-pkg-name">500 Credits</div>
+          <div class="buy-pkg-desc">Great for trying out features</div>
+        </div>
+        <div class="buy-pkg-price">$9</div>
+      </div>
+      <div class="buy-pkg" onclick="buyCredits('popular')">
+        <div class="buy-badge">BEST VALUE</div>
+        <div class="buy-pkg-left">
+          <div class="buy-pkg-name">1,500 Credits</div>
+          <div class="buy-pkg-desc">Most popular — save 18%</div>
+        </div>
+        <div class="buy-pkg-price">$22</div>
+      </div>
+      <div class="buy-pkg" onclick="buyCredits('pro')">
+        <div class="buy-pkg-left">
+          <div class="buy-pkg-name">4,000 Credits</div>
+          <div class="buy-pkg-desc">For heavy users — save 32%</div>
+        </div>
+        <div class="buy-pkg-price">$49</div>
+      </div>
+    </div>
+    <div class="buy-err" id="buy-err"></div>
   </div>
 </div>
 
@@ -1540,6 +1621,33 @@ async function initAuth() {
   }
 }
 
+// ── Buy Credits ───────────────────────────────────────────────────────────────
+function openBuyModal() {
+  document.getElementById('buy-err').textContent = '';
+  document.getElementById('buy-overlay').classList.remove('hidden');
+}
+function closeBuyModal() {
+  document.getElementById('buy-overlay').classList.add('hidden');
+}
+async function buyCredits(packageId) {
+  const errEl = document.getElementById('buy-err');
+  errEl.textContent = '';
+  if (!authToken) { closeBuyModal(); showAuthModal(); return; }
+  try {
+    errEl.textContent = 'Redirecting to checkout…';
+    const r = await fetch('/api/stripe/create-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+      body: JSON.stringify({ packageId })
+    });
+    const j = await r.json();
+    if (!r.ok) { errEl.textContent = j.error || 'Something went wrong'; return; }
+    window.location.href = j.url;
+  } catch(e) {
+    errEl.textContent = 'Network error — please try again';
+  }
+}
+
 function showAuthModal() {
   document.getElementById('auth-overlay').classList.remove('hidden');
   document.getElementById('user-area').style.display = 'none';
@@ -1864,7 +1972,17 @@ function toggleMobileMode() {
 applyMobileMode();
 calcCost();
 calcImgCost();
-initAuth();
+initAuth().then(() => {
+  if (new URLSearchParams(location.search).get('payment') === 'success') {
+    history.replaceState(null, '', '/');
+    // Refresh credits from server then show toast
+    fetch('/api/credits', { headers: { 'Authorization': 'Bearer ' + authToken } })
+      .then(r => r.json()).then(j => {
+        if (j.credits !== undefined) { userCredits = j.credits; updateCreditsDisplay(); }
+        toast('Payment successful! Your credits have been added.', 'ok', 7000);
+      }).catch(() => toast('Payment successful! Refresh to see your new credits.', 'ok', 7000));
+  }
+});
 setInterval(() => { if (jobs.length) renderLib(); }, 1000);
 </script>
 </body>
