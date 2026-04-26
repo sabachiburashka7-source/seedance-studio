@@ -1,5 +1,5 @@
 /**
- * Seedance Studio — Backend Server
+ * Lepton — Backend Server
  *
  * - Serves the HTML frontend
  * - Auth: /auth/register, /auth/login, /auth/logout, /auth/me
@@ -184,7 +184,7 @@ function sendEmail(to, subject, html) {
     // ── Brevo ──
     if (BREVO_KEY && BREVO_SENDER) {
       const body = Buffer.from(JSON.stringify({
-        sender:      { email: BREVO_SENDER, name: 'Seedance Studio' },
+        sender:      { email: BREVO_SENDER, name: 'Lepton' },
         to:          [{ email: to }],
         subject,
         htmlContent: html
@@ -208,7 +208,7 @@ function sendEmail(to, subject, html) {
     // ── Resend fallback ──
     if (RESEND_KEY) {
       const body = Buffer.from(JSON.stringify({
-        from: 'Seedance Studio <onboarding@resend.dev>',
+        from: 'Lepton <onboarding@resend.dev>',
         to:   [to], subject, html
       }));
       const opts = {
@@ -412,7 +412,7 @@ async function handleRequest(req, res) {
       const code = makeCode();
       db.verifyCodes[key] = { code, expires: Date.now() + 15 * 60 * 1000 };
       saveDB(db);
-      await sendEmail(key, 'Verify your Seedance Studio account',
+      await sendEmail(key, 'Verify your Lepton account',
         `<div style="font-family:sans-serif;max-width:480px;margin:auto">
           <h2>🎬 Verify your email</h2>
           <p>Your verification code is:</p>
@@ -457,7 +457,7 @@ async function handleRequest(req, res) {
     const code = makeCode();
     db.verifyCodes[key] = { code, expires: Date.now() + 15 * 60 * 1000 };
     saveDB(db);
-    await sendEmail(key, 'Your new Seedance Studio verification code',
+    await sendEmail(key, 'Your new Lepton verification code',
       `<div style="font-family:sans-serif;max-width:480px;margin:auto">
         <h2>🎬 New verification code</h2>
         <div style="font-size:36px;font-weight:bold;letter-spacing:10px;text-align:center;padding:20px;background:#f4f4f4;border-radius:8px">${code}</div>
@@ -478,7 +478,7 @@ async function handleRequest(req, res) {
       const code = makeCode();
       db.resetCodes[key] = { code, expires: Date.now() + 15 * 60 * 1000 };
       saveDB(db);
-      await sendEmail(key, 'Reset your Seedance Studio password',
+      await sendEmail(key, 'Reset your Lepton password',
         `<div style="font-family:sans-serif;max-width:480px;margin:auto">
           <h2>🎬 Password reset</h2>
           <p>Your reset code is:</p>
@@ -685,7 +685,7 @@ async function handleRequest(req, res) {
         ['line_items[0][price_data][currency]',                        'usd'],
         ['line_items[0][price_data][unit_amount]',                     String(pkg.usdCents)],
         ['line_items[0][price_data][product_data][name]',              pkg.name],
-        ['line_items[0][price_data][product_data][description]',       'Seedance Studio credits for AI video & image generation'],
+        ['line_items[0][price_data][product_data][description]',       'Lepton credits for AI video & image generation'],
       ]);
       if (result.status !== 200) {
         console.error('[stripe] create-checkout error', result.body?.error?.message);
@@ -868,7 +868,7 @@ initDB()
   server.listen(PORT, '0.0.0.0', () => {
     console.log('');
     console.log('  ╔══════════════════════════════════════╗');
-    console.log('  ║   🎬  Seedance Studio is running!    ║');
+    console.log('  ║   🎬  Lepton is running!    ║');
     console.log('  ╠══════════════════════════════════════╣');
     console.log('  ║   Open: http://localhost:' + PORT + '         ║');
     console.log('  ║   Stop: Ctrl+C                       ║');
