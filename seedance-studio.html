@@ -1157,12 +1157,13 @@ function computeVideoCost() {
   };
   const [w, h] = ((sizeMap[res] || sizeMap['720p'])[ratio] || '720x1280').split('x').map(Number);
 
-  const fps      = 24;
-  const inputDur = hasV ? 5 : 0;
-
-  // (0/inputDur + 5/outputDur) × (W/152) × (H/152) × (fps/5) / 1024
-  const tok  = (0 * inputDur + 5 * dur) * (w / 152) * (h / 152) * (fps / 5) / 1024;
-  const rate = hasV ? 0.199 : 0.162;
+  const fps = 24;
+  // Official BytePlus formula: (inputDur + outputDur) × W × H × fps / 1024
+  // With video ref: input tokens ≈ 1.7× output → total factor 2.7× — gives ~1.66× base cost
+  // (empirically verified: cheaper per-token rate $4.3/M is offset by more tokens)
+  const durFactor = hasV ? 2.7 : 1.0;
+  const tok  = dur * durFactor * w * h * fps / 1024;
+  const rate = hasV ? 4.3e-6 : 7.0e-6;
   const usd  = tok * rate;
   const gel  = usd * 2.74;
   const cr   = Math.round(gel * 10 * 10) / 10;
@@ -1172,8 +1173,8 @@ function calcCost() {
   const { usd, gel, cr, hasV } = computeVideoCost();
   document.getElementById('cost-val').textContent  = `$${usd.toFixed(2)} · ${gel.toFixed(2)}₾ · ${cr} cr`;
   document.getElementById('cost-mode').textContent = hasV
-    ? 'With video ref · output tokens only'
-    : 'Text/image only · output tokens only';
+    ? 'With video ref · $4.30/M tokens'
+    : 'Text/image only · $7.00/M tokens';
 }
 function calcImgCost() {
   const q  = getBtnGroupValue('img-quality-group') || 'high';
