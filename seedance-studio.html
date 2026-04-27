@@ -1145,13 +1145,24 @@ function setDur(v) {
   calcCost();
 }
 function computeVideoCost() {
-  const dur  = +document.getElementById('s-dur').value;
-  const res  = getBtnGroupValue('res-group') || '720p';
-  const hasV = vidUrl.trim().startsWith('http');
-  const d    = {'480p':[864,496],'720p':[1280,720],'1080p':[1920,1080]};
-  const [w,h]= d[res] || [1280,720];
-  const tok  = (hasV ? 5+dur : dur) * w * h * 24 / 1024;
-  const rate = hasV ? 4.3e-6 : 7.0e-6;
+  const dur   = +document.getElementById('s-dur').value;
+  const res   = getBtnGroupValue('res-group')   || '720p';
+  const ratio = getBtnGroupValue('ratio-group') || '9:16';
+  const hasV  = vidUrl.trim().startsWith('http');
+
+  const sizeMap = {
+    '720p':  {'9:16':'720x1280','16:9':'1280x720','1:1':'960x960','4:3':'960x720','3:4':'720x960','21:9':'1280x544'},
+    '480p':  {'9:16':'480x864', '16:9':'864x480', '1:1':'640x640','4:3':'640x480','3:4':'480x640','21:9':'864x368'},
+    '1080p': {'9:16':'1080x1920','16:9':'1920x1080','1:1':'1440x1440','4:3':'1440x1080','3:4':'1080x1440','21:9':'1920x816'}
+  };
+  const [w, h] = ((sizeMap[res] || sizeMap['720p'])[ratio] || '720x1280').split('x').map(Number);
+
+  const fps      = 24;
+  const inputDur = hasV ? 5 : 0;
+
+  // (0/inputDur + 5/outputDur) × (W/152) × (H/152) × (fps/5) / 1024
+  const tok  = (0 * inputDur + 5 * dur) * (w / 152) * (h / 152) * (fps / 5) / 1024;
+  const rate = hasV ? 0.199 : 0.162;
   const usd  = tok * rate;
   const gel  = usd * 2.74;
   const cr   = Math.round(gel * 10 * 10) / 10;
@@ -1161,8 +1172,8 @@ function calcCost() {
   const { usd, gel, cr, hasV } = computeVideoCost();
   document.getElementById('cost-val').textContent  = `$${usd.toFixed(2)} · ${gel.toFixed(2)}₾ · ${cr} cr`;
   document.getElementById('cost-mode').textContent = hasV
-    ? 'With video ref · $4.30/M tokens'
-    : 'Text/image only · $7.00/M tokens';
+    ? 'With video ref · output tokens only'
+    : 'Text/image only · output tokens only';
 }
 function calcImgCost() {
   const q  = getBtnGroupValue('img-quality-group') || 'high';
