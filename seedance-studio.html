@@ -1367,11 +1367,9 @@ async function createAd() {
 
     // ── Step 4: Submit video generation for each scene ────────────────
     const folder    = concept.adTitle || ('Ad ' + new Date().toLocaleDateString());
-    const validRatios = ['9:16','16:9','1:1','4:3','3:4','21:9'];
-
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i];
-      const ratio  = validRatios.includes(scene.ratio) ? scene.ratio : '9:16';
+      const ratio  = '9:16';
       const dur    = Math.max(4, Math.min(10, scene.duration || 6));
       const prompt = scene.prompt || scene.description || `Scene ${i+1}`;
 
