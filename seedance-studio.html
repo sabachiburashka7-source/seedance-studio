@@ -1316,9 +1316,9 @@ async function createAd() {
     // ── Step 1: Brainstorm ad concept ──────────────────────────────────
     const s1 = adLog('Sending product images to Claude for ad concept…', 'run');
     const imagesPayload = await Promise.all(adImages.map(async img => {
-      const processed = await fileToDataUrl(img.file);
+      const processed = await resizeForClaude(img.file);
       const comma = processed.indexOf(',');
-      return { base64: processed.substring(comma + 1), mime: img.file.type || 'image/jpeg' };
+      return { base64: processed.substring(comma + 1), mime: 'image/jpeg' };
     }));
 
     const r1 = await fetch('/api/ads/brainstorm', {
@@ -1696,6 +1696,34 @@ async function safeJson(r) {
   if (!text) throw new Error(`HTTP ${r.status} — empty response body`);
   try { return JSON.parse(text); }
   catch(e) { throw new Error(`HTTP ${r.status} — non-JSON response: ${text.substring(0, 300)}`); }
+}
+
+// ══ RESIZE FOR CLAUDE ═════════════════════════════════════════════════
+// Shrinks to max 1024 px on the long side before sending to Claude API.
+// Full-resolution canvas-softened images can be 3–8 MB as base64 JPEG,
+// causing the JSON POST body to exceed Render's proxy size limit and the
+// connection to be dropped without an HTTP response ("Failed to fetch").
+// Claude's vision model doesn't need more than 1024 px to understand a product.
+function resizeForClaude(file, maxPx = 1024) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read: ' + file.name));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Failed to decode: ' + file.name));
+      img.onload = () => {
+        const scale = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.round(img.naturalWidth  * scale);
+        const h = Math.round(img.naturalHeight * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 // ══ FILE → BASE64 DATA URL with canvas softening ══════════════════════

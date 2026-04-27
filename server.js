@@ -331,6 +331,7 @@ function readBody(req) {
       try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
       catch { resolve({}); }
     });
+    req.on('error', () => resolve({}));
   });
 }
 
