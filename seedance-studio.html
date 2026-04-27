@@ -1208,6 +1208,8 @@ function checkKey() {
   el.className   = 'api-pill ' + (ok ? 'ok' : 'bad');
   const ap = document.getElementById('ads-byteplus-pill');
   if (ap) { ap.textContent = ok ? '✓ Set' : 'Not set'; ap.className = 'api-pill ' + (ok ? 'ok' : 'bad'); }
+  if (ok) localStorage.setItem('sd_byteplus_key', key());
+  else localStorage.removeItem('sd_byteplus_key');
 }
 
 const openaiKey = () => document.getElementById('openai-apikey').value.trim();
@@ -1219,6 +1221,8 @@ function checkOpenAIKey() {
   // Mirror status to Ads tab pill
   const ap = document.getElementById('ads-openai-pill');
   if (ap) { ap.textContent = ok ? '✓ Set' : 'Not set'; ap.className = 'api-pill ' + (ok ? 'ok' : 'bad'); }
+  if (ok) localStorage.setItem('sd_openai_key', openaiKey());
+  else localStorage.removeItem('sd_openai_key');
 }
 
 // ══ ADS ════════════════════════════════════════════════════════════════
@@ -1228,6 +1232,8 @@ function checkAnthropicKey() {
   const el = document.getElementById('anthropic-keypill');
   el.textContent = ok ? '✓ Set' : 'Not set';
   el.className   = 'api-pill ' + (ok ? 'ok' : 'bad');
+  if (ok) localStorage.setItem('sd_anthropic_key', anthropicKey());
+  else localStorage.removeItem('sd_anthropic_key');
 }
 
 let adImages = []; // [{file, dataUrl}]
@@ -2431,6 +2437,14 @@ function toggleMobileMode() {
 
 // ══ INIT ═══════════════════════════════════════════════════════════════
 applyMobileMode();
+(function restoreApiKeys() {
+  const bp = localStorage.getItem('sd_byteplus_key');
+  if (bp) { document.getElementById('apikey').value = bp; checkKey(); }
+  const oa = localStorage.getItem('sd_openai_key');
+  if (oa) { document.getElementById('openai-apikey').value = oa; checkOpenAIKey(); }
+  const an = localStorage.getItem('sd_anthropic_key');
+  if (an) { document.getElementById('anthropic-apikey').value = an; checkAnthropicKey(); }
+})();
 calcCost();
 calcImgCost();
 initAuth().then(() => {
