@@ -876,11 +876,11 @@ async function handleRequest(req, res) {
 
   // ── Ads: Claude brainstorm ────────────────────────────────────────────────
   if (url === '/api/ads/brainstorm' && method === 'POST') {
+    const { images, description } = await readBody(req); // must read body before any early return
     const anthropicKey = (req.headers['x-anthropic-key'] || '').trim();
     if (!anthropicKey) return sendJSON(res, 401, { error: 'Anthropic API key required. Enter it in the Ads tab.' });
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
-    const { images, description } = await readBody(req);
     if (!images || !images.length) return sendJSON(res, 400, { error: 'Upload at least one product image.' });
 
     const BRAINSTORM_COST = 5;
@@ -966,6 +966,7 @@ RULES:
 
   // ── Ads: Claude video prompts ─────────────────────────────────────────────
   if (url === '/api/ads/video-prompts' && method === 'POST') {
+    const { concept, refImages } = await readBody(req); // must read body before any early return
     const anthropicKey = (req.headers['x-anthropic-key'] || '').trim();
     if (!anthropicKey) return sendJSON(res, 401, { error: 'Anthropic API key required.' });
     const sess = getSession(req);
@@ -976,7 +977,6 @@ RULES:
     const cur = user.credits ?? 1000;
     if (cur < PROMPTS_COST) return sendJSON(res, 402, { error: `Not enough credits. Need ${PROMPTS_COST}, have ${cur}.` });
 
-    const { concept, refImages } = await readBody(req);
     if (!concept) return sendJSON(res, 400, { error: 'Concept required.' });
 
     const userContent = [];
