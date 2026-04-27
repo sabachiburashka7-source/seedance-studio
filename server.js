@@ -234,6 +234,37 @@ function sendEmail(to, subject, html) {
 
 function makeCode() { return String(Math.floor(100000 + Math.random() * 900000)); }
 
+// ── Claude (Anthropic) API helper ─────────────────────────────────────────────
+function claudeApiCall(apiKey, system, messages) {
+  return new Promise((resolve, reject) => {
+    const body = Buffer.from(JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      system,
+      messages
+    }));
+    const opts = {
+      hostname: 'api.anthropic.com', port: 443, path: '/v1/messages', method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+        'Content-Length': body.length,
+      }
+    };
+    const req = https.request(opts, res => {
+      const ch = []; res.on('data', c => ch.push(c));
+      res.on('end', () => {
+        try { resolve({ status: res.statusCode, body: JSON.parse(Buffer.concat(ch).toString()) }); }
+        catch(e) { reject(new Error('Claude parse error: ' + e.message)); }
+      });
+    });
+    req.setTimeout(60000, () => req.destroy(new Error('Claude timeout')));
+    req.on('error', reject);
+    req.write(body); req.end();
+  });
+}
+
 // ── Stripe helpers ────────────────────────────────────────────────────────────
 function stripeRequest(method, path, formPairs) {
   return new Promise((resolve, reject) => {
@@ -840,6 +871,151 @@ async function handleRequest(req, res) {
     } catch(e) {
       console.error('[openai-image] request error:', e.message);
       return sendJSON(res, 502, { error: 'OpenAI request failed: ' + e.message });
+    }
+  }
+
+  // ── Ads: Claude brainstorm ────────────────────────────────────────────────
+  if (url === '/api/ads/brainstorm' && method === 'POST') {
+    const anthropicKey = (req.headers['x-anthropic-key'] || '').trim();
+    if (!anthropicKey) return sendJSON(res, 401, { error: 'Anthropic API key required. Enter it in the Ads tab.' });
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
+    const { images, description } = await readBody(req);
+    if (!images || !images.length) return sendJSON(res, 400, { error: 'Upload at least one product image.' });
+
+    const BRAINSTORM_COST = 5;
+    const db = loadDB(); const user = db.users[sess.userId];
+    const cur = user.credits ?? 1000;
+    if (cur < BRAINSTORM_COST) return sendJSON(res, 402, { error: `Not enough credits. Need ${BRAINSTORM_COST}, have ${cur}.` });
+
+    const userContent = [];
+    for (const img of images) {
+      userContent.push({ type: 'image', source: { type: 'base64', media_type: img.mime || 'image/jpeg', data: img.base64 } });
+    }
+    userContent.push({ type: 'text', text: description ? `Product description: ${description}\n\nAnalyze these product images and create a compelling video ad concept.` : 'Analyze these product images and create a compelling video ad concept.' });
+
+    const system = `You are an expert advertising creative director specializing in short-form video ads. Given product image(s) and an optional description, create a compelling video ad concept.
+
+Output ONLY valid JSON (no markdown, no code fences, no explanation):
+{
+  "adTitle": "Short catchy campaign title",
+  "tagline": "Memorable one-liner tagline",
+  "mood": "e.g. energetic, luxurious, playful, emotional",
+  "targetAudience": "Brief description",
+  "productDescription": "What is this product and key visible features",
+  "characters": {
+    "needed": true,
+    "description": "Who appears in the ad (age, look, vibe)",
+    "refImagePrompt": "Detailed prompt for a character reference sheet: full body, front/side/back, neutral white studio background, professional character design sheet"
+  },
+  "environment": {
+    "description": "Primary setting/location for the ad",
+    "refImagePrompt": "Detailed prompt to generate a beautiful environment reference image"
+  },
+  "productRefImagePrompt": "Detailed prompt for a clean product reference sheet: product on white background, multiple angles, studio lighting, commercial photography style",
+  "scenes": [
+    {
+      "number": 1,
+      "name": "Hook",
+      "description": "What happens visually, action, emotion",
+      "duration": 5,
+      "ratio": "9:16",
+      "usesCharacter": true,
+      "usesEnvironment": true,
+      "usesProduct": false
+    }
+  ]
+}
+Rules: 3-5 scenes, each 4-8 seconds, total 20-40 seconds. ratio must be one of: 9:16, 16:9, 1:1. Make it visually driven and punchy.`;
+
+    try {
+      const claudeRes = await claudeApiCall(anthropicKey, system, [{ role: 'user', content: userContent }]);
+      if (claudeRes.status !== 200) {
+        const msg = claudeRes.body?.error?.message || JSON.stringify(claudeRes.body).substring(0, 300);
+        return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
+      }
+      const text = claudeRes.body?.content?.[0]?.text || '';
+      let concept;
+      try { concept = JSON.parse(text.replace(/^```[a-z]*\n?/,'').replace(/\n?```$/,'')); }
+      catch(e) { return sendJSON(res, 502, { error: 'Claude returned invalid JSON: ' + text.substring(0, 200) }); }
+
+      user.credits = Math.round((cur - BRAINSTORM_COST) * 100) / 100;
+      saveDB(db);
+      return sendJSON(res, 200, { concept, credits: user.credits });
+    } catch(e) {
+      return sendJSON(res, 502, { error: 'Brainstorm failed: ' + e.message });
+    }
+  }
+
+  // ── Ads: Claude video prompts ─────────────────────────────────────────────
+  if (url === '/api/ads/video-prompts' && method === 'POST') {
+    const anthropicKey = (req.headers['x-anthropic-key'] || '').trim();
+    if (!anthropicKey) return sendJSON(res, 401, { error: 'Anthropic API key required.' });
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
+
+    const PROMPTS_COST = 5;
+    const db = loadDB(); const user = db.users[sess.userId];
+    const cur = user.credits ?? 1000;
+    if (cur < PROMPTS_COST) return sendJSON(res, 402, { error: `Not enough credits. Need ${PROMPTS_COST}, have ${cur}.` });
+
+    const { concept, refImages } = await readBody(req);
+    if (!concept) return sendJSON(res, 400, { error: 'Concept required.' });
+
+    const userContent = [];
+    if (refImages) {
+      for (const [type, dataUrl] of Object.entries(refImages)) {
+        if (!dataUrl) continue;
+        const comma = dataUrl.indexOf(',');
+        const base64 = comma >= 0 ? dataUrl.substring(comma + 1) : dataUrl;
+        const mime = dataUrl.startsWith('data:') ? dataUrl.substring(5, dataUrl.indexOf(';')) : 'image/jpeg';
+        userContent.push({ type: 'image', source: { type: 'base64', media_type: mime, data: base64 } });
+        userContent.push({ type: 'text', text: `[Above image: ${type} reference]` });
+      }
+    }
+    userContent.push({ type: 'text', text: `Ad concept:\n${JSON.stringify(concept, null, 2)}\n\nCreate a Seedance 2.0 video generation prompt for EACH scene listed in the concept.` });
+
+    const system = `You are an expert AI video prompt engineer specializing in Seedance 2.0 (ByteDance's state-of-the-art video generation model).
+Given an ad concept and reference images, write a precise video generation prompt for each scene.
+
+Output ONLY valid JSON (no markdown, no code fences):
+{
+  "scenes": [
+    {
+      "number": 1,
+      "name": "Scene name",
+      "prompt": "Detailed Seedance prompt here. Start with camera movement. Be specific about lighting, action, style, atmosphere. 80-130 words.",
+      "useRefImages": ["product", "character", "environment"],
+      "ratio": "9:16",
+      "duration": 5
+    }
+  ]
+}
+
+Seedance prompt guidelines:
+- Open with camera movement: slow dolly in, static overhead shot, handheld tracking shot, cinematic pan, etc.
+- Be explicit about lighting: golden hour sunlight, soft diffused studio light, neon ambiance, etc.
+- Describe movement and action precisely
+- Reference the product naturally within the scene
+- Match the mood and tone of the ad concept
+- Style: commercial photography aesthetic, cinematic color grading, high production value`;
+
+    try {
+      const claudeRes = await claudeApiCall(anthropicKey, system, [{ role: 'user', content: userContent }]);
+      if (claudeRes.status !== 200) {
+        const msg = claudeRes.body?.error?.message || JSON.stringify(claudeRes.body).substring(0, 300);
+        return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
+      }
+      const text = claudeRes.body?.content?.[0]?.text || '';
+      let result;
+      try { result = JSON.parse(text.replace(/^```[a-z]*\n?/,'').replace(/\n?```$/,'')); }
+      catch(e) { return sendJSON(res, 502, { error: 'Claude returned invalid JSON: ' + text.substring(0, 200) }); }
+
+      user.credits = Math.round((cur - PROMPTS_COST) * 100) / 100;
+      saveDB(db);
+      return sendJSON(res, 200, { scenes: result.scenes, credits: user.credits });
+    } catch(e) {
+      return sendJSON(res, 502, { error: 'Video prompts failed: ' + e.message });
     }
   }
 
