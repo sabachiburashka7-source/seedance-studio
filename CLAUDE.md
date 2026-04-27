@@ -78,15 +78,57 @@ Falls back to the raw FileReader data URL if the canvas is tainted (cross-origin
 - Render auto-deploys on push — no manual deploy step needed
 - Always deploy automatically after finishing a change, without waiting for the user to ask
 
+## Ads pipeline
+Full AI-powered ad creation tab. User uploads product photos + optional description → full pipeline runs automatically.
+
+**Pipeline order:**
+1. Product images → `POST /api/ads/brainstorm` (Claude) → ad concept JSON
+2. Concept → generate all reference images via `POST /api/generate-image` (OpenAI) — dynamic count, no fixed limit
+3. Concept + ref images → `POST /api/ads/video-prompts` (Claude) → shot-by-shot video prompts per scene
+4. Each scene prompt + ref images → BytePlus video generation → poll → save to Library in named folder
+
+**Server endpoints:**
+- `POST /api/ads/brainstorm` — sends images + description to Claude, returns concept JSON. `readBody` called FIRST before any auth checks (critical — prevents "Failed to fetch" when server rejects mid-upload of large image body)
+- `POST /api/ads/video-prompts` — sends concept + ref image data URLs to Claude, returns scene prompts. Same readBody-first rule.
+- Both use `claudeApiCall(apiKey, system, messages)` helper — user-supplied Anthropic key sent as `x-anthropic-key` header, 60s timeout
+- Cost: 5 credits for brainstorm + 5 credits for video prompts (charged on top of normal image/video gen costs)
+
+**Claude skill prompts:**
+- Brainstorm uses the **ad-concept-generator** skill: Phase 0 visual intelligence, emotional territory mapping, identity-based persuasion, Peak-End Rule, somatic markers. Outputs structured JSON with `referenceImages[]` (dynamic list) and `scenes[]`
+- Video prompts use the **video-prompt-builder** skill: shot-by-shot effects timeline with named effects (speed ramp, digital zoom, bloom flash, whip pan etc.), density contrast, signature moment callouts, energy arc
+- Both skill `.skill` files are ZIP archives (not plain text) — extract with PowerShell `ZipFile::ExtractToDirectory` to read them
+
+**Reference images:**
+- Claude returns a `referenceImages` array — as many entries as the concept needs (character sheets, product angles, environments, props, etc.)
+- Each entry: `{ key, label, prompt, ratio }` — frontend iterates and generates all of them via OpenAI
+- Keys are referenced by scenes via `refImageKeys[]`
+
+**Frontend (Ads page):**
+- `adImages[]` — array of `{file, dataUrl}` for uploaded product photos
+- `addAdImages(input)` / `removeAdImage(idx)` / `renderAdImages()` — multi-image upload grid with × buttons
+- `anthropicKey()` / `checkAnthropicKey()` — same pattern as `openaiKey()` / `key()`
+- `checkKey()` and `checkOpenAIKey()` mirror their status to Ads tab pills; `goPage('ads')` triggers both syncs
+- `adLog(msg, type)` / `adLogUpdate(step, msg, type)` / `adLogClear()` — step-by-step progress log panel (`#ad-log`)
+- `createAd()` — main async pipeline; all scene videos hardcoded to `9:16` ratio, duration capped at 4–10s
+- `pollAd(job)` / `finishAd(job, url, err)` — separate polling functions that save items with `folder: adTitle`
+
+**Library folder grouping:**
+- `lib` items can have a `folder` field (set by Ads pipeline)
+- `makeLibCard(item, i)` extracted as standalone function
+- `libFolderState{}` tracks collapsed state per folder name
+- `renderLib()` groups items by folder first (collapsible `📁` headers with `grid-column: 1/-1`), then renders ungrouped items below
+- Folder header click toggles `libFolderState[name]` and re-renders
+
 ## Current state (as of last session)
 All core features working and deployed:
 - Auth (register, login, logout, email verify via Brevo)
 - Video generation (text-to-video, image-to-video) via BytePlus proxy
 - Image generation via OpenAI GPT Image 2.0 (user-supplied key in UI)
-- Library (save/delete generated videos + images, per user, synced to Redis)
+- Library (save/delete generated videos + images, per user, synced to Redis) — now supports folder grouping
 - Mobile/desktop UI toggle with auto-detection
 - Professional dark UI with button groups for model/resolution/ratio settings
 - Redis data safety (redisReady flag + 12s timeout)
 - Messenger link fix (strips tracking params)
 - Cold start session retry (no more phantom logouts)
 - Canvas softening pipeline — AI-generated portraits (incl. photorealistic reference sheets) now pass ByteDance's real-person classifier
+- **Ads tab** — full AI ad creation pipeline (Claude brainstorm → OpenAI ref images → Claude video prompts → BytePlus scenes → Library folder)
