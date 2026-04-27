@@ -1326,31 +1326,29 @@ async function createAd() {
     const concept = j1.concept;
     adLogUpdate(s1, `Ad concept: "${concept.adTitle}" — ${concept.scenes?.length || 0} scenes`, 'done');
 
-    // ── Step 2: Generate reference images ──────────────────────────────
-    const refImages = {};
-    const refTypes = [
-      { key: 'product',     prompt: concept.productRefImagePrompt,              ratio: '1:1'  },
-      { key: 'character',   prompt: concept.characters?.refImagePrompt,         ratio: '1:1', skip: !concept.characters?.needed },
-      { key: 'environment', prompt: concept.environment?.refImagePrompt,        ratio: '16:9' },
-    ];
+    // ── Step 2: Generate all reference images ──────────────────────────
+    const refImages = {}; // key → dataUrl
+    const refList = concept.referenceImages || [];
+    const RATIO_TO_SIZE = { '16:9':'1536x1024', '9:16':'1024x1536', '1:1':'1024x1024', '4:3':'1536x1024', '3:4':'1024x1536', '21:9':'1536x1024' };
 
-    for (const rt of refTypes) {
-      if (rt.skip || !rt.prompt) continue;
-      const s = adLog(`Generating ${rt.key} reference sheet…`, 'run');
+    adLog(`Generating ${refList.length} reference image(s)…`, 'info');
+    for (const ref of refList) {
+      if (!ref.prompt || !ref.key) continue;
+      const s = adLog(`Generating: ${ref.label || ref.key}…`, 'run');
       try {
-        const size = rt.ratio === '16:9' ? '1536x1024' : '1024x1024';
+        const size = RATIO_TO_SIZE[ref.ratio] || '1024x1024';
         const ir = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken, 'x-openai-key': openaiKey() },
-          body: JSON.stringify({ prompt: rt.prompt, size, quality: 'high' })
+          body: JSON.stringify({ prompt: ref.prompt, size, quality: 'high' })
         });
         const ij = await ir.json();
         if (!ir.ok) throw new Error(ij.error || 'Image gen failed');
         if (ij.credits !== undefined) { userCredits = ij.credits; updateCreditsDisplay(); }
-        refImages[rt.key] = ij.url;
-        adLogUpdate(s, `${rt.key} reference sheet ready`, 'done');
+        refImages[ref.key] = ij.url;
+        adLogUpdate(s, `✓ ${ref.label || ref.key}`, 'done');
       } catch(e) {
-        adLogUpdate(s, `${rt.key} reference failed (skipping): ${e.message}`, 'err');
+        adLogUpdate(s, `${ref.label || ref.key} failed (skipping): ${e.message}`, 'err');
       }
     }
 
@@ -1374,7 +1372,7 @@ async function createAd() {
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i];
       const ratio  = validRatios.includes(scene.ratio) ? scene.ratio : '9:16';
-      const dur    = Math.max(4, Math.min(8, scene.duration || 5));
+      const dur    = Math.max(4, Math.min(10, scene.duration || 6));
       const prompt = scene.prompt || scene.description || `Scene ${i+1}`;
 
       const s4 = adLog(`Submitting scene ${i+1}/${scenes.length}: "${scene.name}"…`, 'run');

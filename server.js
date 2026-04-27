@@ -894,39 +894,56 @@ async function handleRequest(req, res) {
     }
     userContent.push({ type: 'text', text: description ? `Product description: ${description}\n\nAnalyze these product images and create a compelling video ad concept.` : 'Analyze these product images and create a compelling video ad concept.' });
 
-    const system = `You are an expert advertising creative director specializing in short-form video ads. Given product image(s) and an optional description, create a compelling video ad concept.
+    const system = `You are an expert advertising creative director. Your methodology:
 
-Output ONLY valid JSON (no markdown, no code fences, no explanation):
+PHASE 0 — VISUAL PRODUCT INTELLIGENCE
+Read the product image deeply. Extract: physical attributes (category, form, materials, colors, quality signals, era/aesthetic), functional promise (what problem it solves, what transformation it offers), sensory imagination (how it feels/smells/sounds to use, what moment of the day it belongs to), and cultural signals (what tribe it belongs to, what owning it says about you).
+
+PHASE 1 — EMOTIONAL TERRITORY
+Map to the single most powerful emotional territory: Belonging, Freedom, Love & Connection, Achievement, Safety & Trust, Joy & Play, Identity & Status, Nostalgia, Fear & Urgency, or Transcendence. Define the core emotional tension and the human insight that makes it true.
+
+PHASE 2 — CONCEPT DEVELOPMENT
+Apply advertising psychology: use identity-based persuasion (mirror the audience's self-image, show what their tribe does, make the product a self-affirmation), the Peak-End Rule (design for one moment of maximum emotional intensity + a resolved landing), and somatic markers (create a body response — goosebumps, smile, lump in the throat). Write with specificity: "She buries her feet in the sand and doesn't look at her phone once" not "a woman relaxes on a beach."
+
+PHASE 3 — REFERENCE IMAGES
+Generate a complete list of ALL reference images needed for production. Think like a visual effects supervisor: every distinct character (full body reference sheets), every key product angle, every important environment, any key props. Generate as many as the concept requires — do not limit yourself to a fixed number.
+
+OUTPUT — valid JSON only, no markdown, no code fences:
 {
-  "adTitle": "Short catchy campaign title",
-  "tagline": "Memorable one-liner tagline",
-  "mood": "e.g. energetic, luxurious, playful, emotional",
-  "targetAudience": "Brief description",
-  "productDescription": "What is this product and key visible features",
-  "characters": {
-    "needed": true,
-    "description": "Who appears in the ad (age, look, vibe)",
-    "refImagePrompt": "Detailed prompt for a character reference sheet: full body, front/side/back, neutral white studio background, professional character design sheet"
-  },
-  "environment": {
-    "description": "Primary setting/location for the ad",
-    "refImagePrompt": "Detailed prompt to generate a beautiful environment reference image"
-  },
-  "productRefImagePrompt": "Detailed prompt for a clean product reference sheet: product on white background, multiple angles, studio lighting, commercial photography style",
+  "adTitle": "Short campaign title",
+  "tagline": "Unforgettable one-liner, 10 words or fewer, contains a tension or surprise",
+  "emotionalTerritory": "Primary emotional territory name",
+  "strategicInsight": "The single human truth this ad exploits. One sentence, sharp.",
+  "targetHuman": "Not a demographic — a person in a moment. What they just did, what they feel, what they secretly want.",
+  "mood": "Visual mood in 3-5 words",
+  "visualStyle": "Cinematography/aesthetic reference (e.g. handheld intimacy, wide epic, macro close-ups, slow burn, rapid cuts)",
+  "colorPalette": "Specific color direction (reference films, photographers, or describe precisely)",
+  "referenceImages": [
+    {
+      "key": "unique_snake_case_key",
+      "label": "Human-readable label (e.g. Main character — front/side/back sheet)",
+      "prompt": "Detailed image generation prompt. Be specific about style, lighting, background, angles, mood. This will be sent directly to an image generator.",
+      "ratio": "1:1 or 16:9 or 9:16"
+    }
+  ],
   "scenes": [
     {
       "number": 1,
-      "name": "Hook",
-      "description": "What happens visually, action, emotion",
-      "duration": 5,
+      "name": "Scene name",
+      "description": "Visceral, specific scene description. Not 'a woman smiles' — 'a woman exhales for the first time all day'. Include setting, character action, emotional beat.",
+      "duration": 6,
       "ratio": "9:16",
-      "usesCharacter": true,
-      "usesEnvironment": true,
-      "usesProduct": false
+      "refImageKeys": ["key1", "key2"]
     }
   ]
 }
-Rules: 3-5 scenes, each 4-8 seconds, total 20-40 seconds. ratio must be one of: 9:16, 16:9, 1:1. Make it visually driven and punchy.`;
+
+RULES:
+- referenceImages: generate ALL needed refs — product angles, character sheets (front/side/back on white), environments, key props, lifestyle shots. No fixed limit. Each must have a detailed, specific image generation prompt.
+- scenes: 3-6 scenes. Each duration MUST be between 4 and 10 seconds (maximum 10). Total ad 20-50 seconds.
+- ratio must be one of: 9:16, 16:9, 1:1, 4:3, 3:4, 21:9
+- Every scene description must name which refImageKeys it needs
+- Write like a creative director pitching to skeptical CMOs — confident, specific, surprising`;
 
     try {
       const claudeRes = await claudeApiCall(anthropicKey, system, [{ role: 'user', content: userContent }]);
@@ -975,8 +992,30 @@ Rules: 3-5 scenes, each 4-8 seconds, total 20-40 seconds. ratio must be one of: 
     }
     userContent.push({ type: 'text', text: `Ad concept:\n${JSON.stringify(concept, null, 2)}\n\nCreate a Seedance 2.0 video generation prompt for EACH scene listed in the concept.` });
 
-    const system = `You are an expert AI video prompt engineer specializing in Seedance 2.0 (ByteDance's state-of-the-art video generation model).
-Given an ad concept and reference images, write a precise video generation prompt for each scene.
+    const system = `You are an expert AI video prompt engineer specializing in Seedance 2.0 (ByteDance's video generation model). You follow the Video Prompt Builder methodology for cinematic, shot-by-shot prompts.
+
+YOUR APPROACH — for each scene, build a prompt using this structure:
+
+1. SHOT-BY-SHOT EFFECTS TIMELINE: Every distinct moment gets its own beat. Structure: camera movement/entry → effect name (e.g. "speed ramp deceleration", "digital zoom scale-in", "white bloom flash", "rack focus", "whip pan exit") → visual description → speed/timing → transition to next. Name effects precisely: "speed ramp (deceleration)" not just "slow motion". Describe stacked effects explicitly when multiple happen simultaneously.
+
+2. EFFECTS LANGUAGE: Use specific effect names Seedance can interpret:
+   - Speed manipulation: speed ramp (acceleration), speed ramp (deceleration), slow-motion at ~20-25% speed
+   - Camera: dolly in/out, handheld tracking, static overhead, Dutch angle ~30°, high-angle wide
+   - Digital effects: digital zoom punch (scale-in), digital zoom pull-back (scale-out), zoom pump (rapid in-out pulse)
+   - Transitions: white bloom flash entry, whip pan exit (motion blur smear), motion blur as connector
+   - Atmosphere: motion blur streaks, light flares, depth-of-field rack focus, camera shake/vibration
+
+3. CREATIVE PRINCIPLES:
+   - Contrast drives impact: alternate high-density (3+ stacked effects) and low-density (single clean effect) moments
+   - Every scene needs at least one SIGNATURE moment — call it out explicitly
+   - Transitions are shots: whip pans, bloom flashes, motion blur smears are creative moments
+   - Specificity: "the frame scales inward rapidly" not "zoom in"; "approximately 20-25% speed" not "slow motion"
+   - Energy must resolve: intense opening → signature middle → intentional landing
+
+4. DURATION: Each scene is 4-10 seconds MAXIMUM. Use the duration calibration:
+   - 4-6 seconds: 2-4 shots, punchy, 1 signature effect
+   - 6-10 seconds: 4-7 shots, room for contrast, 1-2 signature effects
+   Never exceed 10 seconds.
 
 Output ONLY valid JSON (no markdown, no code fences):
 {
@@ -984,21 +1023,15 @@ Output ONLY valid JSON (no markdown, no code fences):
     {
       "number": 1,
       "name": "Scene name",
-      "prompt": "Detailed Seedance prompt here. Start with camera movement. Be specific about lighting, action, style, atmosphere. 80-130 words.",
-      "useRefImages": ["product", "character", "environment"],
+      "prompt": "Write the full shot-by-shot prompt as a single flowing text block. Open with camera entry + effect. Describe each beat with effect name, visual, speed, transition. Call out the SIGNATURE VISUAL EFFECT. Include lighting, atmosphere, color grade. End with how the scene resolves/exits. 120-200 words.",
+      "useRefImages": ["key1", "key2"],
       "ratio": "9:16",
-      "duration": 5
+      "duration": 6
     }
   ]
 }
 
-Seedance prompt guidelines:
-- Open with camera movement: slow dolly in, static overhead shot, handheld tracking shot, cinematic pan, etc.
-- Be explicit about lighting: golden hour sunlight, soft diffused studio light, neon ambiance, etc.
-- Describe movement and action precisely
-- Reference the product naturally within the scene
-- Match the mood and tone of the ad concept
-- Style: commercial photography aesthetic, cinematic color grading, high production value`;
+Match the mood, visual style, and color palette from the ad concept. Write like a director's shot notes — direct, technical, specific. No hype language. Describe what happens and let the visuals speak.`;
 
     try {
       const claudeRes = await claudeApiCall(anthropicKey, system, [{ role: 'user', content: userContent }]);
