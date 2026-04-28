@@ -1384,19 +1384,19 @@ async function createAd() {
     const scenes = j3.scenes || [];
     adLogUpdate(s3, `Video prompts ready for ${scenes.length} scene(s)`, 'done');
 
-    // ── Step 4: Submit video generation for each scene ────────────────
-    const folder    = concept.adTitle || ('Ad ' + new Date().toLocaleDateString());
+    // ── Step 4: Submit video generation for each scene (sequential so each
+    //           completed video can be used as reference_video for the next) ──
+    const folder = concept.adTitle || ('Ad ' + new Date().toLocaleDateString());
+    let prevVideoUrl = null;
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i];
       const ratio  = '9:16';
       const dur    = Math.max(4, Math.min(10, scene.duration || 6));
       const prompt = scene.prompt || scene.description || `Scene ${i+1}`;
 
-      const s4 = adLog(`Submitting scene ${i+1}/${scenes.length}: "${scene.name}"…`, 'run');
+      const s4 = adLog(`Scene ${i+1}/${scenes.length}: "${scene.name}" — submitting…`, 'run');
 
       try {
-        // Deduct credits
-        const hasV = false;
         const [w, h] = (() => { const m = {'9:16':'720x1280','16:9':'1280x720','1:1':'960x960','4:3':'960x720','3:4':'720x960','21:9':'1280x544'}; return ((m[ratio])||'720x1280').split('x').map(Number); })();
         const tok = dur * w * h * 24 / 1024;
         const isFast = model.includes('fast');
@@ -1411,15 +1411,15 @@ async function createAd() {
         if (!dcr.ok) throw new Error(dj.error || 'Not enough credits');
         userCredits = dj.credits; updateCreditsDisplay();
 
-        // Build content with ref images
         const content = [{ type: 'text', text: prompt }];
         const useRefs = scene.useRefImages || [];
         for (const rk of useRefs) {
           if (refImages[rk]) {
-            const comma = refImages[rk].indexOf(',');
-            const b64 = refImages[rk].substring(comma + 1);
             content.push({ type: 'image_url', image_url: { url: refImages[rk] }, role: 'reference_image' });
           }
+        }
+        if (prevVideoUrl) {
+          content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
         }
 
         const payload = buildPayload(model, content, false, ratio, dur, false, res);
@@ -1434,14 +1434,16 @@ async function createAd() {
 
         const job = { id: taskId, prompt, model, res, ratio, dur, audio: false, ts: Date.now(), status: 'running', folder };
         jobs.push(job);
-        pollAd(job);
-        adLogUpdate(s4, `Scene ${i+1} "${scene.name}" submitted — polling for result`, 'done');
+        adLogUpdate(s4, `Scene ${i+1} "${scene.name}" generating${prevVideoUrl ? ' (using scene ' + i + ' as reference)' : ''}…`, 'run');
+        prevVideoUrl = await pollAd(job);
+        adLogUpdate(s4, prevVideoUrl ? `Scene ${i+1} "${scene.name}" ✓` : `Scene ${i+1} "${scene.name}" failed`, prevVideoUrl ? 'done' : 'err');
       } catch(e) {
         adLogUpdate(s4, `Scene ${i+1} failed: ${e.message}`, 'err');
+        prevVideoUrl = null;
       }
     }
 
-    adLog(`All scenes submitted! Watch your Library for "${folder}".`, 'done');
+    adLog(`All scenes done! See "${folder}" in your Library.`, 'done');
     goPage('library', document.querySelector('.tab[data-page="library"]'));
     renderLib();
     toast(`Ad pipeline running! ${scenes.length} scene(s) generating.`, 'ok', 7000);
@@ -1455,30 +1457,34 @@ async function createAd() {
 }
 
 function pollAd(job) {
-  let n = 0;
-  const run = async () => {
-    if (++n > 80) { finishAd(job, null, 'Timed out'); return; }
-    try {
-      const r = await fetch('/proxy/api/v3/contents/generations/tasks/' + job.id, {
-        headers: { 'Authorization': 'Bearer ' + key() }
-      });
-      const d = await r.json();
-      const status = (d.status || '').toLowerCase();
-      if (status === 'succeeded' || status === 'success' || status === 'completed') {
-        const url = d.content?.video_url || d.content?.[0]?.video_url?.url || d.content?.[0]?.url
-          || d.outputs?.[0]?.url || d.output?.url || d.result?.url || '';
-        finishAd(job, url, null);
-      } else if (status === 'failed' || status === 'error' || status === 'cancelled') {
-        finishAd(job, null, d.error?.message || d.message || 'Status: ' + d.status);
-      } else {
+  return new Promise((resolve) => {
+    let n = 0;
+    const run = async () => {
+      if (++n > 80) { finishAd(job, null, 'Timed out'); resolve(null); return; }
+      try {
+        const r = await fetch('/proxy/api/v3/contents/generations/tasks/' + job.id, {
+          headers: { 'Authorization': 'Bearer ' + key() }
+        });
+        const d = await r.json();
+        const status = (d.status || '').toLowerCase();
+        if (status === 'succeeded' || status === 'success' || status === 'completed') {
+          const url = d.content?.video_url || d.content?.[0]?.video_url?.url || d.content?.[0]?.url
+            || d.outputs?.[0]?.url || d.output?.url || d.result?.url || '';
+          finishAd(job, url, null);
+          resolve(url || null);
+        } else if (status === 'failed' || status === 'error' || status === 'cancelled') {
+          finishAd(job, null, d.error?.message || d.message || 'Status: ' + d.status);
+          resolve(null);
+        } else {
+          setTimeout(run, 30000);
+          renderLib();
+        }
+      } catch(e) {
         setTimeout(run, 30000);
-        renderLib();
       }
-    } catch(e) {
-      setTimeout(run, 30000);
-    }
-  };
-  setTimeout(run, 8000);
+    };
+    setTimeout(run, 8000);
+  });
 }
 
 function finishAd(job, url, err) {
