@@ -1347,24 +1347,37 @@ async function createAd() {
 
     // ── Step 2: Generate all reference images ──────────────────────────
     const refImages = {}; // key → dataUrl
+    const folder = concept.adTitle || ('Ad ' + new Date().toLocaleDateString());
     const refList = concept.referenceImages || [];
-    const RATIO_TO_SIZE = { '16:9':'1536x1024', '9:16':'1024x1536', '1:1':'1024x1024', '4:3':'1536x1024', '3:4':'1024x1536', '21:9':'1536x1024' };
+
+    // Always prepend a product reference sheet so videos stay consistent
+    const productDesc = description || concept.adTitle || 'product';
+    refList.unshift({
+      key: 'product_ref_sheet',
+      label: 'Product Reference Sheet',
+      prompt: `Product reference sheet: ${productDesc}. Four views on a single panel: front, 3/4 angle, side, back. Clean white studio background, centered, sharp focus, flat studio lighting, no shadows, no people.`,
+      ratio: '9:16'
+    });
 
     adLog(`Generating ${refList.length} reference image(s)…`, 'info');
     for (const ref of refList) {
       if (!ref.prompt || !ref.key) continue;
       const s = adLog(`Generating: ${ref.label || ref.key}…`, 'run');
       try {
-        const size = RATIO_TO_SIZE[ref.ratio] || '1024x1024';
         const ir = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken, 'x-openai-key': openaiKey() },
-          body: JSON.stringify({ prompt: ref.prompt, size, quality: 'low' })
+          body: JSON.stringify({ prompt: ref.prompt, size: '1024x1536', quality: 'low' })
         });
         const ij = await ir.json();
         if (!ir.ok) throw new Error(ij.error || 'Image gen failed');
         if (ij.credits !== undefined) { userCredits = ij.credits; updateCreditsDisplay(); }
         refImages[ref.key] = ij.url;
+        // Save ref image to library folder
+        lib.unshift({ id: 'ref_' + ref.key + '_' + Date.now(), prompt: ref.label || ref.key,
+          url: ij.url, ratio: '9:16', model: 'gpt-image-1', ts: Date.now(), done: Date.now(),
+          type: 'image', folder });
+        saveLib();
         adLogUpdate(s, `✓ ${ref.label || ref.key}`, 'done');
       } catch(e) {
         adLogUpdate(s, `${ref.label || ref.key} failed (skipping): ${e.message}`, 'err');
@@ -1386,7 +1399,6 @@ async function createAd() {
 
     // ── Step 4: Submit video generation for each scene (sequential so each
     //           completed video can be used as reference_video for the next) ──
-    const folder = concept.adTitle || ('Ad ' + new Date().toLocaleDateString());
     let prevVideoUrl = null;
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i];
