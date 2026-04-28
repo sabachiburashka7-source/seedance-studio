@@ -1359,7 +1359,7 @@ async function createAd() {
         const ir = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken, 'x-openai-key': openaiKey() },
-          body: JSON.stringify({ prompt: ref.prompt, size, quality: 'high' })
+          body: JSON.stringify({ prompt: ref.prompt, size, quality: 'low' })
         });
         const ij = await ir.json();
         if (!ir.ok) throw new Error(ij.error || 'Image gen failed');
