@@ -339,7 +339,7 @@ function readBody(req) {
 function serveHTML(res) {
   fs.readFile(path.join(__dirname, 'seedance-studio.html'), (err, data) => {
     if (err) { res.writeHead(404); res.end('seedance-studio.html not found'); return; }
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(data);
   });
 }
@@ -403,6 +403,7 @@ function proxy(req, res, bodyBuffer) {
 // ── Main request handler ──────────────────────────────────────────────────────
 async function handleRequest(req, res) {
   const { method, url } = req;
+  if (method === 'POST') console.log('[req]', method, url, new Date().toISOString());
 
   // CORS preflight
   if (method === 'OPTIONS') {

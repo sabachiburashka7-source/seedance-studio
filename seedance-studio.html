@@ -1712,12 +1712,12 @@ async function safeJson(r) {
 }
 
 // ══ RESIZE FOR CLAUDE ═════════════════════════════════════════════════
-// Shrinks to max 1024 px on the long side before sending to Claude API.
-// Full-resolution canvas-softened images can be 3–8 MB as base64 JPEG,
-// causing the JSON POST body to exceed Render's proxy size limit and the
-// connection to be dropped without an HTTP response ("Failed to fetch").
-// Claude's vision model doesn't need more than 1024 px to understand a product.
-function resizeForClaude(file, maxPx = 1024) {
+// Shrinks to max 640 px on the long side at 72% JPEG quality before
+// sending to Claude API. Render's nginx has a 1 MB client_max_body_size;
+// at 640 px / 72% each image is ~60–80 KB base64 so 5 images ≈ 400 KB —
+// well under the limit. Claude's vision model needs no more than this
+// to identify product details, colours, and packaging.
+function resizeForClaude(file, maxPx = 640) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Failed to read: ' + file.name));
@@ -1732,7 +1732,7 @@ function resizeForClaude(file, maxPx = 1024) {
           const canvas = document.createElement('canvas');
           canvas.width = w; canvas.height = h;
           canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', 0.85));
+          resolve(canvas.toDataURL('image/jpeg', 0.72));
         } catch(e) {
           resolve(reader.result); // canvas tainted — fall back to original
         }
