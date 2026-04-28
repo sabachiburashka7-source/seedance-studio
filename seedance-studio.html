@@ -314,13 +314,13 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 }
 .vid-card:hover { transform: translateY(-3px); box-shadow: 0 16px 48px rgba(0,0,0,0.5); border-color: rgba(124,110,247,0.22); }
 .vid-preview { width: 100%; aspect-ratio: 16/9; background: var(--surface2); overflow: hidden; }
-.vid-preview.v916 { aspect-ratio: 9/16; max-height: 300px; }
+.vid-preview.v916 { aspect-ratio: 9/16; }
 .vid-preview.v11  { aspect-ratio: 1/1; }
-.vid-preview video { width: 100%; height: 100%; object-fit: cover; }
-.vid-preview img  { width: 100%; height: 100%; object-fit: cover; }
+.vid-preview video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+.vid-preview img  { width: 100%; height: 100%; object-fit: contain; background: #000; }
 .vid-no-url { width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text3);font-size:12px;gap:6px;padding:12px;text-align:center; }
 .vid-body { padding: 14px; }
-.vid-prompt { font-size: 13px; line-height: 1.55; color: var(--text2); margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.vid-prompt { font-size: 13px; line-height: 1.55; color: var(--text2); margin-bottom: 10px; word-break: break-word; }
 .vid-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
 .vtag { font-size: 11px; padding: 3px 8px; border-radius: 6px; background: var(--surface2); color: var(--text3); font-weight: 500; }
 .vtag.hi { background: rgba(124,110,247,0.15); color: var(--accent2); }
@@ -1496,7 +1496,7 @@ function pollAd(job) {
           resolve(null);
         } else {
           setTimeout(run, 30000);
-          renderLib();
+          renderPending();
         }
       } catch(e) {
         setTimeout(run, 30000);
@@ -1943,7 +1943,7 @@ function poll(job) {
         finish(job, null, d.error?.message || d.message || 'Status: ' + d.status);
       } else {
         console.log('[poll] status =', d.status, '— waiting 30s');
-        renderLib();
+        renderPending();
         setTimeout(run, 30000);
       }
     } catch(e) {
@@ -2405,9 +2405,8 @@ function makeLibCard(item, i) {
 
 const libFolderState = {}; // folderName → collapsed bool
 
-function renderLib() {
+function renderPending() {
   badge();
-  // Pending jobs
   const pl = document.getElementById('pend-list'); pl.innerHTML = '';
   jobs.forEach(j => {
     const sec = Math.floor((Date.now()-j.ts)/1000);
@@ -2421,6 +2420,10 @@ function renderLib() {
       <span class="badge badge-run">Running</span>`;
     pl.appendChild(div);
   });
+}
+
+function renderLib() {
+  renderPending();
 
   const grid  = document.getElementById('vid-grid');
   const empty = document.getElementById('lib-empty');
@@ -2528,7 +2531,7 @@ initAuth().then(() => {
       }).catch(() => toast('Payment successful! Refresh to see your new credits.', 'ok', 7000));
   }
 });
-setInterval(() => { if (jobs.length) renderLib(); }, 1000);
+setInterval(() => { if (jobs.length) renderPending(); }, 1000);
 </script>
 </body>
 </html>
