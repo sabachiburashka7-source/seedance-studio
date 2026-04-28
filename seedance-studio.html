@@ -1313,6 +1313,19 @@ async function createAd() {
   const description = document.getElementById('ad-description').value.trim();
 
   try {
+    // ── Step 0: Ensure server is awake (Render free tier cold-start) ───
+    const s0 = adLog('Connecting to server…', 'run');
+    let serverOk = false;
+    for (let i = 0; i < 6; i++) {
+      try { const hr = await fetch('/health'); if (hr.ok) { serverOk = true; break; } } catch (_) {}
+      if (i < 5) {
+        adLogUpdate(s0, `Server warming up… (${i + 1}/6, retrying in 5s)`, 'run');
+        await new Promise(r => setTimeout(r, 5000));
+      }
+    }
+    if (!serverOk) throw new Error('Server is not responding. Please refresh the page and try again in ~30 seconds.');
+    adLogUpdate(s0, 'Server ready', 'done');
+
     // ── Step 1: Brainstorm ad concept ──────────────────────────────────
     const s1 = adLog('Sending product images to Claude for ad concept…', 'run');
     const imagesPayload = await Promise.all(adImages.map(async img => {
@@ -1712,13 +1725,17 @@ function resizeForClaude(file, maxPx = 1024) {
       const img = new Image();
       img.onerror = () => reject(new Error('Failed to decode: ' + file.name));
       img.onload = () => {
-        const scale = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
-        const w = Math.round(img.naturalWidth  * scale);
-        const h = Math.round(img.naturalHeight * scale);
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.85));
+        try {
+          const scale = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
+          const w = Math.max(1, Math.round(img.naturalWidth  * scale));
+          const h = Math.max(1, Math.round(img.naturalHeight * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        } catch(e) {
+          resolve(reader.result); // canvas tainted — fall back to original
+        }
       };
       img.src = reader.result;
     };
