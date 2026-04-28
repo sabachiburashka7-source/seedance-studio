@@ -981,18 +981,12 @@ RULES:
 
     if (!concept) return sendJSON(res, 400, { error: 'Concept required.' });
 
-    const userContent = [];
-    if (refImages) {
-      for (const [type, dataUrl] of Object.entries(refImages)) {
-        if (!dataUrl) continue;
-        const comma = dataUrl.indexOf(',');
-        const base64 = comma >= 0 ? dataUrl.substring(comma + 1) : dataUrl;
-        const mime = dataUrl.startsWith('data:') ? dataUrl.substring(5, dataUrl.indexOf(';')) : 'image/jpeg';
-        userContent.push({ type: 'image', source: { type: 'base64', media_type: mime, data: base64 } });
-        userContent.push({ type: 'text', text: `[Above image: ${type} reference]` });
-      }
-    }
-    userContent.push({ type: 'text', text: `Ad concept:\n${JSON.stringify(concept, null, 2)}\n\nCreate a Seedance 2.0 video generation prompt for EACH scene listed in the concept.` });
+    // Don't send ref images — OpenAI PNG base64 per image is ~2MB; 12 images would exceed
+    // Anthropic's request size limit. The concept JSON already describes every ref image
+    // (label + generation prompt) which is all Claude needs to write video prompts.
+    const userContent = [
+      { type: 'text', text: `Ad concept:\n${JSON.stringify(concept, null, 2)}\n\nCreate a Seedance 2.0 video generation prompt for EACH scene listed in the concept.` }
+    ];
 
     const system = `You are an expert AI video prompt engineer specializing in Seedance 2.0 (ByteDance's video generation model). You follow the Video Prompt Builder methodology for cinematic, shot-by-shot prompts.
 

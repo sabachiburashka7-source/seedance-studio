@@ -1376,7 +1376,7 @@ async function createAd() {
     const r3 = await fetch('/api/gen/shots', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken, 'x-anthropic-key': anthropicKey() },
-      body: JSON.stringify({ concept, refImages })
+      body: JSON.stringify({ concept })
     });
     const j3 = await r3.json();
     if (!r3.ok) throw new Error(j3.error || 'Video prompts failed');
