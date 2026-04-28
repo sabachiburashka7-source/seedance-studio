@@ -877,7 +877,7 @@ async function handleRequest(req, res) {
   }
 
   // ── Ads: Claude brainstorm ────────────────────────────────────────────────
-  if (url === '/api/ads/brainstorm' && method === 'POST') {
+  if (url === '/api/gen/brief' && method === 'POST') {
     const { images, description } = await readBody(req); // must read body before any early return
     const anthropicKey = (req.headers['x-anthropic-key'] || '').trim();
     if (!anthropicKey) return sendJSON(res, 401, { error: 'Anthropic API key required. Enter it in the Ads tab.' });
@@ -967,7 +967,7 @@ RULES:
   }
 
   // ── Ads: Claude video prompts ─────────────────────────────────────────────
-  if (url === '/api/ads/video-prompts' && method === 'POST') {
+  if (url === '/api/gen/shots' && method === 'POST') {
     const { concept, refImages } = await readBody(req); // must read body before any early return
     const anthropicKey = (req.headers['x-anthropic-key'] || '').trim();
     if (!anthropicKey) return sendJSON(res, 401, { error: 'Anthropic API key required.' });

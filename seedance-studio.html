@@ -1334,7 +1334,7 @@ async function createAd() {
       return { base64: processed.substring(comma + 1), mime: 'image/jpeg' };
     }));
 
-    const r1 = await fetch('/api/ads/brainstorm', {
+    const r1 = await fetch('/api/gen/brief', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken, 'x-anthropic-key': anthropicKey() },
       body: JSON.stringify({ images: imagesPayload, description })
@@ -1373,7 +1373,7 @@ async function createAd() {
 
     // ── Step 3: Generate video prompts ────────────────────────────────
     const s3 = adLog('Claude is writing video prompts for each scene…', 'run');
-    const r3 = await fetch('/api/ads/video-prompts', {
+    const r3 = await fetch('/api/gen/shots', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken, 'x-anthropic-key': anthropicKey() },
       body: JSON.stringify({ concept, refImages })
