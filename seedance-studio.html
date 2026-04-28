@@ -1415,7 +1415,8 @@ async function createAd() {
         const useRefs = scene.useRefImages || [];
         for (const rk of useRefs) {
           if (refImages[rk]) {
-            content.push({ type: 'image_url', image_url: { url: refImages[rk] }, role: 'reference_image' });
+            const softened = await softenDataUrl(refImages[rk]);
+            content.push({ type: 'image_url', image_url: { url: softened }, role: 'reference_image' });
           }
         }
         if (prevVideoUrl) {
@@ -1823,6 +1824,62 @@ function fileToDataUrl(file) {
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
+  });
+}
+
+// Same 5-pass canvas softening as fileToDataUrl, but accepts a data URL string
+// (used for AI-generated reference images in the ads pipeline before BytePlus submission)
+function softenDataUrl(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onerror = () => resolve(dataUrl);
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width  = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+
+        ctx.filter = 'blur(1.2px) saturate(0.85)';
+        ctx.drawImage(img, 0, 0);
+        ctx.filter = 'none';
+
+        const sw = Math.round(canvas.width  * 0.72);
+        const sh = Math.round(canvas.height * 0.72);
+        const tmp = document.createElement('canvas');
+        tmp.width = sw; tmp.height = sh;
+        tmp.getContext('2d').drawImage(canvas, 0, 0, sw, sh);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(tmp, 0, 0, canvas.width, canvas.height);
+
+        const gridStep = Math.max(30, Math.round(Math.min(canvas.width, canvas.height) / 28));
+        ctx.strokeStyle = 'rgba(128,128,128,0.18)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let x = 0; x < canvas.width; x += gridStep) {
+          ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height);
+        }
+        for (let y = 0; y < canvas.height; y += gridStep) {
+          ctx.moveTo(0, y); ctx.lineTo(canvas.width, y);
+        }
+        ctx.stroke();
+
+        const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const d  = id.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const n = (Math.random() - 0.5) * 50;
+          d[i]     = Math.max(0, Math.min(255, d[i]     + n));
+          d[i + 1] = Math.max(0, Math.min(255, d[i + 1] + n));
+          d[i + 2] = Math.max(0, Math.min(255, d[i + 2] + n));
+        }
+        ctx.putImageData(id, 0, 0);
+
+        resolve(canvas.toDataURL('image/jpeg', 0.80));
+      } catch(e) {
+        resolve(dataUrl);
+      }
+    };
+    img.src = dataUrl;
   });
 }
 
