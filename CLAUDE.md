@@ -82,16 +82,19 @@ Falls back to the raw FileReader data URL if the canvas is tainted (cross-origin
 Full AI-powered ad creation tab. User uploads product photos + optional description → full pipeline runs automatically.
 
 **Pipeline order:**
-1. Product images → `POST /api/ads/brainstorm` (Claude) → ad concept JSON
+1. Product images → `POST /api/gen/brief` (Claude) → ad concept JSON
 2. Concept → generate all reference images via `POST /api/generate-image` (OpenAI) — dynamic count, no fixed limit
-3. Concept + ref images → `POST /api/ads/video-prompts` (Claude) → shot-by-shot video prompts per scene
+3. Concept + ref images → `POST /api/gen/shots` (Claude) → shot-by-shot video prompts per scene
 4. Each scene prompt + ref images → BytePlus video generation → poll → save to Library in named folder
 
 **Server endpoints:**
-- `POST /api/ads/brainstorm` — sends images + description to Claude, returns concept JSON. `readBody` called FIRST before any auth checks (critical — prevents "Failed to fetch" when server rejects mid-upload of large image body)
-- `POST /api/ads/video-prompts` — sends concept + ref image data URLs to Claude, returns scene prompts. Same readBody-first rule.
+- `POST /api/gen/brief` — sends images + description to Claude, returns concept JSON. `readBody` called FIRST before any auth checks (critical — prevents "Failed to fetch" when server rejects mid-upload of large image body)
+- `POST /api/gen/shots` — sends concept + ref image data URLs to Claude, returns scene prompts. Same readBody-first rule.
 - Both use `claudeApiCall(apiKey, system, messages)` helper — user-supplied Anthropic key sent as `x-anthropic-key` header, 60s timeout
 - Cost: 5 credits for brainstorm + 5 credits for video prompts (charged on top of normal image/video gen costs)
+
+**⚠️ Ad-blocker naming rule — NEVER use `/ads/` in any API endpoint path.**
+Browser ad blockers (uBlock Origin, EasyList, AdGuard, etc.) match URL paths containing `/ads/`, `/ad-`, `ads.` etc. and silently kill the fetch before it leaves the browser. Symptoms look like a server problem but are 100% client-side: "Failed to fetch" appears instantly, Render logs show nothing at all, even a 1 KB request fails. The endpoints were originally `/api/ads/brainstorm` and `/api/ads/video-prompts` and were blocked by every user with an ad blocker. They were renamed to `/api/gen/brief` and `/api/gen/shots` to fix this. When adding any new endpoint related to ads, campaigns, or promotions, always use neutral words (`gen`, `create`, `pipeline`, `brief`, `shots`, etc.).
 
 **Claude skill prompts:**
 - Brainstorm uses the **ad-concept-generator** skill: Phase 0 visual intelligence, emotional territory mapping, identity-based persuasion, Peak-End Rule, somatic markers. Outputs structured JSON with `referenceImages[]` (dynamic list) and `scenes[]`
@@ -131,4 +134,4 @@ All core features working and deployed:
 - Messenger link fix (strips tracking params)
 - Cold start session retry (no more phantom logouts)
 - Canvas softening pipeline — AI-generated portraits (incl. photorealistic reference sheets) now pass ByteDance's real-person classifier
-- **Ads tab** — full AI ad creation pipeline (Claude brainstorm → OpenAI ref images → Claude video prompts → BytePlus scenes → Library folder)
+- **Ads tab** — full AI ad creation pipeline (Claude brainstorm → OpenAI ref images → Claude video prompts → BytePlus scenes → Library folder); endpoints `/api/gen/brief` + `/api/gen/shots` (renamed away from `/api/ads/*` to avoid ad-blocker blocks)
