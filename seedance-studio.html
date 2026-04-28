@@ -1350,13 +1350,18 @@ async function createAd() {
     const folder = concept.adTitle || ('Ad ' + new Date().toLocaleDateString());
     const refList = concept.referenceImages || [];
 
-    // Always prepend a product reference sheet so videos stay consistent
-    const productDesc = description || concept.adTitle || 'product';
+    // Always prepend a product reference sheet using the uploaded product photo + simple prompt
+    const firstImg = adImages[0];
+    const firstImgComma = firstImg.dataUrl.indexOf(',');
+    const firstImgBase64 = firstImg.dataUrl.substring(firstImgComma + 1);
+    const firstImgMime = firstImg.dataUrl.substring(5, firstImg.dataUrl.indexOf(';'));
     refList.unshift({
       key: 'product_ref_sheet',
       label: 'Product Reference Sheet',
-      prompt: `Product reference sheet: ${productDesc}. Four views on a single panel: front, 3/4 angle, side, back. Clean white studio background, centered, sharp focus, flat studio lighting, no shadows, no people.`,
-      ratio: '9:16'
+      prompt: 'Make product reference sheet photo.',
+      ratio: '9:16',
+      _imageBase64: firstImgBase64,
+      _imageMime: firstImgMime
     });
 
     adLog(`Generating ${refList.length} reference image(s)…`, 'info');
@@ -1364,10 +1369,12 @@ async function createAd() {
       if (!ref.prompt || !ref.key) continue;
       const s = adLog(`Generating: ${ref.label || ref.key}…`, 'run');
       try {
+        const body = { prompt: ref.prompt, size: '1024x1536', quality: 'low' };
+        if (ref._imageBase64) { body.imageBase64 = ref._imageBase64; body.imageMime = ref._imageMime; }
         const ir = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken, 'x-openai-key': openaiKey() },
-          body: JSON.stringify({ prompt: ref.prompt, size: '1024x1536', quality: 'low' })
+          body: JSON.stringify(body)
         });
         const ij = await ir.json();
         if (!ir.ok) throw new Error(ij.error || 'Image gen failed');
