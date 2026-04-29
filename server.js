@@ -281,7 +281,8 @@ function falRequest(method, falPath, body) {
     const r = https.request(opts, resp => {
       const ch = []; resp.on('data', c => ch.push(c));
       resp.on('end', () => {
-        try { resolve({ status: resp.statusCode, body: JSON.parse(Buffer.concat(ch).toString()) }); }
+        const text = Buffer.concat(ch).toString().trim();
+        try { resolve({ status: resp.statusCode, body: text ? JSON.parse(text) : {} }); }
         catch(e) { reject(new Error('Fal parse error: ' + e.message)); }
       });
     });
@@ -1208,6 +1209,7 @@ Match the mood, visual style, and color palette from the ad concept. Write like 
     if (!requestId) return sendJSON(res, 400, { error: 'id required' });
     try {
       const statusRes = await falRequest('GET', '/fal-ai/topaz/upscale/video/requests/' + encodeURIComponent(requestId) + '/status');
+      console.log('[fal] poll status http=' + statusRes.status, JSON.stringify(statusRes.body).substring(0, 200));
       const status = statusRes.body?.status;
       if (status === 'COMPLETED') {
         const resultRes = await falRequest('GET', '/fal-ai/topaz/upscale/video/requests/' + encodeURIComponent(requestId));
