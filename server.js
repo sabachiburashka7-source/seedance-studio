@@ -1219,15 +1219,28 @@ Match the mood, visual style, and color palette from the ad concept. Write like 
       }
       const text = claudeRes.body?.content?.[0]?.text || '';
 
-      // Parse hybrid format: "SCENES_META: [...]" line + <scene_N>...</scene_N> blocks
-      const metaLine = text.match(/SCENES_META:\s*(\[[\s\S]*?\])/);
-      if (!metaLine) return sendJSON(res, 502, { error: 'Claude response missing SCENES_META line. Raw: ' + text.substring(0, 300) });
+      // Parse hybrid format: "SCENES_META: [...]" + <scene_N>...</scene_N> blocks
+      // Use bracket-balancing to extract the array — simple non-greedy regex would stop
+      // at the first nested ']' (e.g. inside "useRefImages": ["k1","k2"]) and break.
+      const metaStart = text.indexOf('SCENES_META:');
+      if (metaStart === -1) return sendJSON(res, 502, { error: 'Claude response missing SCENES_META line. Raw: ' + text.substring(0, 300) });
+      const arrOpen = text.indexOf('[', metaStart);
+      if (arrOpen === -1) return sendJSON(res, 502, { error: 'SCENES_META has no array. Raw: ' + text.substring(metaStart, metaStart + 200) });
+      let depth = 0, arrClose = -1;
+      for (let i = arrOpen; i < text.length; i++) {
+        if (text[i] === '[') depth++;
+        else if (text[i] === ']') { depth--; if (depth === 0) { arrClose = i; break; } }
+      }
+      if (arrClose === -1) return sendJSON(res, 502, { error: 'SCENES_META array never closes.' });
       let metaArr;
-      try { metaArr = JSON.parse(metaLine[1]); } catch(e) { return sendJSON(res, 502, { error: 'SCENES_META JSON invalid: ' + e.message + '. Raw: ' + metaLine[1].substring(0, 200) }); }
+      try { metaArr = JSON.parse(text.slice(arrOpen, arrClose + 1)); }
+      catch(e) { return sendJSON(res, 502, { error: 'SCENES_META JSON invalid: ' + e.message + '. Raw: ' + text.slice(arrOpen, arrOpen + 200) }); }
 
       const scenes = metaArr.map(s => {
         const m = text.match(new RegExp('<scene_' + s.number + '>([\\s\\S]*?)<\\/scene_' + s.number + '>'));
-        return { ...s, prompt: m ? m[1].trim() : '' };
+        const prompt = m ? m[1].trim() : '';
+        if (!prompt) console.warn('[shots] scene', s.number, 'has no <scene_N> block — prompt will be empty');
+        return { ...s, prompt };
       });
 
       user.credits = Math.round((cur - PROMPTS_COST) * 100) / 100;
