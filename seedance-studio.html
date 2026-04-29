@@ -2532,9 +2532,7 @@ function makeLibCard(item, i) {
 
 const libFolderState = {}; // folderName → collapsed bool
 
-function renderLib() {
-  badge();
-  // Pending jobs
+function renderPending() {
   const pl = document.getElementById('pend-list'); pl.innerHTML = '';
   jobs.forEach(j => {
     const sec = Math.floor((Date.now()-j.ts)/1000);
@@ -2548,6 +2546,11 @@ function renderLib() {
       <span class="badge badge-run">Running</span>`;
     pl.appendChild(div);
   });
+}
+
+function renderLib() {
+  badge();
+  renderPending();
 
   const grid  = document.getElementById('vid-grid');
   const empty = document.getElementById('lib-empty');
@@ -2655,7 +2658,8 @@ initAuth().then(() => {
       }).catch(() => toast('Payment successful! Refresh to see your new credits.', 'ok', 7000));
   }
 });
-setInterval(() => { if (jobs.length) renderLib(); }, 1000);
+setInterval(() => { if (jobs.length) renderPending(); }, 1000);
+setInterval(() => { if (lib.some(i => i.upscaling)) renderLib(); }, 4000);
 
 // ══ LIGHTBOX ═══════════════════════════════════════════════════════════
 function openLightbox(url, isVideo) {
