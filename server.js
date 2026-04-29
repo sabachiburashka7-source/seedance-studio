@@ -1185,7 +1185,7 @@ Match the mood, visual style, and color palette from the ad concept. Write like 
     const { video_url } = await readBody(req);
     if (!video_url) return sendJSON(res, 400, { error: 'video_url required' });
     try {
-      const result = await falRequest('POST', '/fal-ai/starlight-fast-2', { video_url, upscale_factor: 2 });
+      const result = await falRequest('POST', '/fal-ai/starlight-fast-2', { video_url, upscale_factor: 2, output_format: 'h264' });
       const requestId = result.body?.request_id;
       if (!requestId) {
         console.error('[fal] submit failed', result.status, JSON.stringify(result.body).substring(0, 200));
