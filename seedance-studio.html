@@ -1941,7 +1941,7 @@ async function doGenerate() {
     if (!taskId) throw new Error(j.error?.message || j.error?.code || JSON.stringify(j).substring(0, 400));
 
     toast('Task submitted! Polling for result...', 'ok');
-    const job = { id: taskId, prompt: pt, model, res, ratio, dur, audio, ts: Date.now(), status: 'running' };
+    const job = { id: taskId, prompt: pt, model, res, ratio, dur, audio, wm, content, ts: Date.now(), status: 'running' };
     jobs.push(job);
     poll(job);
 
@@ -1973,7 +1973,11 @@ function poll(job) {
           || d.outputs?.[0]?.url || d.output?.url || d.result?.url || '';
         finish(job, url, null);
       } else if (status === 'failed' || status === 'error' || status === 'cancelled') {
-        finish(job, null, d.error?.message || d.message || 'Status: ' + d.status);
+        if (d.error?.code === 'OutputAudioSensitiveContentDetected' && job.audio) {
+          retryWithoutAudio(job);
+        } else {
+          finish(job, null, d.error?.message || d.message || 'Status: ' + d.status);
+        }
       } else {
         console.log('[poll] status =', d.status, '— waiting 30s');
         renderLib();
@@ -1996,6 +2000,25 @@ function friendlyErr(msg) {
   if (msg.toLowerCase().includes('sensitive'))
     return 'Rejected — content policy violation. Adjust your prompt or images.';
   return msg;
+}
+
+async function retryWithoutAudio(job) {
+  toast('Audio flagged by BytePlus — retrying without audio…', 'warn');
+  job.audio = false;
+  try {
+    const r = await fetch('/proxy/api/v3/contents/generations/tasks', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + key(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildPayload(job.model, job.content, false, job.ratio, job.dur, job.wm || false, job.res))
+    });
+    const j = await safeJson(r);
+    const newId = j.id || j.task_id;
+    if (!newId) throw new Error(j.error?.message || 'Retry submit failed');
+    job.id = newId;
+    poll(job);
+  } catch(e) {
+    finish(job, null, 'Audio retry failed: ' + e.message);
+  }
 }
 
 function finish(job, url, err) {
