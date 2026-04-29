@@ -260,7 +260,7 @@ function claudeApiCall(apiKey, system, messages) {
         catch(e) { reject(new Error('Claude parse error: ' + e.message)); }
       });
     });
-    req.setTimeout(60000, () => req.destroy(new Error('Claude timeout')));
+    req.setTimeout(120000, () => req.destroy(new Error('Claude timeout')));
     req.on('error', reject);
     req.write(body); req.end();
   });
@@ -855,7 +855,7 @@ async function handleRequest(req, res) {
       const parts   = [];
       const field = (name, value) =>
         Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`);
-      parts.push(field('model',   'gpt-image-1'));
+      parts.push(field('model',   'gpt-image-2'));
       parts.push(field('prompt',  prompt));
       parts.push(field('n',       '1'));
       parts.push(field('size',    size || '1024x1024'));
@@ -866,7 +866,7 @@ async function handleRequest(req, res) {
       body = Buffer.concat(parts);
     } else {
       contentType = 'application/json';
-      body = Buffer.from(JSON.stringify({ model: 'gpt-image-1', prompt, n: 1, size: size || '1024x1024', quality: quality || 'high' }));
+      body = Buffer.from(JSON.stringify({ model: 'gpt-image-2', prompt, n: 1, size: size || '1024x1024', quality: quality || 'high' }));
     }
 
     try {
