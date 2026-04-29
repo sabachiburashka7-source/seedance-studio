@@ -1186,13 +1186,23 @@ ByteDance's content filter rejects prompts containing brand names, trademarks, l
 - NEVER reference song titles, film titles, or other IP
 - Describe clothing, products, environments by visual characteristics only: colors, shapes, textures, materials
 
-Output ONLY valid JSON (no markdown, no code fences). All string values must be single-line — use the two-character sequence \\n (backslash + n) for line breaks inside strings, never actual newline characters:
+Output ONLY valid JSON (no markdown, no code fences). Put each line of the shot prompt as a SEPARATE STRING in the "promptLines" array — one array element per line, no embedded newlines inside any string:
 {
   "scenes": [
     {
       "number": 1,
       "name": "Scene name",
-      "prompt": "Full shot-by-shot prompt text here — use the SHOT [N] bullet format described above. Include every shot block, the effects density line, and the energy arc line. This text goes directly to Seedance 2.0 as the generation prompt.",
+      "promptLines": [
+        "SHOT 1 (0:00-0:02) — Shot Name",
+        "• EFFECT: primary effect + secondary effect",
+        "• What is visually happening",
+        "• Camera behaviour",
+        "• How this shot exits",
+        "SHOT 2 (0:02-0:04) — Shot Name",
+        "• EFFECT: ...",
+        "EFFECTS DENSITY: 0-2s HIGH, 2-4s MEDIUM",
+        "ENERGY ARC: Opening energy → signature peak → resolution"
+      ],
       "useRefImages": ["key1", "key2"],
       "ratio": "9:16",
       "duration": 6
@@ -1212,9 +1222,15 @@ Match the mood, visual style, and color palette from the ad concept. Write like 
       const result = safeParseClaudeJSON(text);
       if (!result) return sendJSON(res, 502, { error: 'Claude returned invalid JSON: ' + text.substring(0, 200) });
 
+      // Join promptLines array into a single prompt string for the frontend/BytePlus
+      const scenes = (result.scenes || []).map(s => ({
+        ...s,
+        prompt: Array.isArray(s.promptLines) ? s.promptLines.join('\n') : (s.prompt || '')
+      }));
+
       user.credits = Math.round((cur - PROMPTS_COST) * 100) / 100;
       saveDB(db);
-      return sendJSON(res, 200, { scenes: result.scenes, credits: user.credits });
+      return sendJSON(res, 200, { scenes, credits: user.credits });
     } catch(e) {
       return sendJSON(res, 502, { error: 'Video prompts failed: ' + e.message });
     }
