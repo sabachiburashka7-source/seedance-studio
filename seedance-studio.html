@@ -321,6 +321,8 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 .vid-preview-play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.18); opacity: 0; transition: opacity 0.18s; pointer-events: none; }
 .vid-preview:hover .vid-preview-play { opacity: 1; }
 .vid-preview-play span { font-size: 38px; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5)); }
+.upscale-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: rgba(0,0,0,0.55); pointer-events: none; }
+.upscale-overlay span { font-size: 12px; color: #fff; opacity: .85; letter-spacing: .04em; }
 .vid-no-url { width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text3);font-size:12px;gap:6px;padding:12px;text-align:center; }
 .vid-body { padding: 14px; }
 .vid-prompt-wrap { margin-bottom: 10px; }
@@ -920,16 +922,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
           </div>
         </div>
 
-        <!-- Resolution -->
-        <div class="setting-group">
-          <span class="setting-label">Resolution</span>
-          <div class="btn-group" id="res-group">
-            <button class="bg-btn" data-value="480p" onclick="onBtnGroup(this,'res-group');calcCost()">480p</button>
-            <button class="bg-btn active" data-value="720p" onclick="onBtnGroup(this,'res-group');calcCost()">720p</button>
-            <button class="bg-btn" id="res-1080p" data-value="1080p" onclick="onBtnGroup(this,'res-group');calcCost()">1080p</button>
-          </div>
-        </div>
-
         <!-- Aspect Ratio -->
         <div class="setting-group">
           <span class="setting-label">Aspect Ratio</span>
@@ -1056,14 +1048,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
               <button class="bg-btn active" data-value="dreamina-seedance-2-0-260128" onclick="onBtnGroup(this,'ads-model-group')">Standard</button>
               <button class="bg-btn" data-value="dreamina-seedance-2-0-fast-260128" onclick="onBtnGroup(this,'ads-model-group')">Fast</button>
             </div>
-          </div>
-        </div>
-
-        <div class="setting-group">
-          <span class="setting-label">Resolution</span>
-          <div class="btn-group" id="ads-res-group">
-            <button class="bg-btn" data-value="480p" onclick="onBtnGroup(this,'ads-res-group')">480p</button>
-            <button class="bg-btn active" data-value="720p" onclick="onBtnGroup(this,'ads-res-group')">720p</button>
           </div>
         </div>
 
@@ -1331,7 +1315,7 @@ async function createAd() {
   adLogClear();
 
   const model = getBtnGroupValue('ads-model-group') || 'dreamina-seedance-2-0-260128';
-  const res   = getBtnGroupValue('ads-res-group')   || '720p';
+  const res   = '480p';
   const description = document.getElementById('ad-description').value.trim();
 
   try {
@@ -1432,7 +1416,7 @@ async function createAd() {
       const s4 = adLog(`Scene ${i+1}/${scenes.length}: "${scene.name}" — submitting…`, 'run');
 
       try {
-        const [w, h] = (() => { const m = {'9:16':'720x1280','16:9':'1280x720','1:1':'960x960','4:3':'960x720','3:4':'720x960','21:9':'1280x544'}; return ((m[ratio])||'720x1280').split('x').map(Number); })();
+        const [w, h] = (() => { const m = {'9:16':'480x864','16:9':'864x480','1:1':'640x640','4:3':'640x480','3:4':'480x640','21:9':'864x368'}; return ((m[ratio])||'480x864').split('x').map(Number); })();
         const tok = dur * w * h * 24 / 1024;
         const isFast = model.includes('fast');
         const cr = Math.round(tok * (isFast ? 5.6e-6 : 4.3e-6) * 1.3 / 0.033 * 10) / 10;
@@ -1526,10 +1510,12 @@ function pollAd(job) {
 function finishAd(job, url, err) {
   jobs = jobs.filter(j => j.id !== job.id);
   if (err) { toast('Scene failed: ' + friendlyErr(err), 'err'); renderLib(); return; }
-  lib.unshift({ id: job.id, prompt: job.prompt, url, res: job.res, ratio: job.ratio,
-    dur: job.dur, audio: false, model: job.model, ts: job.ts, done: Date.now(), folder: job.folder });
+  const item = { id: job.id, prompt: job.prompt, url, res: job.res, ratio: job.ratio,
+    dur: job.dur, audio: false, model: job.model, ts: job.ts, done: Date.now(), folder: job.folder, upscaling: !!url };
+  lib.unshift(item);
   saveLib(); renderLib(); badge();
-  toast('Scene ready in Library!', 'ok');
+  toast('Scene ready! Upscaling…', 'ok');
+  if (url) upscaleVideo(item);
 }
 
 // ══ IMAGE REFERENCE ════════════════════════════════════════════════════
@@ -1594,15 +1580,6 @@ function getBtnGroupValue(groupId) {
 // ══ SETTINGS ══════════════════════════════════════════════════════════
 function syncRes() {
   const fast = (getBtnGroupValue('model-group') || '').includes('fast');
-  const btn1080 = document.getElementById('res-1080p');
-  if (btn1080) {
-    btn1080.disabled = fast;
-    if (fast && btn1080.classList.contains('active')) {
-      btn1080.classList.remove('active');
-      const first = document.querySelector('#res-group button:not([disabled])');
-      if (first) first.classList.add('active');
-    }
-  }
   const elDur = document.getElementById('s-dur');
   elDur.max = fast ? 10 : 15;
   if (fast && +elDur.value > 10) { elDur.value = 10; setDur(10); }
@@ -1615,7 +1592,7 @@ function setDur(v) {
 }
 function computeVideoCost() {
   const dur   = +document.getElementById('s-dur').value;
-  const res   = getBtnGroupValue('res-group')   || '720p';
+  const res   = '480p';
   const ratio = getBtnGroupValue('ratio-group') || '9:16';
   const hasV  = vidUrl.trim().startsWith('http');
 
@@ -1919,7 +1896,7 @@ async function doGenerate() {
   if (!pt)     return toast('Enter a prompt', 'err');
 
   const model = getBtnGroupValue('model-group') || 'dreamina-seedance-2-0-260128';
-  const res   = getBtnGroupValue('res-group')   || '720p';
+  const res   = '480p';
   const ratio = getBtnGroupValue('ratio-group') || '9:16';
   const dur   = +document.getElementById('s-dur').value;
   const audio = document.getElementById('s-audio').checked;
@@ -2024,10 +2001,65 @@ function friendlyErr(msg) {
 function finish(job, url, err) {
   jobs = jobs.filter(j => j.id !== job.id);
   if (err) { toast(friendlyErr(err), 'err'); renderLib(); return; }
-  lib.unshift({ id: job.id, prompt: job.prompt, url, res: job.res, ratio: job.ratio,
-    dur: job.dur, audio: job.audio, model: job.model, ts: job.ts, done: Date.now() });
+  const item = { id: job.id, prompt: job.prompt, url, res: job.res, ratio: job.ratio,
+    dur: job.dur, audio: job.audio, model: job.model, ts: job.ts, done: Date.now(), upscaling: !!url };
+  lib.unshift(item);
   saveLib(); renderLib(); badge();
-  toast('Video ready! Check your Library.', 'ok');
+  toast('Video ready! Upscaling…', 'ok');
+  if (url) upscaleVideo(item);
+}
+
+// ══ UPSCALE ═══════════════════════════════════════════════════════════
+async function upscaleVideo(item) {
+  try {
+    const r = await fetch('/api/upscale', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+      body: JSON.stringify({ video_url: item.url })
+    });
+    const j = await r.json();
+    if (!r.ok || !j.requestId) throw new Error(j.error || 'submit failed');
+    pollUpscale(item, j.requestId);
+  } catch(e) {
+    console.warn('[upscale] submit error:', e.message);
+    item.upscaling = false;
+    saveLib(); renderLib();
+    toast('Upscale unavailable — original video saved', 'warn');
+  }
+}
+
+function pollUpscale(item, requestId) {
+  let n = 0;
+  const run = async () => {
+    if (++n > 60) {
+      item.upscaling = false;
+      saveLib(); renderLib();
+      toast('Upscale timed out — original video saved', 'warn');
+      return;
+    }
+    try {
+      const r = await fetch('/api/upscale/status?id=' + encodeURIComponent(requestId), {
+        headers: { 'Authorization': 'Bearer ' + authToken }
+      });
+      const d = await r.json();
+      if (d.status === 'COMPLETED' && d.url) {
+        item.url = d.url;
+        item.upscaling = false;
+        item.res = 'Upscaled';
+        saveLib(); renderLib();
+        toast('Video upscaled!', 'ok');
+      } else if (d.status === 'FAILED') {
+        item.upscaling = false;
+        saveLib(); renderLib();
+        toast('Upscale failed — original video saved', 'warn');
+      } else {
+        setTimeout(run, 15000);
+      }
+    } catch(e) {
+      setTimeout(run, 15000);
+    }
+  };
+  setTimeout(run, 10000);
 }
 
 // ══ PROGRESS ══════════════════════════════════════════════════════════
@@ -2433,13 +2465,15 @@ function makeLibCard(item, i) {
   const safeUrl = (item.url || '').replace(/"/g, '&quot;');
   const safePrompt = (item.prompt || '').replace(/`/g, '\\`').replace(/\$/g, '\\$');
   card.innerHTML = `
-    <div class="vid-preview ${cls}" onclick="openLightbox('${safeUrl}',${!isImg})">
+    <div class="vid-preview ${cls}" onclick="${item.upscaling ? '' : `openLightbox('${safeUrl}',${!isImg})`}">
       ${item.url
         ? (isImg
             ? `<img src="${item.url}" alt="">`
             : `<video src="${item.url}" preload="metadata"></video>`)
         : `<div class="vid-no-url">No URL returned<br><small style="font-size:10px;opacity:.6">${item.id?.substring(0,20)}...</small></div>`}
-      ${item.url ? `<div class="vid-preview-play"><span>${isImg ? '🔍' : '▶'}</span></div>` : ''}
+      ${item.upscaling
+        ? `<div class="upscale-overlay"><div class="spin"></div><span>Upscaling…</span></div>`
+        : (item.url ? `<div class="vid-preview-play"><span>${isImg ? '🔍' : '▶'}</span></div>` : '')}
     </div>
     <div class="vid-body">
       <div class="vid-prompt-wrap">
@@ -2447,7 +2481,7 @@ function makeLibCard(item, i) {
         ${(item.prompt||'').length > 120 ? `<span class="vid-prompt-toggle" onclick="togglePrompt(${i})">Show more ▾</span>` : ''}
       </div>
       <div class="vid-tags">
-        <span class="vtag hi">${isImg ? 'Image' : (item.res || '')}</span>
+        <span class="vtag hi">${isImg ? 'Image' : (item.upscaling ? '↑ Upscaling' : (item.res || ''))}</span>
         <span class="vtag">${item.ratio}</span>
         ${!isImg ? `<span class="vtag">${item.dur}s</span>` : ''}
         <span class="vtag">${mod}</span>

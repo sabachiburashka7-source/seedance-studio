@@ -30,6 +30,7 @@ const BREVO_SENDER  = process.env.BREVO_SENDER_EMAIL || '';
 const APP_URL       = process.env.APP_URL || 'http://localhost:3000';
 const STRIPE_KEY    = process.env.STRIPE_SECRET_KEY    || '';
 const STRIPE_WSEC   = process.env.STRIPE_WEBHOOK_SECRET || '';
+const FAL_KEY       = process.env.FAL_API_KEY           || '';
 
 const CREDIT_PACKAGES = {
   starter: { credits: 500,  usdCents:  900, name: '500 Credits'  },
@@ -262,6 +263,32 @@ function claudeApiCall(apiKey, system, messages) {
     req.setTimeout(60000, () => req.destroy(new Error('Claude timeout')));
     req.on('error', reject);
     req.write(body); req.end();
+  });
+}
+
+// ── Fal.ai helper ─────────────────────────────────────────────────────────────
+function falRequest(method, falPath, body) {
+  return new Promise((resolve, reject) => {
+    const bodyBuf = body ? Buffer.from(JSON.stringify(body)) : null;
+    const opts = {
+      hostname: 'queue.fal.run', port: 443, path: falPath, method,
+      headers: {
+        'Authorization': 'Key ' + FAL_KEY,
+        'Content-Type': 'application/json',
+        ...(bodyBuf ? { 'Content-Length': bodyBuf.length } : {})
+      }
+    };
+    const r = https.request(opts, resp => {
+      const ch = []; resp.on('data', c => ch.push(c));
+      resp.on('end', () => {
+        try { resolve({ status: resp.statusCode, body: JSON.parse(Buffer.concat(ch).toString()) }); }
+        catch(e) { reject(new Error('Fal parse error: ' + e.message)); }
+      });
+    });
+    r.setTimeout(30000, () => r.destroy(new Error('Fal timeout')));
+    r.on('error', reject);
+    if (bodyBuf) r.write(bodyBuf);
+    r.end();
   });
 }
 
@@ -1147,6 +1174,51 @@ Match the mood, visual style, and color palette from the ad concept. Write like 
       return sendJSON(res, 200, { scenes: result.scenes, credits: user.credits });
     } catch(e) {
       return sendJSON(res, 502, { error: 'Video prompts failed: ' + e.message });
+    }
+  }
+
+  // ── Fal.ai upscale: submit ───────────────────────────────────────────────────
+  if (url === '/api/upscale' && method === 'POST') {
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
+    if (!FAL_KEY) return sendJSON(res, 503, { error: 'Upscaler not configured' });
+    const { video_url } = await readBody(req);
+    if (!video_url) return sendJSON(res, 400, { error: 'video_url required' });
+    try {
+      const result = await falRequest('POST', '/fal-ai/starlight-fast-2', { video_url, upscale_factor: 2 });
+      const requestId = result.body?.request_id;
+      if (!requestId) {
+        console.error('[fal] submit failed', result.status, JSON.stringify(result.body).substring(0, 200));
+        return sendJSON(res, 502, { error: 'Fal submit failed: ' + (result.body?.detail || result.status) });
+      }
+      console.log('[fal] upscale submitted, request_id:', requestId);
+      return sendJSON(res, 200, { requestId });
+    } catch(e) {
+      console.error('[fal] submit error:', e.message);
+      return sendJSON(res, 502, { error: 'Upscale failed: ' + e.message });
+    }
+  }
+
+  // ── Fal.ai upscale: poll status ──────────────────────────────────────────────
+  if (url.startsWith('/api/upscale/status') && method === 'GET') {
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
+    if (!FAL_KEY) return sendJSON(res, 503, { error: 'Upscaler not configured' });
+    const requestId = new URL('http://x' + url).searchParams.get('id');
+    if (!requestId) return sendJSON(res, 400, { error: 'id required' });
+    try {
+      const statusRes = await falRequest('GET', '/fal-ai/starlight-fast-2/requests/' + encodeURIComponent(requestId) + '/status');
+      const status = statusRes.body?.status;
+      if (status === 'COMPLETED') {
+        const resultRes = await falRequest('GET', '/fal-ai/starlight-fast-2/requests/' + encodeURIComponent(requestId));
+        const videoUrl = resultRes.body?.video?.url || resultRes.body?.output?.video?.url || '';
+        console.log('[fal] upscale complete, url:', videoUrl.substring(0, 80));
+        return sendJSON(res, 200, { status: 'COMPLETED', url: videoUrl });
+      }
+      return sendJSON(res, 200, { status: status || 'IN_QUEUE' });
+    } catch(e) {
+      console.error('[fal] status error:', e.message);
+      return sendJSON(res, 502, { error: 'Status check failed: ' + e.message });
     }
   }
 
