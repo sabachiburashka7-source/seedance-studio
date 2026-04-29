@@ -1185,7 +1185,7 @@ Match the mood, visual style, and color palette from the ad concept. Write like 
     const { video_url } = await readBody(req);
     if (!video_url) return sendJSON(res, 400, { error: 'video_url required' });
     try {
-      const result = await falRequest('POST', '/fal-ai/starlight-fast-2', { video_url, upscale_factor: 2, output_format: 'h264' });
+      const result = await falRequest('POST', '/fal-ai/topaz/upscale/video', { video_url, upscale_factor: 2, H264_output: true });
       const requestId = result.body?.request_id;
       if (!requestId) {
         console.error('[fal] submit failed', result.status, JSON.stringify(result.body).substring(0, 200));
@@ -1207,10 +1207,10 @@ Match the mood, visual style, and color palette from the ad concept. Write like 
     const requestId = new URL('http://x' + url).searchParams.get('id');
     if (!requestId) return sendJSON(res, 400, { error: 'id required' });
     try {
-      const statusRes = await falRequest('GET', '/fal-ai/starlight-fast-2/requests/' + encodeURIComponent(requestId) + '/status');
+      const statusRes = await falRequest('GET', '/fal-ai/topaz/upscale/video/requests/' + encodeURIComponent(requestId) + '/status');
       const status = statusRes.body?.status;
       if (status === 'COMPLETED') {
-        const resultRes = await falRequest('GET', '/fal-ai/starlight-fast-2/requests/' + encodeURIComponent(requestId));
+        const resultRes = await falRequest('GET', '/fal-ai/topaz/upscale/video/requests/' + encodeURIComponent(requestId));
         const videoUrl = resultRes.body?.video?.url || resultRes.body?.output?.video?.url || '';
         console.log('[fal] upscale complete, url:', videoUrl.substring(0, 80));
         return sendJSON(res, 200, { status: 'COMPLETED', url: videoUrl });
