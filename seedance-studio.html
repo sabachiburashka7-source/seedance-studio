@@ -1973,11 +1973,11 @@ function poll(job) {
           || d.outputs?.[0]?.url || d.output?.url || d.result?.url || '';
         finish(job, url, null);
       } else if (status === 'failed' || status === 'error' || status === 'cancelled') {
-        if (d.error?.code === 'OutputAudioSensitiveContentDetected' && job.audio) {
-          retryWithoutAudio(job);
-        } else {
-          finish(job, null, d.error?.message || d.message || 'Status: ' + d.status);
-        }
+        const errCode = d.error?.code || '';
+        const errMsg = errCode === 'OutputAudioSensitiveContentDetected'
+          ? 'BytePlus blocked the audio on this generation (sensitive content filter). Try generating again — the filter is inconsistent and often passes on retry.'
+          : (d.error?.message || d.message || 'Status: ' + d.status);
+        finish(job, null, errMsg);
       } else {
         console.log('[poll] status =', d.status, '— waiting 30s');
         renderLib();
@@ -2002,24 +2002,6 @@ function friendlyErr(msg) {
   return msg;
 }
 
-async function retryWithoutAudio(job) {
-  toast('Audio flagged by BytePlus — retrying without audio…', 'warn');
-  job.audio = false;
-  try {
-    const r = await fetch('/proxy/api/v3/contents/generations/tasks', {
-      method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + key(), 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildPayload(job.model, job.content, false, job.ratio, job.dur, job.wm || false, job.res))
-    });
-    const j = await safeJson(r);
-    const newId = j.id || j.task_id;
-    if (!newId) throw new Error(j.error?.message || 'Retry submit failed');
-    job.id = newId;
-    poll(job);
-  } catch(e) {
-    finish(job, null, 'Audio retry failed: ' + e.message);
-  }
-}
 
 function finish(job, url, err) {
   jobs = jobs.filter(j => j.id !== job.id);
