@@ -876,9 +876,11 @@ async function handleRequest(req, res) {
     }
     msgParts.push({ text: prompt });
 
+    // Embed aspect ratio in prompt — generationConfig doesn't accept aspectRatio/numberOfImages for this model
+    msgParts[msgParts.length - 1].text += ` Output in ${aspectRatio} aspect ratio.`;
     const reqBody = Buffer.from(JSON.stringify({
       contents: [{ parts: msgParts }],
-      generationConfig: { responseModalities: ['IMAGE'], numberOfImages: 1, aspectRatio }
+      generationConfig: { responseModalities: ['IMAGE'] }
     }));
 
     try {
