@@ -799,17 +799,9 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
       <div class="panel" style="margin-bottom:0">
 
         <div class="setting-group">
-          <span class="setting-label">OpenAI API Key</span>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input class="api-input" type="password" id="openai-apikey" placeholder="" oninput="checkOpenAIKey()" autocomplete="off" data-lpignore="true" data-form-type="other" style="flex:1;max-width:100%">
-            <span class="api-pill bad" id="openai-keypill">Not set</span>
-          </div>
-        </div>
-
-        <div class="setting-group">
           <span class="setting-label">Model</span>
           <div class="btn-group" id="img-model-group">
-            <button class="bg-btn active" data-value="gpt-image-1" onclick="onBtnGroup(this,'img-model-group')">GPT Image 2.0</button>
+            <button class="bg-btn active" data-value="gemini-flash" onclick="onBtnGroup(this,'img-model-group')">Gemini Flash</button>
           </div>
         </div>
 
@@ -1026,11 +1018,11 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         </div>
 
         <div class="setting-group">
-          <span class="setting-label">OpenAI API Key</span>
+          <span class="setting-label">Image Generation</span>
           <div style="display:flex;gap:8px;align-items:center">
-            <span class="api-pill" id="ads-openai-pill" style="font-size:11px">—</span>
+            <span class="api-pill ok" style="font-size:11px">✓ Gemini Flash</span>
           </div>
-          <div style="font-size:11px;color:var(--text3);margin-top:5px">Used for reference image generation. Set it in the Image tab.</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:5px">Reference images generated via Gemini Flash (server-side).</div>
         </div>
 
         <div class="setting-group">
@@ -1218,18 +1210,7 @@ function checkKey() {
   else localStorage.removeItem('sd_byteplus_key');
 }
 
-const openaiKey = () => document.getElementById('openai-apikey').value.trim();
-function checkOpenAIKey() {
-  const ok = openaiKey().length > 20;
-  const el = document.getElementById('openai-keypill');
-  el.textContent = ok ? '✓ Set' : 'Not set';
-  el.className   = 'api-pill ' + (ok ? 'ok' : 'bad');
-  // Mirror status to Ads tab pill
-  const ap = document.getElementById('ads-openai-pill');
-  if (ap) { ap.textContent = ok ? '✓ Set' : 'Not set'; ap.className = 'api-pill ' + (ok ? 'ok' : 'bad'); }
-  if (ok) localStorage.setItem('sd_openai_key', openaiKey());
-  else localStorage.removeItem('sd_openai_key');
-}
+function checkOpenAIKey() {} // no-op: image generation now uses server-side Gemini key
 
 // ══ ADS ════════════════════════════════════════════════════════════════
 const anthropicKey = () => document.getElementById('anthropic-apikey').value.trim();
@@ -1305,7 +1286,6 @@ function adLogClear() {
 
 async function createAd() {
   if (!anthropicKey()) return toast('Enter your Anthropic API key in the Ads settings', 'err');
-  if (!openaiKey())    return toast('Enter your OpenAI API key in the Image tab settings', 'err');
   if (!key())          return toast('Enter your BytePlus API key in the Video tab settings', 'err');
   if (!adImages.length) return toast('Upload at least one product image', 'err');
   if (!authToken)      return toast('Sign in to use Ads', 'err');
@@ -1369,14 +1349,12 @@ async function createAd() {
     // ── Step 3: Generate all reference images ──────────────────────────
     const refImages = {}; // key → dataUrl
     const refList = concept.referenceImages || [];
-    const RATIO_TO_SIZE = { '16:9':'1536x1024', '9:16':'1024x1536', '1:1':'1024x1024', '4:3':'1536x1024', '3:4':'1024x1536', '21:9':'1536x1024' };
 
     adLog(`Generating ${refList.length} reference image(s)…`, 'info');
     for (const ref of refList) {
       if (!ref.prompt || !ref.key) continue;
       const s = adLog(`Generating: ${ref.label || ref.key}…`, 'run');
       try {
-        const size = RATIO_TO_SIZE[ref.ratio] || '1024x1024';
         // Product ref: send the actual uploaded image for edit-mode generation
         // All other types (character, environment, prop): text-only generation
         let imageBase64, imageMime;
@@ -1389,15 +1367,15 @@ async function createAd() {
         }
         const ir = await fetch('/api/generate-image', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken, 'x-openai-key': openaiKey() },
-          body: JSON.stringify({ prompt: ref.prompt, size, quality: 'medium', imageBase64, imageMime })
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+          body: JSON.stringify({ prompt: ref.prompt, ratio: ref.ratio || '1:1', quality: 'high', imageBase64, imageMime })
         });
         const ij = await safeJson(ir);
         if (!ir.ok) throw new Error(ij.error || 'Image gen failed');
         if (ij.credits !== undefined) { userCredits = ij.credits; updateCreditsDisplay(); }
         refImages[ref.key] = ij.url;
         lib.unshift({ id: 'ref-' + Date.now() + '-' + ref.key, prompt: ref.prompt, url: ij.url,
-          ratio: ref.ratio || '1:1', model: 'gpt-image-2', ts: Date.now(), done: Date.now(),
+          ratio: ref.ratio || '1:1', model: 'gemini-flash', ts: Date.now(), done: Date.now(),
           type: 'image', folder: concept.adTitle, label: ref.label || ref.key });
         saveLib(); renderLib();
         adLogUpdate(s, `✓ ${ref.label || ref.key}`, 'done');
@@ -1572,7 +1550,7 @@ function goPage(name, btn) {
   document.querySelectorAll('#mobile-tab-strip .mtab').forEach(b =>
     b.classList.toggle('active', b.dataset.page === name));
   if (name === 'library') renderLib();
-  if (name === 'ads') { checkKey(); checkOpenAIKey(); }
+  if (name === 'ads') { checkKey(); }
 }
 
 // ══ BUTTON GROUPS ══════════════════════════════════════════════════════
@@ -2128,34 +2106,23 @@ function hideImgProg() {
   }, 600);
 }
 
-const IMG_RATIO_TO_SIZE = {
-  '9:16':  '1024x1536',
-  '16:9':  '1536x1024',
-  '1:1':   '1024x1024',
-  '4:3':   '1536x1024',
-  '3:4':   '1024x1536',
-  '21:9':  '1536x1024',
-};
-
 async function doGenerateImage() {
-  if (!openaiKey()) return toast('Enter your OpenAI API key in the Image tab settings', 'err');
   const pt = document.getElementById('img-prompt').value.trim();
   if (!pt) return toast('Enter a prompt', 'err');
 
   const ratio   = getBtnGroupValue('img-ratio-group')   || '1:1';
   const quality = getBtnGroupValue('img-quality-group') || 'high';
-  const size    = IMG_RATIO_TO_SIZE[ratio] || '1024x1024';
 
   const btn = document.getElementById('img-gen-btn');
   btn.disabled = true; btn.textContent = 'Generating...';
-  showImgProg('Sending to OpenAI...');
+  showImgProg('Sending to Gemini...');
 
   try {
-    const body = { prompt: pt, size, quality };
+    const body = { prompt: pt, ratio, quality };
     if (imgRefBase64) { body.imageBase64 = imgRefBase64; body.imageMime = imgRefMime; }
     const r = await fetch('/api/generate-image', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-openai-key': openaiKey(), 'Authorization': 'Bearer ' + authToken },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
       body: JSON.stringify(body)
     });
     const j = await safeJson(r);
@@ -2163,7 +2130,7 @@ async function doGenerateImage() {
     if (j.credits !== undefined) { userCredits = j.credits; updateCreditsDisplay(); }
 
     const jobId = 'img-' + Date.now();
-    lib.unshift({ id: jobId, prompt: pt, url: j.url, ratio, model: 'gpt-image-1', ts: Date.now(), done: Date.now(), type: 'image' });
+    lib.unshift({ id: jobId, prompt: pt, url: j.url, ratio, model: 'gemini-flash', ts: Date.now(), done: Date.now(), type: 'image' });
     saveLib(); renderLib(); badge();
     toast('Image ready! Check your Library.', 'ok');
   } catch(e) {
@@ -2648,8 +2615,6 @@ applyMobileMode();
 (function restoreApiKeys() {
   const bp = localStorage.getItem('sd_byteplus_key');
   if (bp) { document.getElementById('apikey').value = bp; checkKey(); }
-  const oa = localStorage.getItem('sd_openai_key');
-  if (oa) { document.getElementById('openai-apikey').value = oa; checkOpenAIKey(); }
   const an = localStorage.getItem('sd_anthropic_key');
   if (an) { document.getElementById('anthropic-apikey').value = an; checkAnthropicKey(); }
 })();

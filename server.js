@@ -849,11 +849,11 @@ async function handleRequest(req, res) {
     return sendJSON(res, 200, { credits: user.credits });
   }
 
-  // ── OpenAI image generation ───────────────────────────────────────────────
+  // ── Gemini image generation ───────────────────────────────────────────────
   if (url === '/api/generate-image' && method === 'POST') {
-    const { prompt, size, quality, imageBase64, imageMime } = await readBody(req); // must read body before any early return
-    const openaiKey = (req.headers['x-openai-key'] || '').trim();
-    if (!openaiKey) return sendJSON(res, 401, { error: 'OpenAI API key required. Enter it in the Image tab.' });
+    const { prompt, ratio, quality, imageBase64, imageMime } = await readBody(req); // must read body before any early return
+    const geminiKey = process.env.GEMINI_API_KEY;
+    if (!geminiKey) return sendJSON(res, 503, { error: 'Image generation not configured on server (GEMINI_API_KEY missing).' });
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to generate images.' });
     const imgCost = quality === 'low' ? 0.5 : 2.5;
@@ -864,72 +864,58 @@ async function handleRequest(req, res) {
     }
     if (!prompt) return sendJSON(res, 400, { error: 'Prompt required' });
 
+    // Gemini supports: 1:1, 3:4, 4:3, 9:16, 16:9 — map unsupported ratios to closest
+    const RATIO_MAP = { '21:9': '16:9' };
+    const aspectRatio = RATIO_MAP[ratio] || ratio || '1:1';
     const useEdit = !!imageBase64;
-    console.log('[openai-image]', useEdit ? 'editing' : 'generating:', size, quality, prompt.substring(0, 80));
+    console.log('[gemini-image]', useEdit ? 'editing' : 'generating:', aspectRatio, quality, prompt.substring(0, 80));
 
-    let body, contentType;
-    if (useEdit) {
-      const boundary = '----OAIBoundary' + Date.now().toString(16);
-      contentType = 'multipart/form-data; boundary=' + boundary;
-      const imgBuf  = Buffer.from(imageBase64, 'base64');
-      const mime    = imageMime || 'image/png';
-      const ext     = mime.split('/')[1] || 'png';
-      const parts   = [];
-      const field = (name, value) =>
-        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`);
-      parts.push(field('model',   'gpt-image-2'));
-      parts.push(field('prompt',  prompt));
-      parts.push(field('n',       '1'));
-      parts.push(field('size',    size || '1024x1024'));
-      parts.push(field('quality', quality || 'high'));
-      parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="reference.${ext}"\r\nContent-Type: ${mime}\r\n\r\n`));
-      parts.push(imgBuf);
-      parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
-      body = Buffer.concat(parts);
-    } else {
-      contentType = 'application/json';
-      body = Buffer.from(JSON.stringify({ model: 'gpt-image-2', prompt, n: 1, size: size || '1024x1024', quality: quality || 'high' }));
+    const msgParts = [];
+    if (useEdit && imageBase64) {
+      msgParts.push({ inlineData: { mimeType: imageMime || 'image/jpeg', data: imageBase64 } });
     }
+    msgParts.push({ text: prompt });
+
+    const reqBody = Buffer.from(JSON.stringify({
+      contents: [{ parts: msgParts }],
+      generationConfig: { responseModalities: ['IMAGE'], numberOfImages: 1, aspectRatio }
+    }));
 
     try {
       const result = await new Promise((resolve, reject) => {
+        const model = 'gemini-2.0-flash-preview-image-generation';
         const opts = {
-          hostname: 'api.openai.com', port: 443,
-          path: useEdit ? '/v1/images/edits' : '/v1/images/generations', method: 'POST',
-          headers: {
-            'Authorization':  'Bearer ' + openaiKey,
-            'Content-Type':   contentType,
-            'Content-Length': body.length,
-          }
+          hostname: 'generativelanguage.googleapis.com', port: 443,
+          path: `/v1beta/models/${model}:generateContent?key=${geminiKey}`, method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Content-Length': reqBody.length }
         };
         const r = https.request(opts, resp => {
           const ch = [];
           resp.on('data', c => ch.push(c));
           resp.on('end', () => {
             const raw = Buffer.concat(ch).toString();
-            if (!raw) { reject(new Error(`OpenAI returned empty body (HTTP ${resp.statusCode})`)); return; }
+            if (!raw) { reject(new Error(`Gemini returned empty body (HTTP ${resp.statusCode})`)); return; }
             try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
-            catch(e) { reject(new Error(`OpenAI non-JSON response (HTTP ${resp.statusCode}): ${raw.substring(0, 200)}`)); }
+            catch(e) { reject(new Error(`Gemini non-JSON response (HTTP ${resp.statusCode}): ${raw.substring(0, 200)}`)); }
           });
         });
-        r.setTimeout(55000, () => { r.destroy(); reject(new Error('OpenAI request timed out after 55s')); });
+        r.setTimeout(55000, () => { r.destroy(); reject(new Error('Gemini request timed out after 55s')); });
         r.on('error', reject);
-        r.write(body); r.end();
+        r.write(reqBody); r.end();
       });
 
       if (result.status !== 200) {
         const errMsg = result.body?.error?.message || JSON.stringify(result.body).substring(0, 400);
-        console.error('[openai-image] error', result.status, errMsg);
+        console.error('[gemini-image] error', result.status, errMsg);
         return sendJSON(res, result.status >= 400 && result.status < 600 ? result.status : 500, { error: errMsg });
       }
 
-      const imgData = result.body.data?.[0];
-      if (!imgData) return sendJSON(res, 500, { error: 'No image data returned by OpenAI' });
+      const imgPart = result.body.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+      if (!imgPart) return sendJSON(res, 500, { error: 'No image data returned by Gemini' });
 
-      const dataUrl = imgData.b64_json
-        ? 'data:image/png;base64,' + imgData.b64_json
-        : imgData.url || '';
-      console.log('[openai-image] done, dataUrl length:', dataUrl.length);
+      const mime = imgPart.inlineData.mimeType || 'image/jpeg';
+      const dataUrl = `data:${mime};base64,${imgPart.inlineData.data}`;
+      console.log('[gemini-image] done, dataUrl length:', dataUrl.length);
       const db2  = loadDB();
       const usr2 = db2.users[sess.userId];
       const cur2 = usr2.credits ?? 1000;
@@ -937,8 +923,8 @@ async function handleRequest(req, res) {
       saveDB(db2);
       return sendJSON(res, 200, { url: dataUrl, credits: usr2.credits });
     } catch(e) {
-      console.error('[openai-image] request error:', e.message);
-      return sendJSON(res, 502, { error: 'OpenAI request failed: ' + e.message });
+      console.error('[gemini-image] request error:', e.message);
+      return sendJSON(res, 502, { error: 'Gemini request failed: ' + e.message });
     }
   }
 
