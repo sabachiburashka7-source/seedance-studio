@@ -2448,7 +2448,7 @@ async function loadLib(userId) {
     const r = await fetch('/library', { headers: { 'Authorization': 'Bearer ' + authToken } });
     if (r.ok) {
       const j = await r.json();
-      if (Array.isArray(j.library)) { lib = j.library; return; }
+      if (Array.isArray(j.library)) { lib = j.library; clearStuckUpscaling(); return; }
       console.warn('loadLib: unexpected server response', j);
     } else {
       console.warn('loadLib: server returned', r.status, '— falling back to localStorage');
@@ -2457,6 +2457,13 @@ async function loadLib(userId) {
   // Fallback
   try { lib = JSON.parse(localStorage.getItem('sd_lib_' + userId) || '[]'); }
   catch { lib = []; }
+  clearStuckUpscaling();
+}
+
+function clearStuckUpscaling() {
+  let changed = false;
+  lib.forEach(item => { if (item.upscaling) { item.upscaling = false; changed = true; } });
+  if (changed) saveLib();
 }
 
 function badge() {
