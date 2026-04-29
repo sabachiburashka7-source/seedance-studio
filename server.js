@@ -266,14 +266,25 @@ function claudeApiCall(apiKey, system, messages) {
   });
 }
 
-// ── Claude JSON parser (strips markdown fences, falls back to brace extraction) ─
+// ── Claude JSON parser (strips markdown fences, escapes literal newlines in strings) ─
+function sanitizeJsonNewlines(s) {
+  // Escape literal \r and \n that appear inside JSON string values
+  return s.replace(/"(?:[^"\\]|\\.|\n|\r)*"/g, m =>
+    m.replace(/\r\n/g, '\\n').replace(/\r/g, '\\n').replace(/\n/g, '\\n')
+  );
+}
 function safeParseClaudeJSON(text) {
   const t = (text || '').trim();
+  // 1. Direct parse
   try { return JSON.parse(t); } catch {}
+  // 2. Strip markdown code fences (\r\n-aware)
   const stripped = t.replace(/^```[a-z]*\r?\n?/i, '').replace(/\r?\n?```\s*$/i, '').trim();
   try { return JSON.parse(stripped); } catch {}
+  // 3. Sanitize literal newlines inside string values, then try again
+  try { return JSON.parse(sanitizeJsonNewlines(stripped)); } catch {}
+  // 4. Extract first {...} block and sanitize
   const s = t.indexOf('{'), e = t.lastIndexOf('}');
-  if (s !== -1 && e > s) { try { return JSON.parse(t.slice(s, e + 1)); } catch {} }
+  if (s !== -1 && e > s) { try { return JSON.parse(sanitizeJsonNewlines(t.slice(s, e + 1))); } catch {} }
   return null;
 }
 
@@ -1175,7 +1186,7 @@ ByteDance's content filter rejects prompts containing brand names, trademarks, l
 - NEVER reference song titles, film titles, or other IP
 - Describe clothing, products, environments by visual characteristics only: colors, shapes, textures, materials
 
-Output ONLY valid JSON (no markdown, no code fences):
+Output ONLY valid JSON (no markdown, no code fences). All string values must be single-line — use the two-character sequence \\n (backslash + n) for line breaks inside strings, never actual newline characters:
 {
   "scenes": [
     {
