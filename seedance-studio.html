@@ -1380,7 +1380,8 @@ async function createAd() {
         saveLib(); renderLib();
         adLogUpdate(s, `✓ ${ref.label || ref.key}`, 'done');
       } catch(e) {
-        adLogUpdate(s, `${ref.label || ref.key} failed (skipping): ${e.message}`, 'err');
+        adLogUpdate(s, `${ref.label || ref.key} failed: ${e.message}`, 'err');
+        throw e;
       }
     }
 
@@ -1445,7 +1446,7 @@ async function createAd() {
         adLogUpdate(s4, prevVideoUrl ? `Scene ${i+1} "${scene.name}" ✓` : `Scene ${i+1} "${scene.name}" failed`, prevVideoUrl ? 'done' : 'err');
       } catch(e) {
         adLogUpdate(s4, `Scene ${i+1} failed: ${e.message}`, 'err');
-        prevVideoUrl = null;
+        throw e;
       }
     }
 
