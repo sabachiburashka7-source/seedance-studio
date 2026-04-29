@@ -1951,7 +1951,7 @@ async function doGenerate() {
     if (!taskId) throw new Error(j.error?.message || j.error?.code || JSON.stringify(j).substring(0, 400));
 
     toast('Task submitted! Polling for result...', 'ok');
-    const job = { id: taskId, prompt: pt, model, res, ratio, dur, audio, wm, content, ts: Date.now(), status: 'running' };
+    const job = { id: taskId, prompt: pt, model, res, ratio, dur, audio, wm, content, cr: creditsNeeded, ts: Date.now(), status: 'running' };
     jobs.push(job);
     poll(job);
 
@@ -1984,10 +1984,12 @@ function poll(job) {
         finish(job, url, null);
       } else if (status === 'failed' || status === 'error' || status === 'cancelled') {
         const errCode = d.error?.code || '';
-        const errMsg = errCode === 'OutputAudioSensitiveContentDetected'
-          ? 'BytePlus blocked the audio on this generation (sensitive content filter). Try generating again — the filter is inconsistent and often passes on retry.'
-          : (d.error?.message || d.message || 'Status: ' + d.status);
-        finish(job, null, errMsg);
+        if (errCode === 'OutputAudioSensitiveContentDetected') {
+          refundCredits(job.cr);
+          finish(job, null, 'BytePlus blocked the audio on this generation — credits refunded. Try again, the filter is inconsistent and often passes on retry.');
+        } else {
+          finish(job, null, d.error?.message || d.message || 'Status: ' + d.status);
+        }
       } else {
         console.log('[poll] status =', d.status, '— waiting 30s');
         renderLib();
@@ -1999,6 +2001,19 @@ function poll(job) {
     }
   };
   setTimeout(run, 8000); // first check after 8s
+}
+
+async function refundCredits(amount) {
+  if (!amount || amount <= 0) return;
+  try {
+    const r = await fetch('/api/refund-credits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+      body: JSON.stringify({ amount })
+    });
+    const j = await r.json();
+    if (j.credits !== undefined) { userCredits = j.credits; updateCreditsDisplay(); }
+  } catch(e) { console.warn('[refund] failed:', e.message); }
 }
 
 function friendlyErr(msg) {

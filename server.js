@@ -800,6 +800,19 @@ async function handleRequest(req, res) {
     return sendJSON(res, 200, { credits: db.users[sess.userId].credits ?? 1000 });
   }
 
+  if (url === '/api/refund-credits' && method === 'POST') {
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
+    const { amount } = await readBody(req);
+    if (!amount || amount <= 0) return sendJSON(res, 400, { error: 'Invalid amount' });
+    const db = loadDB();
+    const user = db.users[sess.userId];
+    user.credits = Math.round(((user.credits ?? 0) + amount) * 100) / 100;
+    saveDB(db);
+    console.log('[refund] +' + amount + ' credits → user ' + sess.userId + ' (total: ' + user.credits + ')');
+    return sendJSON(res, 200, { credits: user.credits });
+  }
+
   if (url === '/api/deduct-credits' && method === 'POST') {
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
