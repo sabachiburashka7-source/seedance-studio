@@ -1041,8 +1041,9 @@ After working through all phases internally, output ONLY valid JSON (no markdown
   "referenceImages": [
     {
       "key": "unique_snake_case_key",
-      "label": "Human-readable label (e.g. Main character — front/side/back sheet)",
-      "prompt": "Detailed image generation prompt. Be specific about style, lighting, background, angles, mood. This goes directly to an image generator.",
+      "label": "Human-readable label",
+      "type": "product | character | environment | prop",
+      "prompt": "See prompt rules below",
       "ratio": "1:1 or 16:9 or 9:16"
     }
   ],
@@ -1059,7 +1060,12 @@ After working through all phases internally, output ONLY valid JSON (no markdown
 }
 
 RULES:
-- referenceImages: generate ALL needed refs — product angles, character sheets (front/side/back on white), environments, key props, lifestyle shots. Each must have a detailed, specific image generation prompt.
+- referenceImages: generate ALL needed refs — one product sheet, all character sheets, all environments, key props.
+- type field rules:
+  • "product" — exactly ONE entry with type "product". The user's actual product photo will be sent to the image generator. Your prompt should be SIMPLE: just request a clean reference sheet showing the product from multiple angles (e.g. "Product reference sheet. Front, side and back views on pure white background. Clean studio lighting. Product label and details clearly visible. Annotation lines pointing to key features."). Do NOT describe the product in the prompt — the image will already contain it.
+  • "character" — for each human or animal character. Prompt MUST be a detailed professional character reference sheet: full-body front/side/back panels on white background, clothing and accessories annotated, face close-up panel, skin/hair/eye color swatches, consistent lighting. Label format "CHAR ID: 001 STUDY 1". Include: age, build, expression, exact clothing colors, hairstyle. End with: "Character reference sheet, professional illustration format. No cartoon, no anime, no caricature. Photorealistic."
+  • "environment" — for each distinct location/setting. Prompt MUST be a detailed environment reference sheet with multiple panel layout (wide establishing shot, medium shot, close-up details), annotations pointing to key surfaces/materials/lighting. Label format "ENV ID: 001 STUDY 1". Specify: time of day, weather/light quality, architectural style, materials (brick, concrete, wood etc.), color palette, mood adjectives. End with: "Environment reference sheet, professional format. Photorealistic, shot on Canon R5. No illustration, no cartoon, no 3D render."
+  • "prop" — for important objects/products other than the hero product. Detailed prompt showing the object from multiple angles, materials labeled, scale reference.
 - scenes: 3-6 scenes. Each duration MUST be between 4 and 10 seconds (maximum 10). Total ad 20-50 seconds.
 - ratio must be one of: 9:16, 16:9, 1:1, 4:3, 3:4, 21:9
 - Every scene description must name which refImageKeys it needs
