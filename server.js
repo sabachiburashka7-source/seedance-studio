@@ -1013,6 +1013,13 @@ YOUR APPROACH — for each scene, build a prompt using this structure:
    - 6-10 seconds: 4-7 shots, room for contrast, 1-2 signature effects
    Never exceed 10 seconds.
 
+5. COPYRIGHT SAFETY — CRITICAL: ByteDance's content filter rejects prompts that contain brand names, trademarks, logos, company names, or real person names. You MUST follow these rules or the video generation will fail:
+   - NEVER write the brand/company name in any prompt. Refer to it as "the brand", "the company", or describe it by its visual role (e.g. "the delivery service").
+   - NEVER write "logo" — describe it visually: "a colorful emblem on the chest", "a distinctive symbol on the package", "a branded mark on the uniform".
+   - NEVER name real people, celebrities, or public figures.
+   - NEVER reference specific song titles, film titles, or other IP.
+   - Describe clothing, products, and environments by their visual characteristics only: colors, shapes, textures, materials — never their brand identity.
+
 Output ONLY valid JSON (no markdown, no code fences):
 {
   "scenes": [

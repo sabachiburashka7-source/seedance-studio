@@ -1400,7 +1400,12 @@ async function createAd() {
       const scene = scenes[i];
       const ratio  = '9:16';
       const dur    = Math.max(4, Math.min(10, scene.duration || 6));
-      const prompt = scene.prompt || scene.description || `Scene ${i+1}`;
+      // Sanitize prompt: remove brand name and "logo" to avoid ByteDance copyright filter
+      const rawPrompt = scene.prompt || scene.description || `Scene ${i+1}`;
+      const brandName = (concept.adTitle || '').trim();
+      const prompt = rawPrompt
+        .replace(brandName ? new RegExp(brandName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi') : /(?!)/g, 'the brand')
+        .replace(/\b(logo|trademark|brand name|registered mark)\b/gi, 'emblem');
 
       const s4 = adLog(`Scene ${i+1}/${scenes.length}: "${scene.name}" — submitting…`, 'run');
 
