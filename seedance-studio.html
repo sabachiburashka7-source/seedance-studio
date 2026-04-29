@@ -1365,6 +1365,10 @@ async function createAd() {
         if (!ir.ok) throw new Error(ij.error || 'Image gen failed');
         if (ij.credits !== undefined) { userCredits = ij.credits; updateCreditsDisplay(); }
         refImages[ref.key] = ij.url;
+        lib.unshift({ id: 'ref-' + Date.now() + '-' + ref.key, prompt: ref.prompt, url: ij.url,
+          ratio: ref.ratio || '1:1', model: 'gpt-image-1', ts: Date.now(), done: Date.now(),
+          type: 'image', folder: concept.adTitle, label: ref.label || ref.key });
+        saveLib(); renderLib();
         adLogUpdate(s, `✓ ${ref.label || ref.key}`, 'done');
       } catch(e) {
         adLogUpdate(s, `${ref.label || ref.key} failed (skipping): ${e.message}`, 'err');
