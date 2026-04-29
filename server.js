@@ -1186,31 +1186,30 @@ ByteDance's content filter rejects prompts containing brand names, trademarks, l
 - NEVER reference song titles, film titles, or other IP
 - Describe clothing, products, environments by visual characteristics only: colors, shapes, textures, materials
 
-Output ONLY valid JSON (no markdown, no code fences). Put each line of the shot prompt as a SEPARATE STRING in the "promptLines" array — one array element per line, no embedded newlines inside any string:
-{
-  "scenes": [
-    {
-      "number": 1,
-      "name": "Scene name",
-      "promptLines": [
-        "SHOT 1 (0:00-0:02) — Shot Name",
-        "• EFFECT: primary effect + secondary effect",
-        "• What is visually happening",
-        "• Camera behaviour",
-        "• How this shot exits",
-        "SHOT 2 (0:02-0:04) — Shot Name",
-        "• EFFECT: ...",
-        "EFFECTS DENSITY: 0-2s HIGH, 2-4s MEDIUM",
-        "ENERGY ARC: Opening energy → signature peak → resolution"
-      ],
-      "useRefImages": ["key1", "key2"],
-      "ratio": "9:16",
-      "duration": 6
-    }
-  ]
-}
+## OUTPUT FORMAT — FOLLOW EXACTLY
 
-Match the mood, visual style, and color palette from the ad concept. Write like a director's shot notes — direct, technical, specific. No hype language. Describe what happens and let the visuals speak.`;
+Output in two parts with no extra text before or after:
+
+PART 1 — one line of compact JSON (no line breaks inside the JSON):
+SCENES_META: [{"number":1,"name":"Scene name","useRefImages":["key1","key2"],"ratio":"9:16","duration":6},{"number":2,...}]
+
+PART 2 — each scene's full prompt text, wrapped in tags (use the scene number from above):
+<scene_1>
+SHOT 1 (0:00-0:03) — Shot Name
+• EFFECT: primary effect + secondary effect
+• What is visually happening
+• Camera behaviour
+• How this shot exits
+SHOT 2 (0:03-0:06) — Shot Name
+• EFFECT: ...
+EFFECTS DENSITY: 0-3s HIGH, 3-6s MEDIUM
+ENERGY ARC: Opening energy → signature peak → resolution
+</scene_1>
+<scene_2>
+...
+</scene_2>
+
+Match the mood, visual style, and color palette from the ad concept. Write like a director's shot notes — direct, technical, specific. No hype language.`;
 
     try {
       const claudeRes = await claudeApiCall(anthropicKey, system, [{ role: 'user', content: userContent }]);
@@ -1219,14 +1218,17 @@ Match the mood, visual style, and color palette from the ad concept. Write like 
         return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
       }
       const text = claudeRes.body?.content?.[0]?.text || '';
-      const result = safeParseClaudeJSON(text);
-      if (!result) return sendJSON(res, 502, { error: 'Claude returned invalid JSON: ' + text.substring(0, 200) });
 
-      // Join promptLines array into a single prompt string for the frontend/BytePlus
-      const scenes = (result.scenes || []).map(s => ({
-        ...s,
-        prompt: Array.isArray(s.promptLines) ? s.promptLines.join('\n') : (s.prompt || '')
-      }));
+      // Parse hybrid format: "SCENES_META: [...]" line + <scene_N>...</scene_N> blocks
+      const metaLine = text.match(/SCENES_META:\s*(\[[\s\S]*?\])/);
+      if (!metaLine) return sendJSON(res, 502, { error: 'Claude response missing SCENES_META line. Raw: ' + text.substring(0, 300) });
+      let metaArr;
+      try { metaArr = JSON.parse(metaLine[1]); } catch(e) { return sendJSON(res, 502, { error: 'SCENES_META JSON invalid: ' + e.message + '. Raw: ' + metaLine[1].substring(0, 200) }); }
+
+      const scenes = metaArr.map(s => {
+        const m = text.match(new RegExp('<scene_' + s.number + '>([\\s\\S]*?)<\\/scene_' + s.number + '>'));
+        return { ...s, prompt: m ? m[1].trim() : '' };
+      });
 
       user.credits = Math.round((cur - PROMPTS_COST) * 100) / 100;
       saveDB(db);
