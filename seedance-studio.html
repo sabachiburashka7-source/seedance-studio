@@ -1377,7 +1377,7 @@ async function createAd() {
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken, 'x-openai-key': openaiKey() },
           body: JSON.stringify({ prompt: ref.prompt, size, quality: 'low', imageBase64, imageMime })
         });
-        const ij = await ir.json();
+        const ij = await safeJson(ir);
         if (!ir.ok) throw new Error(ij.error || 'Image gen failed');
         if (ij.credits !== undefined) { userCredits = ij.credits; updateCreditsDisplay(); }
         refImages[ref.key] = ij.url;

@@ -829,11 +829,11 @@ async function handleRequest(req, res) {
 
   // ── OpenAI image generation ───────────────────────────────────────────────
   if (url === '/api/generate-image' && method === 'POST') {
+    const { prompt, size, quality, imageBase64, imageMime } = await readBody(req); // must read body before any early return
     const openaiKey = (req.headers['x-openai-key'] || '').trim();
     if (!openaiKey) return sendJSON(res, 401, { error: 'OpenAI API key required. Enter it in the Image tab.' });
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to generate images.' });
-    const { prompt, size, quality, imageBase64, imageMime } = await readBody(req);
     const imgCost = quality === 'low' ? 0.5 : 2.5;
     {
       const db  = loadDB();
@@ -884,10 +884,13 @@ async function handleRequest(req, res) {
           const ch = [];
           resp.on('data', c => ch.push(c));
           resp.on('end', () => {
-            try { resolve({ status: resp.statusCode, body: JSON.parse(Buffer.concat(ch).toString()) }); }
-            catch(e) { reject(new Error('OpenAI parse error: ' + e.message)); }
+            const raw = Buffer.concat(ch).toString();
+            if (!raw) { reject(new Error(`OpenAI returned empty body (HTTP ${resp.statusCode})`)); return; }
+            try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
+            catch(e) { reject(new Error(`OpenAI non-JSON response (HTTP ${resp.statusCode}): ${raw.substring(0, 200)}`)); }
           });
         });
+        r.setTimeout(55000, () => { r.destroy(); reject(new Error('OpenAI request timed out after 55s')); });
         r.on('error', reject);
         r.write(body); r.end();
       });
