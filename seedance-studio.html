@@ -313,11 +313,11 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
   transition: transform 0.22s, box-shadow 0.22s, border-color 0.22s;
 }
 .vid-card:hover { transform: translateY(-3px); box-shadow: 0 16px 48px rgba(0,0,0,0.5); border-color: rgba(124,110,247,0.22); }
-.vid-preview { width: 100%; aspect-ratio: 16/9; background: var(--surface2); overflow: hidden; }
-.vid-preview.v916 { aspect-ratio: 9/16; }
-.vid-preview.v11  { aspect-ratio: 1/1; }
-.vid-preview video { width: 100%; height: 100%; object-fit: contain; background: #000; }
-.vid-preview img  { width: 100%; height: 100%; object-fit: contain; background: #000; }
+.vid-preview { position: relative; width: 100%; padding-bottom: 56.25%; background: var(--surface2); overflow: hidden; }
+.vid-preview.v916 { padding-bottom: 177.78%; }
+.vid-preview.v11  { padding-bottom: 100%; }
+.vid-preview video, .vid-preview img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.vid-preview .vid-no-url { position: absolute; inset: 0; }
 .vid-no-url { width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text3);font-size:12px;gap:6px;padding:12px;text-align:center; }
 .vid-body { padding: 14px; }
 .vid-prompt { font-size: 13px; line-height: 1.55; color: var(--text2); margin-bottom: 10px; word-break: break-word; }
@@ -2407,18 +2407,35 @@ const libFolderState = {}; // folderName → collapsed bool
 
 function renderPending() {
   badge();
-  const pl = document.getElementById('pend-list'); pl.innerHTML = '';
+  const pl = document.getElementById('pend-list');
+  const existingIds = new Set([...pl.querySelectorAll('.pend-card')].map(el => el.dataset.jobid));
+  const currentIds  = new Set(jobs.map(j => j.id));
+
+  // Remove cards for finished jobs
+  pl.querySelectorAll('.pend-card').forEach(el => {
+    if (!currentIds.has(el.dataset.jobid)) el.remove();
+  });
+
   jobs.forEach(j => {
-    const sec = Math.floor((Date.now()-j.ts)/1000);
-    const div = document.createElement('div'); div.className = 'pend-card';
-    const folderTag = j.folder ? `<span class="badge" style="background:rgba(124,110,247,0.15);color:var(--accent2);margin-left:4px">${j.folder}</span>` : '';
-    div.innerHTML = `<div class="spin"></div>
-      <div class="pend-info">
-        <div class="pend-prompt">${j.prompt.substring(0,70)}${j.prompt.length>70?'...':''}${folderTag}</div>
-        <div class="pend-meta">${j.res} · ${j.ratio} · ${j.dur}s · ${Math.floor(sec/60)}m ${sec%60}s</div>
-      </div>
-      <span class="badge badge-run">Running</span>`;
-    pl.appendChild(div);
+    const sec = Math.floor((Date.now() - j.ts) / 1000);
+    const timeStr = `${Math.floor(sec/60)}m ${sec%60}s`;
+    let card = pl.querySelector(`.pend-card[data-jobid="${j.id}"]`);
+    if (!card) {
+      // First time — create the card
+      card = document.createElement('div');
+      card.className = 'pend-card';
+      card.dataset.jobid = j.id;
+      const folderTag = j.folder ? `<span class="badge" style="background:rgba(124,110,247,0.15);color:var(--accent2);margin-left:4px">${j.folder}</span>` : '';
+      card.innerHTML = `<div class="spin"></div>
+        <div class="pend-info">
+          <div class="pend-prompt">${j.prompt.substring(0,70)}${j.prompt.length>70?'...':''}${folderTag}</div>
+          <div class="pend-meta" data-meta></div>
+        </div>
+        <span class="badge badge-run">Running</span>`;
+      pl.appendChild(card);
+    }
+    // Always update only the timer text — no DOM thrash
+    card.querySelector('[data-meta]').textContent = `${j.res} · ${j.ratio} · ${j.dur}s · ${timeStr}`;
   });
 }
 
