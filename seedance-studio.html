@@ -1295,7 +1295,7 @@ async function createAd() {
   adLogClear();
 
   const model = getBtnGroupValue('ads-model-group') || 'dreamina-seedance-2-0-260128';
-  const res   = '720p';
+  const res   = '480p';
   const description = document.getElementById('ad-description').value.trim();
 
   try {
@@ -1422,7 +1422,6 @@ async function createAd() {
     // ── Step 4: Submit video generation for each scene (sequential so each
     //           completed video can be used as reference_video for the next) ──
     const folder = concept.adTitle || ('Ad ' + new Date().toLocaleDateString());
-    let prevVideoUrl = null;
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i];
       const ratio  = '9:16';
@@ -1437,7 +1436,7 @@ async function createAd() {
       const s4 = adLog(`Scene ${i+1}/${scenes.length}: "${scene.name}" — submitting…`, 'run');
 
       try {
-        const [w, h] = (() => { const m = {'9:16':'720x1280','16:9':'1280x720','1:1':'960x960','4:3':'960x720','3:4':'720x960','21:9':'1280x544'}; return ((m[ratio])||'720x1280').split('x').map(Number); })();
+        const [w, h] = (() => { const m = {'9:16':'480x864','16:9':'864x480','1:1':'640x640','4:3':'640x480','3:4':'480x640','21:9':'864x368'}; return ((m[ratio])||'480x864').split('x').map(Number); })();
         const tok = dur * w * h * 24 / 1024;
         const isFast = model.includes('fast');
         const cr = Math.round(tok * (isFast ? 5.6e-6 : 4.3e-6) * 1.3 / 0.033 * 10) / 10;
@@ -1466,10 +1465,6 @@ async function createAd() {
             content.push({ type: 'image_url', image_url: { url: softenedUrl }, role: 'reference_image' });
           }
         }
-        if (prevVideoUrl) {
-          content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
-        }
-
         const payload = buildPayload(model, content, false, ratio, dur, false, res);
         const r4 = await fetch('/proxy/api/v3/contents/generations/tasks', {
           method: 'POST',
@@ -1482,9 +1477,9 @@ async function createAd() {
 
         const job = { id: taskId, prompt, model, res, ratio, dur, audio: false, ts: Date.now(), status: 'running', folder };
         jobs.push(job);
-        adLogUpdate(s4, `Scene ${i+1} "${scene.name}" generating${prevVideoUrl ? ' (using scene ' + i + ' as reference)' : ''}…`, 'run');
-        prevVideoUrl = await pollAd(job);
-        adLogUpdate(s4, prevVideoUrl ? `Scene ${i+1} "${scene.name}" ✓` : `Scene ${i+1} "${scene.name}" failed`, prevVideoUrl ? 'done' : 'err');
+        adLogUpdate(s4, `Scene ${i+1} "${scene.name}" generating…`, 'run');
+        await pollAd(job);
+        adLogUpdate(s4, `Scene ${i+1} "${scene.name}" ✓`, 'done');
       } catch(e) {
         adLogUpdate(s4, `Scene ${i+1} failed: ${e.message}`, 'err');
         throw e;
