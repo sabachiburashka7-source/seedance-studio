@@ -137,13 +137,19 @@ Browser ad blockers (uBlock Origin, EasyList, AdGuard, etc.) match URL paths con
 All core features working and deployed:
 - Auth (register, login, logout, email verify via Brevo)
 - Video generation (text-to-video, image-to-video) via BytePlus proxy
-- Image generation via OpenAI GPT Image 2.0 (user-supplied key in UI)
-- Library (save/delete generated videos + images, per user, synced to Redis) — now supports folder grouping
+- Image generation via Gemini Flash (user-supplied OpenAI-compatible key in UI)
+- Library (save/delete generated videos + images, per user, synced to Redis) — supports folder grouping
 - Mobile/desktop UI toggle with auto-detection
 - Professional dark UI with button groups for model/resolution/ratio settings
 - Redis data safety (redisReady flag + 12s timeout)
 - Messenger link fix (strips tracking params)
 - Cold start session retry (no more phantom logouts)
-- Canvas softening pipeline — AI-generated portraits (incl. photorealistic reference sheets) now pass ByteDance's real-person classifier
-- **Ads tab** — full AI ad creation pipeline (Claude brainstorm → OpenAI ref images → Claude video prompts → BytePlus scenes → Library folder); endpoints `/api/gen/brief` + `/api/gen/shots` (renamed away from `/api/ads/*` to avoid ad-blocker blocks)
-- **Ads shots parsing fixed** — `/api/gen/shots` uses hybrid text format (SCENES_META JSON line + `<scene_N>` text tags) to avoid Claude embedding literal newlines and unescaped quotes inside JSON strings; SCENES_META parsed with bracket-balancing to handle nested `useRefImages` arrays
+- Canvas softening pipeline — AI-generated portraits pass ByteDance's real-person classifier
+- **Ads tab** — full AI ad creation pipeline:
+  1. Claude brainstorm → concept JSON with referenceImages + scenes
+  2. OpenAI generates all reference images (character sheets, product angles, environments)
+  3. Claude writes shot-by-shot video prompts; SCENES_META includes `startingImagePrompt` per scene
+  4. OpenAI generates one starting frame image per scene (I2V first frame); saved to Library
+  5. BytePlus generates each scene video (starting frame + text prompt + ref images → I2V); saved to Library folder
+- **Ads shots parsing** — hybrid format (SCENES_META JSON + `<scene_N>` text tags); bracket-balancing parser; `startingImagePrompt` is a short single-line field safe to embed in JSON
+- **Ad-blocker safety** — all endpoints use neutral names (`/api/gen/brief`, `/api/gen/shots`) — never `/ads/`
