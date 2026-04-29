@@ -266,6 +266,17 @@ function claudeApiCall(apiKey, system, messages) {
   });
 }
 
+// ── Claude JSON parser (strips markdown fences, falls back to brace extraction) ─
+function safeParseClaudeJSON(text) {
+  const t = (text || '').trim();
+  try { return JSON.parse(t); } catch {}
+  const stripped = t.replace(/^```[a-z]*\r?\n?/i, '').replace(/\r?\n?```\s*$/i, '').trim();
+  try { return JSON.parse(stripped); } catch {}
+  const s = t.indexOf('{'), e = t.lastIndexOf('}');
+  if (s !== -1 && e > s) { try { return JSON.parse(t.slice(s, e + 1)); } catch {} }
+  return null;
+}
+
 // ── Fal.ai helper ─────────────────────────────────────────────────────────────
 function falRequest(method, falPath, body) {
   return new Promise((resolve, reject) => {
@@ -1081,9 +1092,8 @@ RULES:
         return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
       }
       const text = claudeRes.body?.content?.[0]?.text || '';
-      let concept;
-      try { concept = JSON.parse(text.replace(/^```[a-z]*\n?/,'').replace(/\n?```$/,'')); }
-      catch(e) { return sendJSON(res, 502, { error: 'Claude returned invalid JSON: ' + text.substring(0, 200) }); }
+      const concept = safeParseClaudeJSON(text);
+      if (!concept) return sendJSON(res, 502, { error: 'Claude returned invalid JSON: ' + text.substring(0, 200) });
 
       user.credits = Math.round((cur - BRAINSTORM_COST) * 100) / 100;
       saveDB(db);
@@ -1188,9 +1198,8 @@ Match the mood, visual style, and color palette from the ad concept. Write like 
         return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
       }
       const text = claudeRes.body?.content?.[0]?.text || '';
-      let result;
-      try { result = JSON.parse(text.replace(/^```[a-z]*\n?/,'').replace(/\n?```$/,'')); }
-      catch(e) { return sendJSON(res, 502, { error: 'Claude returned invalid JSON: ' + text.substring(0, 200) }); }
+      const result = safeParseClaudeJSON(text);
+      if (!result) return sendJSON(res, 502, { error: 'Claude returned invalid JSON: ' + text.substring(0, 200) });
 
       user.credits = Math.round((cur - PROMPTS_COST) * 100) / 100;
       saveDB(db);
