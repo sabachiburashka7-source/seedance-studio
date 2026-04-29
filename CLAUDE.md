@@ -84,8 +84,9 @@ Full AI-powered ad creation tab. User uploads product photos + optional descript
 **Pipeline order:**
 1. Product images → `POST /api/gen/brief` (Claude) → ad concept JSON
 2. Concept → generate all reference images via `POST /api/generate-image` (OpenAI) — dynamic count, no fixed limit
-3. Concept + ref images → `POST /api/gen/shots` (Claude) → shot-by-shot video prompts per scene
-4. Each scene prompt + ref images → BytePlus video generation → poll → save to Library in named folder
+3. Concept + ref images → `POST /api/gen/shots` (Claude) → shot-by-shot video prompts per scene; SCENES_META now includes `startingImagePrompt` per scene
+3.5. Generate scene starting frame images via OpenAI (one per scene, from `startingImagePrompt`); saved to Library; falls back gracefully if OpenAI key missing
+4. Each scene: starting frame (no role = I2V) + text prompt + ref images → BytePlus video generation → poll → save to Library in named folder
 
 **Server endpoints:**
 - `POST /api/gen/brief` — sends images + description to Claude, returns concept JSON. `readBody` called FIRST before any auth checks (critical — prevents "Failed to fetch" when server rejects mid-upload of large image body)

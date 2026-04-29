@@ -1385,6 +1385,40 @@ async function createAd() {
       }
     }
 
+    // ── Step 3.5: Generate starting frame image for each scene ───────────────
+    const sceneStartImages = [];
+    if (!openaiKey()) {
+      adLog('No OpenAI key — skipping scene starting images (videos will be text-to-video)', 'warn');
+      for (let i = 0; i < scenes.length; i++) sceneStartImages.push(null);
+    } else {
+      adLog(`Generating ${scenes.length} scene starting frame(s)…`, 'info');
+      for (let i = 0; i < scenes.length; i++) {
+        const scene = scenes[i];
+        const sip = scene.startingImagePrompt;
+        if (!sip) { sceneStartImages.push(null); continue; }
+        const s = adLog(`Starting frame ${i+1}/${scenes.length}: "${scene.name}"…`, 'run');
+        try {
+          const ir = await fetch('/api/generate-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+            body: JSON.stringify({ prompt: sip, ratio: scene.ratio || '9:16', quality: 'high' })
+          });
+          const ij = await safeJson(ir);
+          if (!ir.ok) throw new Error(ij.error || 'Image gen failed');
+          if (ij.credits !== undefined) { userCredits = ij.credits; updateCreditsDisplay(); }
+          sceneStartImages.push(ij.url);
+          lib.unshift({ id: 'start-' + Date.now() + '-' + i, prompt: sip, url: ij.url,
+            ratio: scene.ratio || '9:16', model: 'gemini-flash', ts: Date.now(), done: Date.now(),
+            type: 'image', folder: concept.adTitle, label: `Scene ${i+1} start` });
+          saveLib(); renderLib();
+          adLogUpdate(s, `Scene ${i+1} starting frame ✓`, 'done');
+        } catch(e) {
+          adLogUpdate(s, `Scene ${i+1} starting frame failed: ${e.message} — will use text-to-video`, 'warn');
+          sceneStartImages.push(null);
+        }
+      }
+    }
+
     // ── Step 4: Submit video generation for each scene (sequential so each
     //           completed video can be used as reference_video for the next) ──
     const folder = concept.adTitle || ('Ad ' + new Date().toLocaleDateString());
@@ -1417,7 +1451,14 @@ async function createAd() {
         if (!dcr.ok) throw new Error(dj.error || 'Not enough credits');
         userCredits = dj.credits; updateCreditsDisplay();
 
-        const content = [{ type: 'text', text: prompt }];
+        // Starting frame first (no role = I2V mode), then text prompt, then ref images
+        const content = [];
+        const startImg = sceneStartImages[i];
+        if (startImg) {
+          const softenedStart = await softenDataUrl(startImg);
+          content.push({ type: 'image_url', image_url: { url: softenedStart } });
+        }
+        content.push({ type: 'text', text: prompt });
         const useRefs = scene.useRefImages || [];
         for (const rk of useRefs) {
           if (refImages[rk]) {
