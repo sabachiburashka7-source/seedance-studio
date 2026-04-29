@@ -313,14 +313,30 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
   transition: transform 0.22s, box-shadow 0.22s, border-color 0.22s;
 }
 .vid-card:hover { transform: translateY(-3px); box-shadow: 0 16px 48px rgba(0,0,0,0.5); border-color: rgba(124,110,247,0.22); }
-.vid-preview { width: 100%; aspect-ratio: 16/9; background: var(--surface2); overflow: hidden; }
+.vid-preview { width: 100%; aspect-ratio: 16/9; background: var(--surface2); overflow: hidden; cursor: pointer; position: relative; }
 .vid-preview.v916 { aspect-ratio: 9/16; max-height: 300px; }
 .vid-preview.v11  { aspect-ratio: 1/1; }
-.vid-preview video { width: 100%; height: 100%; object-fit: cover; }
-.vid-preview img  { width: 100%; height: 100%; object-fit: cover; }
+.vid-preview video { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.vid-preview img  { width: 100%; height: 100%; object-fit: contain; }
+.vid-preview-play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.18); opacity: 0; transition: opacity 0.18s; pointer-events: none; }
+.vid-preview:hover .vid-preview-play { opacity: 1; }
+.vid-preview-play span { font-size: 38px; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5)); }
 .vid-no-url { width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text3);font-size:12px;gap:6px;padding:12px;text-align:center; }
 .vid-body { padding: 14px; }
-.vid-prompt { font-size: 13px; line-height: 1.55; color: var(--text2); margin-bottom: 10px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.vid-prompt-wrap { margin-bottom: 10px; }
+.vid-prompt { font-size: 13px; line-height: 1.55; color: var(--text2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.vid-prompt.expanded { display: block; -webkit-line-clamp: unset; }
+.vid-prompt-toggle { font-size: 11px; color: var(--accent2); cursor: pointer; margin-top: 4px; display: inline-block; user-select: none; }
+.vid-prompt-toggle:hover { opacity: 0.8; }
+
+/* ── Lightbox ── */
+.lb-overlay { display: none; position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.92); align-items: center; justify-content: center; padding: 24px; }
+.lb-overlay.open { display: flex; }
+.lb-inner { position: relative; max-width: 90vw; max-height: 90vh; display: flex; align-items: center; justify-content: center; }
+.lb-inner video { max-width: 90vw; max-height: 88vh; object-fit: contain; border-radius: 10px; }
+.lb-inner img   { max-width: 90vw; max-height: 88vh; object-fit: contain; border-radius: 10px; }
+.lb-close { position: fixed; top: 18px; right: 22px; font-size: 28px; color: #fff; cursor: pointer; opacity: 0.75; line-height: 1; z-index: 10000; }
+.lb-close:hover { opacity: 1; }
 .vid-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
 .vtag { font-size: 11px; padding: 3px 8px; border-radius: 6px; background: var(--surface2); color: var(--text3); font-weight: 500; }
 .vtag.hi { background: rgba(124,110,247,0.15); color: var(--accent2); }
@@ -1184,6 +1200,12 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
       </div>
     </div>
   </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lb-overlay" id="lb-overlay" onclick="closeLightbox(event)">
+  <span class="lb-close" onclick="closeLightbox()">✕</span>
+  <div class="lb-inner" id="lb-inner"></div>
 </div>
 
 <script>
@@ -2408,16 +2430,22 @@ function makeLibCard(item, i) {
   const mod   = item.model?.includes('fast') ? 'Fast' : item.model?.includes('seedream') ? 'Seedream' : 'Standard';
   const date  = new Date(item.ts).toLocaleDateString();
   const card  = document.createElement('div'); card.className = 'vid-card';
+  const safeUrl = (item.url || '').replace(/"/g, '&quot;');
+  const safePrompt = (item.prompt || '').replace(/`/g, '\\`').replace(/\$/g, '\\$');
   card.innerHTML = `
-    <div class="vid-preview ${cls}">
+    <div class="vid-preview ${cls}" onclick="openLightbox('${safeUrl}',${!isImg})">
       ${item.url
         ? (isImg
-            ? `<img src="${item.url}" alt="${item.prompt.substring(0,40).replace(/"/g,'')}">`
-            : `<video src="${item.url}" controls preload="metadata"></video>`)
+            ? `<img src="${item.url}" alt="">`
+            : `<video src="${item.url}" preload="metadata"></video>`)
         : `<div class="vid-no-url">No URL returned<br><small style="font-size:10px;opacity:.6">${item.id?.substring(0,20)}...</small></div>`}
+      ${item.url ? `<div class="vid-preview-play"><span>${isImg ? '🔍' : '▶'}</span></div>` : ''}
     </div>
     <div class="vid-body">
-      <div class="vid-prompt">${item.prompt}</div>
+      <div class="vid-prompt-wrap">
+        <div class="vid-prompt" id="prompt-${i}">${item.prompt || ''}</div>
+        ${(item.prompt||'').length > 120 ? `<span class="vid-prompt-toggle" onclick="togglePrompt(${i})">Show more ▾</span>` : ''}
+      </div>
       <div class="vid-tags">
         <span class="vtag hi">${isImg ? 'Image' : (item.res || '')}</span>
         <span class="vtag">${item.ratio}</span>
@@ -2430,7 +2458,7 @@ function makeLibCard(item, i) {
         ${item.url
           ? `<a href="${item.url}" download="seedance_${isImg?'img':'vid'}_${i+1}.${isImg?'jpg':'mp4'}" class="vbtn dl">⬇ Download</a>`
           : `<button class="vbtn" disabled style="opacity:.35">No URL</button>`}
-        ${item.url && !isImg ? `<button class="vbtn" onclick="useAsReference('${item.url}')">↩ Use as Ref</button>` : ''}
+        ${item.url && !isImg ? `<button class="vbtn" onclick="useAsReference('${safeUrl}')">↩ Use as Ref</button>` : ''}
         <button class="vbtn red" onclick="del(${i})">🗑</button>
       </div>
     </div>`;
@@ -2563,6 +2591,35 @@ initAuth().then(() => {
   }
 });
 setInterval(() => { if (jobs.length) renderLib(); }, 1000);
+
+// ══ LIGHTBOX ═══════════════════════════════════════════════════════════
+function openLightbox(url, isVideo) {
+  if (!url) return;
+  const inner = document.getElementById('lb-inner');
+  inner.innerHTML = isVideo
+    ? `<video src="${url}" controls autoplay playsinline style="max-width:90vw;max-height:88vh;object-fit:contain;border-radius:10px"></video>`
+    : `<img src="${url}" style="max-width:90vw;max-height:88vh;object-fit:contain;border-radius:10px">`;
+  document.getElementById('lb-overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeLightbox(e) {
+  if (e && e.target !== document.getElementById('lb-overlay') && !e.target.classList.contains('lb-close')) return;
+  const v = document.querySelector('#lb-inner video');
+  if (v) { v.pause(); v.src = ''; }
+  document.getElementById('lb-inner').innerHTML = '';
+  document.getElementById('lb-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox({ target: document.getElementById('lb-overlay') }); });
+
+// ══ PROMPT TOGGLE ══════════════════════════════════════════════════════
+function togglePrompt(i) {
+  const el = document.getElementById('prompt-' + i);
+  const btn = el?.nextElementSibling;
+  if (!el || !btn) return;
+  const expanded = el.classList.toggle('expanded');
+  btn.textContent = expanded ? 'Show less ▴' : 'Show more ▾';
+}
 </script>
 </body>
 </html>
