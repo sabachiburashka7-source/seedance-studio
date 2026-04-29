@@ -89,9 +89,19 @@ Full AI-powered ad creation tab. User uploads product photos + optional descript
 
 **Server endpoints:**
 - `POST /api/gen/brief` — sends images + description to Claude, returns concept JSON. `readBody` called FIRST before any auth checks (critical — prevents "Failed to fetch" when server rejects mid-upload of large image body)
-- `POST /api/gen/shots` — sends concept + ref image data URLs to Claude, returns scene prompts. Same readBody-first rule.
+- `POST /api/gen/shots` — sends concept to Claude, returns scene prompts merged with metadata. Same readBody-first rule. Ref images are NOT sent (too large; concept JSON already describes them).
 - Both use `claudeApiCall(apiKey, system, messages)` helper — user-supplied Anthropic key sent as `x-anthropic-key` header, 60s timeout
 - Cost: 5 credits for brainstorm + 5 credits for video prompts (charged on top of normal image/video gen costs)
+
+**⚠️ /api/gen/shots response format — hybrid text, NOT JSON prompts**
+Claude cannot reliably put multi-line shot descriptions inside JSON strings — it embeds literal newlines and unescaped double-quotes (e.g. `"soft" bokeh`) which break `JSON.parse` with no reliable post-hoc repair. The endpoint uses a hybrid output format:
+
+- **PART 1**: `SCENES_META: [{"number":1,"name":"...","useRefImages":["k1"],"ratio":"9:16","duration":6},...]` — compact JSON for metadata only (no prompt text)
+- **PART 2**: `<scene_1>...full prompt text...</scene_1>` tags — plain text, immune to JSON encoding issues
+
+Server parses SCENES_META with a **bracket-balancing loop** (not regex) to correctly handle nested arrays like `useRefImages`. Then extracts each `<scene_N>` block by regex and merges `prompt` into the metadata before returning to the frontend. Frontend receives normal `{ scenes: [{...prompt, useRefImages, ...}] }`.
+
+**`safeParseClaudeJSON()` helper** (used by `/api/gen/brief` only): tries direct parse → strip markdown fences → sanitize literal newlines in strings → extract first `{...}` block. Still useful for the brainstorm endpoint which returns simpler JSON without free-form text fields.
 
 **⚠️ Ad-blocker naming rule — NEVER use `/ads/` in any API endpoint path.**
 Browser ad blockers (uBlock Origin, EasyList, AdGuard, etc.) match URL paths containing `/ads/`, `/ad-`, `ads.` etc. and silently kill the fetch before it leaves the browser. Symptoms look like a server problem but are 100% client-side: "Failed to fetch" appears instantly, Render logs show nothing at all, even a 1 KB request fails. The endpoints were originally `/api/ads/brainstorm` and `/api/ads/video-prompts` and were blocked by every user with an ad blocker. They were renamed to `/api/gen/brief` and `/api/gen/shots` to fix this. When adding any new endpoint related to ads, campaigns, or promotions, always use neutral words (`gen`, `create`, `pipeline`, `brief`, `shots`, etc.).
@@ -135,3 +145,4 @@ All core features working and deployed:
 - Cold start session retry (no more phantom logouts)
 - Canvas softening pipeline — AI-generated portraits (incl. photorealistic reference sheets) now pass ByteDance's real-person classifier
 - **Ads tab** — full AI ad creation pipeline (Claude brainstorm → OpenAI ref images → Claude video prompts → BytePlus scenes → Library folder); endpoints `/api/gen/brief` + `/api/gen/shots` (renamed away from `/api/ads/*` to avoid ad-blocker blocks)
+- **Ads shots parsing fixed** — `/api/gen/shots` uses hybrid text format (SCENES_META JSON line + `<scene_N>` text tags) to avoid Claude embedding literal newlines and unescaped quotes inside JSON strings; SCENES_META parsed with bracket-balancing to handle nested `useRefImages` arrays
