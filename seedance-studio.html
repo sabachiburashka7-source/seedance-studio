@@ -1351,7 +1351,22 @@ async function createAd() {
     const concept = j1.concept;
     adLogUpdate(s1, `Ad concept: "${concept.adTitle}" — ${concept.scenes?.length || 0} scenes`, 'done');
 
-    // ── Step 2: Generate all reference images ──────────────────────────
+    // ── Step 2: Generate video prompts ────────────────────────────────
+    // Scene prompts come first — they define exactly how characters and
+    // environments should look, which then drives reference image generation.
+    const s2 = adLog('Claude is writing video prompts for each scene…', 'run');
+    const r2 = await fetch('/api/gen/shots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken, 'x-anthropic-key': anthropicKey() },
+      body: JSON.stringify({ concept })
+    });
+    const j2 = await r2.json();
+    if (!r2.ok) throw new Error(j2.error || 'Video prompts failed');
+    if (j2.credits !== undefined) { userCredits = j2.credits; updateCreditsDisplay(); }
+    const scenes = j2.scenes || [];
+    adLogUpdate(s2, `Video prompts ready for ${scenes.length} scene(s)`, 'done');
+
+    // ── Step 3: Generate all reference images ──────────────────────────
     const refImages = {}; // key → dataUrl
     const refList = concept.referenceImages || [];
     const RATIO_TO_SIZE = { '16:9':'1536x1024', '9:16':'1024x1536', '1:1':'1024x1024', '4:3':'1536x1024', '3:4':'1024x1536', '21:9':'1536x1024' };
@@ -1382,7 +1397,7 @@ async function createAd() {
         if (ij.credits !== undefined) { userCredits = ij.credits; updateCreditsDisplay(); }
         refImages[ref.key] = ij.url;
         lib.unshift({ id: 'ref-' + Date.now() + '-' + ref.key, prompt: ref.prompt, url: ij.url,
-          ratio: ref.ratio || '1:1', model: 'gpt-image-1', ts: Date.now(), done: Date.now(),
+          ratio: ref.ratio || '1:1', model: 'gpt-image-2', ts: Date.now(), done: Date.now(),
           type: 'image', folder: concept.adTitle, label: ref.label || ref.key });
         saveLib(); renderLib();
         adLogUpdate(s, `✓ ${ref.label || ref.key}`, 'done');
@@ -1390,19 +1405,6 @@ async function createAd() {
         adLogUpdate(s, `${ref.label || ref.key} failed (skipping): ${e.message}`, 'err');
       }
     }
-
-    // ── Step 3: Generate video prompts ────────────────────────────────
-    const s3 = adLog('Claude is writing video prompts for each scene…', 'run');
-    const r3 = await fetch('/api/gen/shots', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken, 'x-anthropic-key': anthropicKey() },
-      body: JSON.stringify({ concept })
-    });
-    const j3 = await r3.json();
-    if (!r3.ok) throw new Error(j3.error || 'Video prompts failed');
-    if (j3.credits !== undefined) { userCredits = j3.credits; updateCreditsDisplay(); }
-    const scenes = j3.scenes || [];
-    adLogUpdate(s3, `Video prompts ready for ${scenes.length} scene(s)`, 'done');
 
     // ── Step 4: Submit video generation for each scene (sequential so each
     //           completed video can be used as reference_video for the next) ──
