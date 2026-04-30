@@ -1379,6 +1379,8 @@ async function createAd() {
           type: 'image', folder: concept.adTitle, label: ref.label || ref.key });
         saveLib(); renderLib();
         adLogUpdate(s, `✓ ${ref.label || ref.key}`, 'done');
+        // brief pause between requests to avoid Gemini rate limits
+        if (ref !== refList[refList.length - 1]) await new Promise(r => setTimeout(r, 3000));
       } catch(e) {
         adLogUpdate(s, `${ref.label || ref.key} failed: ${e.message}`, 'err');
         throw e;
@@ -1412,6 +1414,7 @@ async function createAd() {
             type: 'image', folder: concept.adTitle, label: `Scene ${i+1} start` });
           saveLib(); renderLib();
           adLogUpdate(s, `Scene ${i+1} starting frame ✓`, 'done');
+          if (i < scenes.length - 1) await new Promise(r => setTimeout(r, 3000));
         } catch(e) {
           adLogUpdate(s, `Scene ${i+1} starting frame failed: ${e.message} — will use text-to-video`, 'warn');
           sceneStartImages.push(null);

@@ -883,50 +883,74 @@ async function handleRequest(req, res) {
       generationConfig: { responseModalities: ['IMAGE'] }
     }));
 
-    try {
-      const result = await new Promise((resolve, reject) => {
-        const model = 'gemini-3.1-flash-image-preview';
-        const opts = {
-          hostname: 'generativelanguage.googleapis.com', port: 443,
-          path: `/v1beta/models/${model}:generateContent?key=${geminiKey}`, method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Content-Length': reqBody.length }
-        };
-        const r = https.request(opts, resp => {
-          const ch = [];
-          resp.on('data', c => ch.push(c));
-          resp.on('end', () => {
-            const raw = Buffer.concat(ch).toString();
-            if (!raw) { reject(new Error(`Gemini returned empty body (HTTP ${resp.statusCode})`)); return; }
-            try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
-            catch(e) { reject(new Error(`Gemini non-JSON response (HTTP ${resp.statusCode}): ${raw.substring(0, 200)}`)); }
-          });
+    const MAX_IMG_ATTEMPTS = 4;
+    const geminiRequest = () => new Promise((resolve, reject) => {
+      const model = 'gemini-3.1-flash-image-preview';
+      const opts = {
+        hostname: 'generativelanguage.googleapis.com', port: 443,
+        path: `/v1beta/models/${model}:generateContent?key=${geminiKey}`, method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': reqBody.length }
+      };
+      const r = https.request(opts, resp => {
+        const ch = [];
+        resp.on('data', c => ch.push(c));
+        resp.on('end', () => {
+          const raw = Buffer.concat(ch).toString();
+          if (!raw) { reject(new Error(`Gemini returned empty body (HTTP ${resp.statusCode})`)); return; }
+          try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
+          catch(e) { reject(new Error(`Gemini non-JSON response (HTTP ${resp.statusCode}): ${raw.substring(0, 200)}`)); }
         });
-        r.setTimeout(300000, () => { r.destroy(); reject(new Error('Gemini request timed out after 300s')); });
-        r.on('error', reject);
-        r.write(reqBody); r.end();
       });
+      // 90s per attempt — if Gemini stalls longer it's rate-limited; retry handles it
+      r.setTimeout(90000, () => { r.destroy(); reject(new Error('Gemini request timed out after 90s')); });
+      r.on('error', reject);
+      r.write(reqBody); r.end();
+    });
 
-      if (result.status !== 200) {
-        const errMsg = result.body?.error?.message || JSON.stringify(result.body).substring(0, 400);
-        console.error('[gemini-image] error', result.status, errMsg);
-        return sendJSON(res, result.status >= 400 && result.status < 600 ? result.status : 500, { error: errMsg });
+    for (let attempt = 1; attempt <= MAX_IMG_ATTEMPTS; attempt++) {
+      try {
+        const result = await geminiRequest();
+
+        if (result.status === 429) {
+          const waitSec = attempt * 20;
+          console.log(`[gemini-image] rate limited (attempt ${attempt}/${MAX_IMG_ATTEMPTS}), waiting ${waitSec}s`);
+          if (attempt < MAX_IMG_ATTEMPTS) {
+            await new Promise(r => setTimeout(r, waitSec * 1000));
+            continue;
+          }
+          const errMsg = result.body?.error?.message || 'Gemini rate limit exceeded — try again in a moment';
+          return sendJSON(res, 429, { error: errMsg });
+        }
+
+        if (result.status !== 200) {
+          const errMsg = result.body?.error?.message || JSON.stringify(result.body).substring(0, 400);
+          console.error('[gemini-image] error', result.status, errMsg);
+          return sendJSON(res, result.status >= 400 && result.status < 600 ? result.status : 500, { error: errMsg });
+        }
+
+        const imgPart = result.body.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+        if (!imgPart) return sendJSON(res, 500, { error: 'No image data returned by Gemini' });
+
+        const mime = imgPart.inlineData.mimeType || 'image/jpeg';
+        const dataUrl = `data:${mime};base64,${imgPart.inlineData.data}`;
+        console.log('[gemini-image] done, dataUrl length:', dataUrl.length);
+        const db2  = loadDB();
+        const usr2 = db2.users[sess.userId];
+        const cur2 = usr2.credits ?? 1000;
+        usr2.credits = Math.round((cur2 - imgCost) * 100) / 100;
+        saveDB(db2);
+        return sendJSON(res, 200, { url: dataUrl, credits: usr2.credits });
+      } catch(e) {
+        const isTimeout = e.message.includes('timed out');
+        console.error(`[gemini-image] attempt ${attempt} error:`, e.message);
+        if (attempt < MAX_IMG_ATTEMPTS && isTimeout) {
+          const waitSec = attempt * 15;
+          console.log(`[gemini-image] timeout, retrying after ${waitSec}s (attempt ${attempt})`);
+          await new Promise(r => setTimeout(r, waitSec * 1000));
+          continue;
+        }
+        return sendJSON(res, 502, { error: 'Gemini request failed: ' + e.message });
       }
-
-      const imgPart = result.body.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-      if (!imgPart) return sendJSON(res, 500, { error: 'No image data returned by Gemini' });
-
-      const mime = imgPart.inlineData.mimeType || 'image/jpeg';
-      const dataUrl = `data:${mime};base64,${imgPart.inlineData.data}`;
-      console.log('[gemini-image] done, dataUrl length:', dataUrl.length);
-      const db2  = loadDB();
-      const usr2 = db2.users[sess.userId];
-      const cur2 = usr2.credits ?? 1000;
-      usr2.credits = Math.round((cur2 - imgCost) * 100) / 100;
-      saveDB(db2);
-      return sendJSON(res, 200, { url: dataUrl, credits: usr2.credits });
-    } catch(e) {
-      console.error('[gemini-image] request error:', e.message);
-      return sendJSON(res, 502, { error: 'Gemini request failed: ' + e.message });
     }
   }
 
