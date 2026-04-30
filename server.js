@@ -885,7 +885,7 @@ async function handleRequest(req, res) {
 
     try {
       const result = await new Promise((resolve, reject) => {
-        const model = 'gemini-3.1-flash-image-preview';
+        const model = 'gemini-2.0-flash-preview-image-generation';
         const opts = {
           hostname: 'generativelanguage.googleapis.com', port: 443,
           path: `/v1beta/models/${model}:generateContent?key=${geminiKey}`, method: 'POST',
@@ -901,7 +901,7 @@ async function handleRequest(req, res) {
             catch(e) { reject(new Error(`Gemini non-JSON response (HTTP ${resp.statusCode}): ${raw.substring(0, 200)}`)); }
           });
         });
-        r.setTimeout(55000, () => { r.destroy(); reject(new Error('Gemini request timed out after 55s')); });
+        r.setTimeout(120000, () => { r.destroy(); reject(new Error('Gemini request timed out after 120s')); });
         r.on('error', reject);
         r.write(reqBody); r.end();
       });
