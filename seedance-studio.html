@@ -1350,6 +1350,16 @@ async function createAd() {
     const refImages = {}; // key → dataUrl
     const refList = concept.referenceImages || [];
 
+    // Helper: split a data URL into { base64, mime }
+    const splitDataUrl = (du) => {
+      if (!du) return null;
+      const comma = du.indexOf(',');
+      const base64 = comma >= 0 ? du.substring(comma + 1) : du;
+      const meta = comma >= 0 ? du.substring(0, comma) : '';
+      const mime = meta.replace('data:', '').replace(';base64', '') || 'image/jpeg';
+      return { base64, mime };
+    };
+
     // Topological sort: generate dependencies before dependents
     const sortedRefList = (() => {
       const byKey = Object.fromEntries(refList.map(r => [r.key, r]));
@@ -1369,29 +1379,24 @@ async function createAd() {
       if (!ref.prompt || !ref.key) continue;
       const s = adLog(`Generating: ${ref.label || ref.key}…`, 'run');
       try {
-        // Product ref: send the actual uploaded image for edit-mode generation.
-        // Other refs with dependsOn: send the first available dependency image as visual reference.
-        let imageBase64, imageMime;
+        // Product ref: send the actual uploaded product photo as the only reference.
+        // Other refs with dependsOn: send ALL listed dependency images as visual references.
+        const inputImages = [];
         if (ref.type === 'product' && adImages[0]?.dataUrl) {
-          const du = adImages[0].dataUrl;
-          const comma = du.indexOf(',');
-          imageBase64 = comma >= 0 ? du.substring(comma + 1) : du;
-          const meta = comma >= 0 ? du.substring(0, comma) : '';
-          imageMime = meta.replace('data:', '').replace(';base64', '') || 'image/jpeg';
+          const p = splitDataUrl(adImages[0].dataUrl);
+          if (p) inputImages.push(p);
         } else if (ref.dependsOn && ref.dependsOn.length > 0) {
-          const depKey = ref.dependsOn.find(k => refImages[k]);
-          if (depKey) {
-            const du = refImages[depKey];
-            const comma = du.indexOf(',');
-            imageBase64 = comma >= 0 ? du.substring(comma + 1) : du;
-            const meta = comma >= 0 ? du.substring(0, comma) : '';
-            imageMime = meta.replace('data:', '').replace(';base64', '') || 'image/jpeg';
+          for (const k of ref.dependsOn) {
+            if (refImages[k]) {
+              const p = splitDataUrl(refImages[k]);
+              if (p) inputImages.push(p);
+            }
           }
         }
         const ir = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-          body: JSON.stringify({ prompt: ref.prompt, ratio: ref.ratio || '1:1', quality: 'high', imageBase64, imageMime })
+          body: JSON.stringify({ prompt: ref.prompt, ratio: ref.ratio || '1:1', quality: 'high', images: inputImages })
         });
         const ij = await safeJson(ir);
         if (!ir.ok) throw new Error(ij.error || 'Image gen failed');
@@ -1420,10 +1425,19 @@ async function createAd() {
         if (!sip) { sceneStartImages.push(null); continue; }
         const s = adLog(`Starting frame ${i+1}/${scenes.length}: "${scene.name}"…`, 'run');
         try {
+          // Feed every ref image the scene declares (characters, environment, product, props)
+          // so the starting frame matches the established look instead of hallucinating it.
+          const sceneInputs = [];
+          for (const k of (scene.refImageKeys || [])) {
+            if (refImages[k]) {
+              const p = splitDataUrl(refImages[k]);
+              if (p) sceneInputs.push(p);
+            }
+          }
           const ir = await fetch('/api/generate-image', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-            body: JSON.stringify({ prompt: sip, ratio: scene.ratio || '9:16', quality: 'high' })
+            body: JSON.stringify({ prompt: sip, ratio: scene.ratio || '9:16', quality: 'high', images: sceneInputs })
           });
           const ij = await safeJson(ir);
           if (!ir.ok) throw new Error(ij.error || 'Image gen failed');

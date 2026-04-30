@@ -851,7 +851,11 @@ async function handleRequest(req, res) {
 
   // ── Gemini image generation ───────────────────────────────────────────────
   if (url === '/api/generate-image' && method === 'POST') {
-    const { prompt, ratio, quality, imageBase64, imageMime } = await readBody(req); // must read body before any early return
+    const { prompt, ratio, quality, imageBase64, imageMime, images } = await readBody(req); // must read body before any early return
+    // Normalize to a list of {base64, mime}: legacy single-image fields still supported
+    const refImagesList = Array.isArray(images) && images.length
+      ? images.filter(i => i && i.base64).map(i => ({ base64: i.base64, mime: i.mime || 'image/jpeg' }))
+      : (imageBase64 ? [{ base64: imageBase64, mime: imageMime || 'image/jpeg' }] : []);
     const geminiKey = process.env.GEMINI_API_KEY;
     if (!geminiKey) return sendJSON(res, 503, { error: 'Image generation not configured on server (GEMINI_API_KEY missing).' });
     const sess = getSession(req);
@@ -867,12 +871,12 @@ async function handleRequest(req, res) {
     // Gemini supports: 1:1, 3:4, 4:3, 9:16, 16:9 — map unsupported ratios to closest
     const RATIO_MAP = { '21:9': '16:9' };
     const aspectRatio = RATIO_MAP[ratio] || ratio || '1:1';
-    const useEdit = !!imageBase64;
-    console.log('[gemini-image]', useEdit ? 'editing' : 'generating:', aspectRatio, quality, prompt.substring(0, 80));
+    const useEdit = refImagesList.length > 0;
+    console.log('[gemini-image]', useEdit ? `editing with ${refImagesList.length} ref(s):` : 'generating:', aspectRatio, quality, prompt.substring(0, 80));
 
     const msgParts = [];
-    if (useEdit && imageBase64) {
-      msgParts.push({ inlineData: { mimeType: imageMime || 'image/jpeg', data: imageBase64 } });
+    for (const img of refImagesList) {
+      msgParts.push({ inlineData: { mimeType: img.mime, data: img.base64 } });
     }
     msgParts.push({ text: prompt });
 
