@@ -896,15 +896,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <div>
       <div class="panel" style="margin-bottom:0">
 
-        <!-- Model -->
-        <div class="setting-group">
-          <span class="setting-label">Model</span>
-          <div class="btn-group" id="model-group">
-            <button class="bg-btn active" data-value="dreamina-seedance-2-0-260128" onclick="onBtnGroup(this,'model-group');syncRes()">Standard</button>
-            <button class="bg-btn" data-value="dreamina-seedance-2-0-fast-260128" onclick="onBtnGroup(this,'model-group');syncRes()">Fast ⚡</button>
-          </div>
-        </div>
-
         <!-- Aspect Ratio -->
         <div class="setting-group">
           <span class="setting-label">Aspect Ratio</span>
@@ -933,10 +924,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
           <div class="opt-row">
             <div><div class="opt-label">Audio</div></div>
             <label class="tog"><input type="checkbox" id="s-audio" checked><span class="tog-track"></span></label>
-          </div>
-          <div class="opt-row">
-            <div><div class="opt-label">Watermark</div></div>
-            <label class="tog"><input type="checkbox" id="s-wm"><span class="tog-track"></span></label>
           </div>
         </div>
 
@@ -999,15 +986,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <div>
       <div class="panel" style="margin-bottom:0">
 
-        <div class="setting-group">
-          <span class="setting-label">Video Settings</span>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <div class="btn-group" id="ads-model-group">
-              <button class="bg-btn active" data-value="dreamina-seedance-2-0-260128" onclick="onBtnGroup(this,'ads-model-group')">Standard</button>
-              <button class="bg-btn" data-value="dreamina-seedance-2-0-fast-260128" onclick="onBtnGroup(this,'ads-model-group')">Fast</button>
-            </div>
-          </div>
-        </div>
 
         <div class="cost-box" style="margin-bottom:12px">
           <div>
@@ -1234,7 +1212,7 @@ async function createAd() {
   btn.disabled = true; btn.textContent = 'Creating...';
   adLogClear();
 
-  const model = getBtnGroupValue('ads-model-group') || 'dreamina-seedance-2-0-260128';
+  const model = 'dreamina-seedance-2-0-260128';
   const res   = '480p';
   const description = document.getElementById('ad-description').value.trim();
 
@@ -1416,8 +1394,7 @@ async function createAd() {
       try {
         const [w, h] = (() => { const m = {'9:16':'480x864','16:9':'864x480','1:1':'640x640','4:3':'640x480','3:4':'480x640','21:9':'864x368'}; return ((m[ratio])||'480x864').split('x').map(Number); })();
         const tok = dur * w * h * 24 / 1024;
-        const isFast = model.includes('fast');
-        const cr = Math.round(tok * (isFast ? 5.6e-6 : 4.3e-6) * 1.3 / 0.033 * 10) / 10;
+        const cr = Math.round(tok * 7.0e-6 * 1.3 / 0.033 * 10) / 10;
 
         const dcr = await fetch('/api/deduct-credits', {
           method: 'POST',
@@ -1590,10 +1567,6 @@ function getBtnGroupValue(groupId) {
 
 // ══ SETTINGS ══════════════════════════════════════════════════════════
 function syncRes() {
-  const fast = (getBtnGroupValue('model-group') || '').includes('fast');
-  const elDur = document.getElementById('s-dur');
-  elDur.max = fast ? 10 : 15;
-  if (fast && +elDur.value > 10) { elDur.value = 10; setDur(10); }
   calcCost();
 }
 function setDur(v) {
@@ -1614,32 +1587,21 @@ function computeVideoCost() {
   };
   const [w, h] = ((sizeMap[res] || sizeMap['720p'])[ratio] || '720x1280').split('x').map(Number);
 
-  const fps    = 24;
-  const isFast = (getBtnGroupValue('model-group') || '').includes('fast');
-  const hasI   = imgs.length > 0;
-  // Official BytePlus formula:
-  //   T2V / I2V (no video input): output_dur × W × H × fps / 1024
-  //   V2V (video input):          (input_dur + output_dur) × W × H × fps / 1024
-  //   input_dur is unknown at estimate time → assume input_dur ≈ output_dur (2× total)
+  const fps  = 24;
+  const hasI = imgs.length > 0;
   const tok  = dur * w * h * fps / 1024 * (hasV ? 2 : 1);
-  // Official rates (per million tokens):
-  //   Standard T2V/I2V: $7.00/M  |  Standard V2V: $4.30/M
-  //   Fast     T2V/I2V: $5.60/M  |  Fast     V2V: $3.30/M
-  const rate = isFast
-    ? (hasV ? 3.3e-6 : 5.6e-6)
-    : (hasV ? 4.3e-6 : 7.0e-6);
-  // 30% markup · $33/1000 credits
+  const rate = hasV ? 4.3e-6 : 7.0e-6;
   const cr   = Math.round(tok * rate * 1.3 / 0.033 * 10) / 10;
   const usd  = cr * 0.033;
   const gel  = usd * 2.74;
-  return { usd, gel, cr, hasV, hasI, isFast };
+  return { usd, gel, cr, hasV, hasI };
 }
 function calcCost() {
-  const { usd, gel, cr, hasV, hasI, isFast } = computeVideoCost();
+  const { usd, gel, cr, hasV, hasI } = computeVideoCost();
   document.getElementById('cost-val').textContent  = `$${usd.toFixed(2)} · ${gel.toFixed(2)}₾ · ${cr} cr`;
   const mode      = hasV ? 'V2V' : (hasI ? 'I2V' : 'T2V');
-  const rateLabel = isFast ? (hasV ? '$3.30' : '$5.60') : (hasV ? '$4.30' : '$7.00');
-  document.getElementById('cost-mode').textContent = `${isFast ? 'Fast ⚡' : 'Standard'} · ${mode} · ${rateLabel}/M tokens`;
+  const rateLabel = hasV ? '$4.30' : '$7.00';
+  document.getElementById('cost-mode').textContent = `Standard · ${mode} · ${rateLabel}/M tokens`;
 }
 function calcImgCost() {
   const q  = getBtnGroupValue('img-quality-group') || 'high';
@@ -1909,12 +1871,12 @@ async function doGenerate() {
   const pt = document.getElementById('prompt').value.trim();
   if (!pt)     return toast('Enter a prompt', 'err');
 
-  const model = getBtnGroupValue('model-group') || 'dreamina-seedance-2-0-260128';
+  const model = 'dreamina-seedance-2-0-260128';
   const res   = '480p';
   const ratio = getBtnGroupValue('ratio-group') || '9:16';
   const dur   = +document.getElementById('s-dur').value;
   const audio = document.getElementById('s-audio').checked;
-  const wm    = document.getElementById('s-wm').checked;
+  const wm    = false;
 
   const btn = document.getElementById('gen-btn');
   btn.disabled = true; btn.textContent = 'Working...';
