@@ -901,7 +901,7 @@ async function handleRequest(req, res) {
             catch(e) { reject(new Error(`Gemini non-JSON response (HTTP ${resp.statusCode}): ${raw.substring(0, 200)}`)); }
           });
         });
-        r.setTimeout(120000, () => { r.destroy(); reject(new Error('Gemini request timed out after 120s')); });
+        r.setTimeout(300000, () => { r.destroy(); reject(new Error('Gemini request timed out after 300s')); });
         r.on('error', reject);
         r.write(reqBody); r.end();
       });
