@@ -885,7 +885,7 @@ async function handleRequest(req, res) {
 
     try {
       const result = await new Promise((resolve, reject) => {
-        const model = 'gemini-2.0-flash-exp-image-generation';
+        const model = 'gemini-3.1-flash-image-preview';
         const opts = {
           hostname: 'generativelanguage.googleapis.com', port: 443,
           path: `/v1beta/models/${model}:generateContent?key=${geminiKey}`, method: 'POST',
