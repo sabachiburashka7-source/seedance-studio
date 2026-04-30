@@ -1350,13 +1350,27 @@ async function createAd() {
     const refImages = {}; // key → dataUrl
     const refList = concept.referenceImages || [];
 
-    adLog(`Generating ${refList.length} reference image(s)…`, 'info');
-    for (const ref of refList) {
+    // Topological sort: generate dependencies before dependents
+    const sortedRefList = (() => {
+      const byKey = Object.fromEntries(refList.map(r => [r.key, r]));
+      const sorted = [], visited = new Set();
+      const visit = r => {
+        if (!r || visited.has(r.key)) return;
+        visited.add(r.key);
+        (r.dependsOn || []).forEach(k => visit(byKey[k]));
+        sorted.push(r);
+      };
+      refList.forEach(r => visit(r));
+      return sorted;
+    })();
+
+    adLog(`Generating ${sortedRefList.length} reference image(s)…`, 'info');
+    for (const ref of sortedRefList) {
       if (!ref.prompt || !ref.key) continue;
       const s = adLog(`Generating: ${ref.label || ref.key}…`, 'run');
       try {
-        // Product ref: send the actual uploaded image for edit-mode generation
-        // All other types (character, environment, prop): text-only generation
+        // Product ref: send the actual uploaded image for edit-mode generation.
+        // Other refs with dependsOn: send the first available dependency image as visual reference.
         let imageBase64, imageMime;
         if (ref.type === 'product' && adImages[0]?.dataUrl) {
           const du = adImages[0].dataUrl;
@@ -1364,6 +1378,15 @@ async function createAd() {
           imageBase64 = comma >= 0 ? du.substring(comma + 1) : du;
           const meta = comma >= 0 ? du.substring(0, comma) : '';
           imageMime = meta.replace('data:', '').replace(';base64', '') || 'image/jpeg';
+        } else if (ref.dependsOn && ref.dependsOn.length > 0) {
+          const depKey = ref.dependsOn.find(k => refImages[k]);
+          if (depKey) {
+            const du = refImages[depKey];
+            const comma = du.indexOf(',');
+            imageBase64 = comma >= 0 ? du.substring(comma + 1) : du;
+            const meta = comma >= 0 ? du.substring(0, comma) : '';
+            imageMime = meta.replace('data:', '').replace(';base64', '') || 'image/jpeg';
+          }
         }
         const ir = await fetch('/api/generate-image', {
           method: 'POST',
@@ -1380,7 +1403,7 @@ async function createAd() {
         saveLib(); renderLib();
         adLogUpdate(s, `✓ ${ref.label || ref.key}`, 'done');
         // brief pause between requests to avoid Gemini rate limits
-        if (ref !== refList[refList.length - 1]) await new Promise(r => setTimeout(r, 3000));
+        if (ref !== sortedRefList[sortedRefList.length - 1]) await new Promise(r => setTimeout(r, 3000));
       } catch(e) {
         adLogUpdate(s, `${ref.label || ref.key} failed: ${e.message}`, 'err');
         throw e;

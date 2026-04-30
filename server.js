@@ -1081,7 +1081,8 @@ After working through all phases internally, output ONLY valid JSON (no markdown
       "label": "Human-readable label",
       "type": "product | character | environment | prop",
       "prompt": "See prompt rules below",
-      "ratio": "1:1 or 16:9 or 9:16"
+      "ratio": "1:1 or 16:9 or 9:16",
+      "dependsOn": ["key_of_another_ref_image"]
     }
   ],
   "scenes": [
@@ -1127,6 +1128,7 @@ RULES:
     - End with: "No illustration, no cartoon, no 3D render, no sketch, no painting, no stylized."
     - If this is a variant/alternate state of an existing environment, explicitly reference the original: "Exact same layout as ENV ID: 00X STUDY X — same [feature], same [feature] — but [what changed]."
   • "prop" — for important objects/products other than the hero product. Detailed prompt showing the object from multiple angles, materials labeled, scale reference.
+- dependsOn: if a reference image must visually contain or prominently feature another reference object (e.g. a gift box showing the product inside, a hand holding the product, a scene styled around the character), list that object's key in dependsOn. The already-generated image for each listed key will be fed as a visual reference to the image generator. This ensures the dependent image accurately depicts the referenced object rather than hallucinating it. Leave dependsOn empty or omit it entirely for fully self-contained images (e.g. the product sheet itself, a standalone character or environment that doesn't need to show the product). IMPORTANT: "product" type refs never need dependsOn since they get the real uploaded photo directly.
 - scenes: 3-6 scenes. Each duration MUST be between 4 and 10 seconds (maximum 10). Total ad 20-50 seconds.
 - ratio must be one of: 9:16, 16:9, 1:1, 4:3, 3:4, 21:9
 - Every scene description must name which refImageKeys it needs
