@@ -1422,6 +1422,7 @@ async function createAd() {
     // ── Step 4: Submit video generation for each scene (sequential so each
     //           completed video can be used as reference_video for the next) ──
     const folder = concept.adTitle || ('Ad ' + new Date().toLocaleDateString());
+    let prevVideoUrl = null;
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i];
       const ratio  = '9:16';
@@ -1465,6 +1466,9 @@ async function createAd() {
             content.push({ type: 'image_url', image_url: { url: softenedUrl }, role: 'reference_image' });
           }
         }
+        if (prevVideoUrl) {
+          content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
+        }
         const payload = buildPayload(model, content, false, ratio, dur, false, res);
         const r4 = await fetch('/proxy/api/v3/contents/generations/tasks', {
           method: 'POST',
@@ -1477,9 +1481,9 @@ async function createAd() {
 
         const job = { id: taskId, prompt, model, res, ratio, dur, audio: false, ts: Date.now(), status: 'running', folder };
         jobs.push(job);
-        adLogUpdate(s4, `Scene ${i+1} "${scene.name}" generating…`, 'run');
-        await pollAd(job);
-        adLogUpdate(s4, `Scene ${i+1} "${scene.name}" ✓`, 'done');
+        adLogUpdate(s4, `Scene ${i+1} "${scene.name}" generating${prevVideoUrl ? ' (using scene ' + i + ' as reference)' : ''}…`, 'run');
+        prevVideoUrl = await pollAd(job);
+        adLogUpdate(s4, prevVideoUrl ? `Scene ${i+1} "${scene.name}" ✓` : `Scene ${i+1} "${scene.name}" failed`, prevVideoUrl ? 'done' : 'err');
       } catch(e) {
         adLogUpdate(s4, `Scene ${i+1} failed: ${e.message}`, 'err');
         throw e;
@@ -1913,7 +1917,13 @@ function softenDataUrl(dataUrl) {
 
 // ══ BUILD PAYLOAD ═════════════════════════════════════════════════════
 function buildPayload(model, content, audio, ratio, dur, wm, res) {
-  return { model, content, generate_audio: audio, ratio, duration: dur, watermark: wm, resolution: res };
+  const sizeMap = {
+    '480p':  {'9:16':'480x864','16:9':'864x480','1:1':'640x640','4:3':'640x480','3:4':'480x640','21:9':'864x368'},
+    '720p':  {'9:16':'720x1280','16:9':'1280x720','1:1':'960x960','4:3':'960x720','3:4':'720x960','21:9':'1280x544'},
+    '1080p': {'9:16':'1080x1920','16:9':'1920x1080','1:1':'1440x1440','4:3':'1440x1080','3:4':'1080x1440','21:9':'1920x816'}
+  };
+  const size = (sizeMap[res] || sizeMap['720p'])[ratio] || '720x1280';
+  return { model, content, generate_audio: audio, ratio, duration: dur, watermark: wm, size };
 }
 
 // ══ GENERATE ══════════════════════════════════════════════════════════
