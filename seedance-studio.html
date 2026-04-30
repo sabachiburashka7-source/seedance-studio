@@ -1447,13 +1447,23 @@ async function createAd() {
           content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
         }
         const payload = buildPayload(model, content, false, ratio, dur, false, res);
-        const r4 = await fetch('/proxy/api/v3/contents/generations/tasks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const j4 = await r4.json();
-        const taskId = j4.id || j4.task_id;
+        let taskId, j4;
+        for (let attempt = 1; attempt <= 6; attempt++) {
+          const r4 = await fetch('/proxy/api/v3/contents/generations/tasks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          j4 = await r4.json();
+          taskId = j4.id || j4.task_id;
+          if (taskId) break;
+          const errMsg = j4.error?.message || JSON.stringify(j4).substring(0, 200);
+          const isHighDemand = /high demand|try again later|temporar/i.test(errMsg);
+          if (!isHighDemand || attempt === 6) throw new Error(errMsg);
+          const waitSec = attempt * 60;
+          adLogUpdate(s4, `Scene ${i+1} "${scene.name}" — model busy, retrying in ${waitSec}s (attempt ${attempt}/6)…`, 'warn');
+          await new Promise(r => setTimeout(r, waitSec * 1000));
+        }
         if (!taskId) throw new Error(j4.error?.message || JSON.stringify(j4).substring(0, 200));
 
         const job = { id: taskId, prompt, model, res, ratio, dur, audio: false, ts: Date.now(), status: 'running', folder };
