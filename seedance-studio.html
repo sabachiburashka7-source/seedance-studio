@@ -1455,27 +1455,41 @@ async function createAd() {
         if (!dcr.ok) throw new Error(dj.error || 'Not enough credits');
         userCredits = dj.credits; updateCreditsDisplay();
 
-        // BytePlus rejects mixing first_frame with reference_image/reference_video.
-        // If we have a starting frame, use it alone (visual identity is already baked in via OpenAI).
-        // Otherwise fall back to text + ref images (+ prev video).
+        // Seedance 2.0 has two modes: (a) starting/ending frame I2V, (b) reference images + video.
+        // Sending role:'first_frame' switches to mode (a) which forbids reference media.
+        // We want mode (b) with the starting frame as a guide — so send everything as reference_image
+        // (starting frame first) and instruct the prompt to open the scene matching it.
         const content = [];
+        const useRefs = scene.useRefImages || [];
         const startImg = sceneStartImages[i];
+        const refCount = (startImg ? 1 : 0) + useRefs.filter(rk => refImages[rk]).length;
+        let openingHint = '';
+        if (startImg) {
+          const sip = (scene.startingImagePrompt || '').trim();
+          openingHint = sip
+            ? `Open the scene exactly matching reference image 1 (${sip}). `
+            : `Open the scene exactly matching reference image 1. `;
+          if (refCount > 1) openingHint += `Use the other reference images for product, character, and environment fidelity. `;
+        } else if (refCount > 0) {
+          openingHint = `Use the reference images for product, character, and environment fidelity. `;
+        }
+        if (prevVideoUrl) {
+          openingHint += `Use the reference video for visual continuity from the previous scene. `;
+        }
+        const finalPrompt = openingHint ? openingHint + prompt : prompt;
+        content.push({ type: 'text', text: finalPrompt });
         if (startImg) {
           const softenedStart = await softenDataUrl(startImg);
-          content.push({ type: 'image_url', image_url: { url: softenedStart }, role: 'first_frame' });
-          content.push({ type: 'text', text: prompt });
-        } else {
-          content.push({ type: 'text', text: prompt });
-          const useRefs = scene.useRefImages || [];
-          for (const rk of useRefs) {
-            if (refImages[rk]) {
-              const softenedUrl = await softenDataUrl(refImages[rk]);
-              content.push({ type: 'image_url', image_url: { url: softenedUrl }, role: 'reference_image' });
-            }
+          content.push({ type: 'image_url', image_url: { url: softenedStart }, role: 'reference_image' });
+        }
+        for (const rk of useRefs) {
+          if (refImages[rk]) {
+            const softenedUrl = await softenDataUrl(refImages[rk]);
+            content.push({ type: 'image_url', image_url: { url: softenedUrl }, role: 'reference_image' });
           }
-          if (prevVideoUrl) {
-            content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
-          }
+        }
+        if (prevVideoUrl) {
+          content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
         }
         const payload = buildPayload(model, content, false, ratio, dur, false, res);
         let taskId, j4;
