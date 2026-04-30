@@ -1354,40 +1354,73 @@ async function createAd() {
         const sip = scene.startingImagePrompt;
         if (!sip) { sceneStartImages.push(null); continue; }
         const s = adLog(`Starting frame ${i+1}/${scenes.length}: "${scene.name}"…`, 'run');
-        try {
-          // Feed every ref image the scene declares (characters, environment, product, props)
-          // so the starting frame matches the established look instead of hallucinating it.
-          const sceneInputs = [];
-          // Scenes from /api/gen/shots use `useRefImages`; brainstorm scenes use `refImageKeys`. Accept both.
-          const sceneRefKeys = scene.useRefImages || scene.refImageKeys || [];
-          for (const k of sceneRefKeys) {
-            if (refImages[k]) {
-              const p = splitDataUrl(refImages[k]);
-              if (p) sceneInputs.push(p);
+
+        // Feed every ref image the scene declares (characters, environment, product, props)
+        // so the starting frame matches the established look instead of hallucinating it.
+        const sceneInputs = [];
+        // Scenes from /api/gen/shots use `useRefImages`; brainstorm scenes use `refImageKeys`. Accept both.
+        const sceneRefKeys = scene.useRefImages || scene.refImageKeys || [];
+        for (const k of sceneRefKeys) {
+          if (refImages[k]) {
+            const p = splitDataUrl(refImages[k]);
+            if (p) sceneInputs.push(p);
+          }
+        }
+        if (sceneInputs.length) {
+          adLog(`  → using ${sceneInputs.length} ref(s): ${sceneRefKeys.filter(k => refImages[k]).join(', ')}`, 'info');
+        }
+
+        // Retry until success — transient errors (high demand, rate limit, 5xx, network)
+        // get backed off; only a definitive non-retryable error breaks out and falls back.
+        let attempt = 0;
+        let producedUrl = null;
+        let lastErr = null;
+        while (true) {
+          attempt++;
+          try {
+            const ir = await fetch('/api/generate-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+              body: JSON.stringify({ prompt: sip, ratio: scene.ratio || '9:16', quality: 'high', images: sceneInputs })
+            });
+            const ij = await safeJson(ir);
+            if (ir.ok) {
+              if (ij.credits !== undefined) { userCredits = ij.credits; updateCreditsDisplay(); }
+              producedUrl = ij.url;
+              break;
             }
+            const errMsg = (ij && ij.error) || `HTTP ${ir.status}`;
+            lastErr = errMsg;
+            const retryable = /high demand|try again later|temporar|rate limit|429|500|502|503|504|timeout|timed out|fetch/i.test(String(errMsg)) || ir.status >= 500 || ir.status === 429;
+            if (!retryable) throw new Error(errMsg);
+            const waitSec = Math.min(120, 15 + attempt * 15);
+            adLogUpdate(s, `Scene ${i+1} frame: ${errMsg.substring(0,80)} — retry ${attempt} in ${waitSec}s…`, 'warn');
+            await new Promise(r => setTimeout(r, waitSec * 1000));
+          } catch(e) {
+            lastErr = e.message;
+            // Network-level failure: also retryable
+            const retryable = /fetch|network|timeout|timed out|ECONN|ENET|abort/i.test(String(e.message));
+            if (!retryable) {
+              adLogUpdate(s, `Scene ${i+1} starting frame failed (non-retryable): ${e.message} — will use text-to-video`, 'warn');
+              break;
+            }
+            const waitSec = Math.min(120, 15 + attempt * 15);
+            adLogUpdate(s, `Scene ${i+1} frame: ${e.message.substring(0,80)} — retry ${attempt} in ${waitSec}s…`, 'warn');
+            await new Promise(r => setTimeout(r, waitSec * 1000));
           }
-          if (sceneInputs.length) {
-            adLog(`  → using ${sceneInputs.length} ref(s): ${sceneRefKeys.filter(k => refImages[k]).join(', ')}`, 'info');
-          }
-          const ir = await fetch('/api/generate-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-            body: JSON.stringify({ prompt: sip, ratio: scene.ratio || '9:16', quality: 'high', images: sceneInputs })
-          });
-          const ij = await safeJson(ir);
-          if (!ir.ok) throw new Error(ij.error || 'Image gen failed');
-          if (ij.credits !== undefined) { userCredits = ij.credits; updateCreditsDisplay(); }
-          sceneStartImages.push(ij.url);
-          lib.unshift({ id: 'start-' + Date.now() + '-' + i, prompt: sip, url: ij.url,
+        }
+
+        if (producedUrl) {
+          sceneStartImages.push(producedUrl);
+          lib.unshift({ id: 'start-' + Date.now() + '-' + i, prompt: sip, url: producedUrl,
             ratio: scene.ratio || '9:16', model: 'gemini-flash', ts: Date.now(), done: Date.now(),
             type: 'image', folder: concept.adTitle, label: `Scene ${i+1} start` });
           saveLib(); renderLib();
-          adLogUpdate(s, `Scene ${i+1} starting frame ✓`, 'done');
-          if (i < scenes.length - 1) await new Promise(r => setTimeout(r, 3000));
-        } catch(e) {
-          adLogUpdate(s, `Scene ${i+1} starting frame failed: ${e.message} — will use text-to-video`, 'warn');
+          adLogUpdate(s, `Scene ${i+1} starting frame ✓${attempt > 1 ? ` (after ${attempt} attempts)` : ''}`, 'done');
+        } else {
           sceneStartImages.push(null);
         }
+        if (i < scenes.length - 1) await new Promise(r => setTimeout(r, 3000));
       }
     }
 
@@ -1422,12 +1455,12 @@ async function createAd() {
         if (!dcr.ok) throw new Error(dj.error || 'Not enough credits');
         userCredits = dj.credits; updateCreditsDisplay();
 
-        // Starting frame first (no role = I2V mode), then text prompt, then ref images
+        // Starting frame goes first with role 'first_frame' (BytePlus I2V), then text prompt, then ref images
         const content = [];
         const startImg = sceneStartImages[i];
         if (startImg) {
           const softenedStart = await softenDataUrl(startImg);
-          content.push({ type: 'image_url', image_url: { url: softenedStart } });
+          content.push({ type: 'image_url', image_url: { url: softenedStart }, role: 'first_frame' });
         }
         content.push({ type: 'text', text: prompt });
         const useRefs = scene.useRefImages || [];
