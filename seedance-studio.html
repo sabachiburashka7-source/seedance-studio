@@ -1412,10 +1412,7 @@ async function createAd() {
 
     // ── Step 3.5: Generate starting frame image for each scene ───────────────
     const sceneStartImages = [];
-    if (!openaiKey()) {
-      adLog('No OpenAI key — skipping scene starting images (videos will be text-to-video)', 'warn');
-      for (let i = 0; i < scenes.length; i++) sceneStartImages.push(null);
-    } else {
+    {
       adLog(`Generating ${scenes.length} scene starting frame(s)…`, 'info');
       for (let i = 0; i < scenes.length; i++) {
         const scene = scenes[i];
