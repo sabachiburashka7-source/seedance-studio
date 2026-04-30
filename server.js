@@ -18,19 +18,21 @@ const fs     = require('fs');
 const path   = require('path');
 const crypto = require('crypto');
 
-const PORT          = process.env.PORT || 3000;
-const BYTEPLUS      = 'ark.ap-southeast.bytepluses.com';
-const DB_FILE       = path.join(__dirname, 'db.json');
-const REDIS_URL     = (process.env.UPSTASH_REDIS_REST_URL  || '').replace(/\/$/, '');
-const REDIS_TOKEN   = process.env.UPSTASH_REDIS_REST_TOKEN || '';
-const REDIS_KEY     = 'seedance_db';
-const RESEND_KEY    = process.env.RESEND_API_KEY || '';
-const BREVO_KEY     = process.env.BREVO_API_KEY  || '';
-const BREVO_SENDER  = process.env.BREVO_SENDER_EMAIL || '';
-const APP_URL       = process.env.APP_URL || 'http://localhost:3000';
-const STRIPE_KEY    = process.env.STRIPE_SECRET_KEY    || '';
-const STRIPE_WSEC   = process.env.STRIPE_WEBHOOK_SECRET || '';
-const FAL_KEY       = process.env.FAL_API_KEY           || '';
+const PORT             = process.env.PORT || 3000;
+const BYTEPLUS         = 'ark.ap-southeast.bytepluses.com';
+const DB_FILE          = path.join(__dirname, 'db.json');
+const REDIS_URL        = (process.env.UPSTASH_REDIS_REST_URL  || '').replace(/\/$/, '');
+const REDIS_TOKEN      = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+const REDIS_KEY        = 'seedance_db';
+const RESEND_KEY       = process.env.RESEND_API_KEY       || '';
+const BREVO_KEY        = process.env.BREVO_API_KEY        || '';
+const BREVO_SENDER     = process.env.BREVO_SENDER_EMAIL   || '';
+const APP_URL          = process.env.APP_URL              || 'http://localhost:3000';
+const STRIPE_KEY       = process.env.STRIPE_SECRET_KEY    || '';
+const STRIPE_WSEC      = process.env.STRIPE_WEBHOOK_SECRET || '';
+const FAL_KEY          = process.env.FAL_API_KEY          || '';
+const BYTEPLUS_API_KEY = process.env.BYTEPLUS_API_KEY     || '';
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY   || '';
 
 const CREDIT_PACKAGES = {
   starter: { credits: 500,  usdCents:  900, name: '500 Credits'  },
@@ -237,6 +239,7 @@ function makeCode() { return String(Math.floor(100000 + Math.random() * 900000))
 
 // ── Claude (Anthropic) API helper ─────────────────────────────────────────────
 function claudeApiCall(apiKey, system, messages) {
+  apiKey = apiKey || ANTHROPIC_API_KEY;
   return new Promise((resolve, reject) => {
     const body = Buffer.from(JSON.stringify({
       model: 'claude-sonnet-4-6',
@@ -409,11 +412,12 @@ function proxy(req, res, bodyBuffer) {
 
   const options = { hostname: BYTEPLUS, port: 443, path: target, method: req.method, headers: {} };
 
-  const skip = new Set(['host', 'origin', 'referer', 'accept-encoding']);
+  const skip = new Set(['host', 'origin', 'referer', 'accept-encoding', 'authorization']);
   for (const [k, v] of Object.entries(req.headers)) {
     if (!skip.has(k.toLowerCase())) options.headers[k] = v;
   }
   options.headers['accept-encoding'] = 'identity';
+  if (BYTEPLUS_API_KEY) options.headers['authorization'] = 'Bearer ' + BYTEPLUS_API_KEY;
 
   const proxyReq = https.request(options, proxyRes => {
     const outHeaders = {
@@ -650,8 +654,8 @@ async function handleRequest(req, res) {
   // ── File URL resolver ─────────────────────────────────────────────────────
   if (url.startsWith('/file-url/') && method === 'GET') {
     const fileId = url.slice(10);
-    const apiKey = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '').trim();
-    if (!apiKey) return sendJSON(res, 401, { error: 'Missing API key' });
+    const apiKey = BYTEPLUS_API_KEY;
+    if (!apiKey) return sendJSON(res, 503, { error: 'BytePlus API key not configured on server' });
 
     function byteplusGet(p) {
       return new Promise((resolve, reject) => {
@@ -961,8 +965,8 @@ async function handleRequest(req, res) {
   // ── Ads: Claude brainstorm ────────────────────────────────────────────────
   if (url === '/api/gen/brief' && method === 'POST') {
     const { images, description } = await readBody(req); // must read body before any early return
-    const anthropicKey = (req.headers['x-anthropic-key'] || '').trim();
-    if (!anthropicKey) return sendJSON(res, 401, { error: 'Anthropic API key required. Enter it in the Ads tab.' });
+    const anthropicKey = ANTHROPIC_API_KEY;
+    if (!anthropicKey) return sendJSON(res, 503, { error: 'Anthropic API key not configured on server (ANTHROPIC_API_KEY missing).' });
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
     if (!images || !images.length) return sendJSON(res, 400, { error: 'Upload at least one product image.' });
@@ -1159,8 +1163,8 @@ RULES:
   // ── Ads: Claude video prompts ─────────────────────────────────────────────
   if (url === '/api/gen/shots' && method === 'POST') {
     const { concept, refImages } = await readBody(req); // must read body before any early return
-    const anthropicKey = (req.headers['x-anthropic-key'] || '').trim();
-    if (!anthropicKey) return sendJSON(res, 401, { error: 'Anthropic API key required.' });
+    const anthropicKey = ANTHROPIC_API_KEY;
+    if (!anthropicKey) return sendJSON(res, 503, { error: 'Anthropic API key not configured on server (ANTHROPIC_API_KEY missing).' });
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
 

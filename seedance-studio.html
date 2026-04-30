@@ -896,15 +896,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <div>
       <div class="panel" style="margin-bottom:0">
 
-        <!-- BytePlus API Key -->
-        <div class="setting-group">
-          <span class="setting-label">BytePlus API Key</span>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input class="api-input" type="password" id="apikey" placeholder="" oninput="checkKey()" autocomplete="off" data-lpignore="true" data-form-type="other" style="flex:1;max-width:100%">
-            <span class="api-pill bad" id="keypill">Not set</span>
-          </div>
-        </div>
-
         <!-- Model -->
         <div class="setting-group">
           <span class="setting-label">Model</span>
@@ -1007,31 +998,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <!-- RIGHT: settings -->
     <div>
       <div class="panel" style="margin-bottom:0">
-
-        <div class="setting-group">
-          <span class="setting-label">Anthropic API Key</span>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input class="api-input" type="password" id="anthropic-apikey" placeholder="" oninput="checkAnthropicKey()" autocomplete="off" data-lpignore="true" data-form-type="other" style="flex:1;max-width:100%">
-            <span class="api-pill bad" id="anthropic-keypill">Not set</span>
-          </div>
-          <div style="font-size:11px;color:var(--text3);margin-top:5px">Used for ad brainstorming &amp; video prompt creation. Get one at console.anthropic.com</div>
-        </div>
-
-        <div class="setting-group">
-          <span class="setting-label">Image Generation</span>
-          <div style="display:flex;gap:8px;align-items:center">
-            <span class="api-pill ok" style="font-size:11px">✓ Gemini Flash</span>
-          </div>
-          <div style="font-size:11px;color:var(--text3);margin-top:5px">Reference images generated via Gemini Flash (server-side).</div>
-        </div>
-
-        <div class="setting-group">
-          <span class="setting-label">BytePlus Key</span>
-          <div style="display:flex;gap:8px;align-items:center">
-            <span class="api-pill" id="ads-byteplus-pill" style="font-size:11px">—</span>
-          </div>
-          <div style="font-size:11px;color:var(--text3);margin-top:5px">Used for video generation. Set it in the Video tab.</div>
-        </div>
 
         <div class="setting-group">
           <span class="setting-label">Video Settings</span>
@@ -1197,31 +1163,7 @@ let currentUser = null;
 let authMode    = 'login';
 let userCredits = null;
 
-// ══ API KEY ════════════════════════════════════════════════════════════
-const key = () => document.getElementById('apikey').value.trim();
-function checkKey() {
-  const ok = key().length > 20;
-  const el = document.getElementById('keypill');
-  el.textContent = ok ? '✓ Set' : 'Not set';
-  el.className   = 'api-pill ' + (ok ? 'ok' : 'bad');
-  const ap = document.getElementById('ads-byteplus-pill');
-  if (ap) { ap.textContent = ok ? '✓ Set' : 'Not set'; ap.className = 'api-pill ' + (ok ? 'ok' : 'bad'); }
-  if (ok) localStorage.setItem('sd_byteplus_key', key());
-  else localStorage.removeItem('sd_byteplus_key');
-}
-
-function checkOpenAIKey() {} // no-op: image generation now uses server-side Gemini key
-
 // ══ ADS ════════════════════════════════════════════════════════════════
-const anthropicKey = () => document.getElementById('anthropic-apikey').value.trim();
-function checkAnthropicKey() {
-  const ok = anthropicKey().length > 20;
-  const el = document.getElementById('anthropic-keypill');
-  el.textContent = ok ? '✓ Set' : 'Not set';
-  el.className   = 'api-pill ' + (ok ? 'ok' : 'bad');
-  if (ok) localStorage.setItem('sd_anthropic_key', anthropicKey());
-  else localStorage.removeItem('sd_anthropic_key');
-}
 
 let adImages = []; // [{file, dataUrl}]
 
@@ -1285,8 +1227,6 @@ function adLogClear() {
 }
 
 async function createAd() {
-  if (!anthropicKey()) return toast('Enter your Anthropic API key in the Ads settings', 'err');
-  if (!key())          return toast('Enter your BytePlus API key in the Video tab settings', 'err');
   if (!adImages.length) return toast('Upload at least one product image', 'err');
   if (!authToken)      return toast('Sign in to use Ads', 'err');
 
@@ -1322,7 +1262,7 @@ async function createAd() {
 
     const r1 = await fetch('/api/gen/brief', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken, 'x-anthropic-key': anthropicKey() },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
       body: JSON.stringify({ images: imagesPayload, description })
     });
     const j1 = await r1.json();
@@ -1337,7 +1277,7 @@ async function createAd() {
     const s2 = adLog('Claude is writing video prompts for each scene…', 'run');
     const r2 = await fetch('/api/gen/shots', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken, 'x-anthropic-key': anthropicKey() },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
       body: JSON.stringify({ concept })
     });
     const j2 = await r2.json();
@@ -1509,7 +1449,7 @@ async function createAd() {
         const payload = buildPayload(model, content, false, ratio, dur, false, res);
         const r4 = await fetch('/proxy/api/v3/contents/generations/tasks', {
           method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + key(), 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
         const j4 = await r4.json();
@@ -1546,9 +1486,7 @@ function pollAd(job) {
     const run = async () => {
       if (++n > 80) { finishAd(job, null, 'Timed out'); resolve(null); return; }
       try {
-        const r = await fetch('/proxy/api/v3/contents/generations/tasks/' + job.id, {
-          headers: { 'Authorization': 'Bearer ' + key() }
-        });
+        const r = await fetch('/proxy/api/v3/contents/generations/tasks/' + job.id);
         const d = await r.json();
         const status = (d.status || '').toLowerCase();
         if (status === 'succeeded' || status === 'success' || status === 'completed') {
@@ -1628,7 +1566,6 @@ function goPage(name, btn) {
   document.querySelectorAll('#mobile-tab-strip .mtab').forEach(b =>
     b.classList.toggle('active', b.dataset.page === name));
   if (name === 'library') renderLib();
-  if (name === 'ads') { checkKey(); }
 }
 
 // ══ BUTTON GROUPS ══════════════════════════════════════════════════════
@@ -1959,7 +1896,6 @@ function buildPayload(model, content, audio, ratio, dur, wm, res) {
 
 // ══ GENERATE ══════════════════════════════════════════════════════════
 async function doGenerate() {
-  if (!key())  return toast('Enter your API key first', 'err');
   const pt = document.getElementById('prompt').value.trim();
   if (!pt)     return toast('Enter a prompt', 'err');
 
@@ -2001,7 +1937,7 @@ async function doGenerate() {
     showProg('Submitting generation task...');
     const r = await fetch('/proxy/api/v3/contents/generations/tasks', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + key(), 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(buildPayload(model, content, audio, ratio, dur, wm, res))
     });
     const j = await safeJson(r);
@@ -2029,9 +1965,7 @@ function poll(job) {
   const run = async () => {
     if (++n > 80) { finish(job, null, 'Timed out'); return; }
     try {
-      const r = await fetch('/proxy/api/v3/contents/generations/tasks/' + job.id, {
-        headers: { 'Authorization': 'Bearer ' + key() }
-      });
+      const r = await fetch('/proxy/api/v3/contents/generations/tasks/' + job.id);
       const d = await safeJson(r);
       console.log('[poll]', job.id, JSON.stringify(d));
       const status = (d.status || '').toLowerCase();
@@ -2690,12 +2624,6 @@ function toggleMobileMode() {
 
 // ══ INIT ═══════════════════════════════════════════════════════════════
 applyMobileMode();
-(function restoreApiKeys() {
-  const bp = localStorage.getItem('sd_byteplus_key');
-  if (bp) { document.getElementById('apikey').value = bp; checkKey(); }
-  const an = localStorage.getItem('sd_anthropic_key');
-  if (an) { document.getElementById('anthropic-apikey').value = an; checkAnthropicKey(); }
-})();
 calcCost();
 calcImgCost();
 initAuth().then(() => {

@@ -11,7 +11,7 @@ AI video generation app using BytePlus ModelArk (Seedance 2.0).
 ## Deployment
 - **GitHub**: `sabachiburashka7-source/seedance-studio` (main branch)
 - **Render**: auto-deploys on push, runs `node server.js`
-- **Render env vars**: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `APP_URL`
+- **Render env vars**: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `APP_URL`, `BYTEPLUS_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`
 - **UptimeRobot**: pings `/health` every 5 min to prevent Render free tier from sleeping
 
 ## Backend key details
