@@ -1358,11 +1358,16 @@ async function createAd() {
           // Feed every ref image the scene declares (characters, environment, product, props)
           // so the starting frame matches the established look instead of hallucinating it.
           const sceneInputs = [];
-          for (const k of (scene.refImageKeys || [])) {
+          // Scenes from /api/gen/shots use `useRefImages`; brainstorm scenes use `refImageKeys`. Accept both.
+          const sceneRefKeys = scene.useRefImages || scene.refImageKeys || [];
+          for (const k of sceneRefKeys) {
             if (refImages[k]) {
               const p = splitDataUrl(refImages[k]);
               if (p) sceneInputs.push(p);
             }
+          }
+          if (sceneInputs.length) {
+            adLog(`  → using ${sceneInputs.length} ref(s): ${sceneRefKeys.filter(k => refImages[k]).join(', ')}`, 'info');
           }
           const ir = await fetch('/api/generate-image', {
             method: 'POST',

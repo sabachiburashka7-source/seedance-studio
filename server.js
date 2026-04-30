@@ -1239,7 +1239,7 @@ Output in two parts with no extra text before or after:
 PART 1 — one line of compact JSON (no line breaks inside the JSON):
 SCENES_META: [{"number":1,"name":"Scene name","useRefImages":["key1","key2"],"ratio":"9:16","duration":6,"startingImagePrompt":"One concise sentence: exact composition of the first frame — subject, environment, camera angle, lighting, mood"},{"number":2,...}]
 
-"startingImagePrompt" must be a SHORT single-line sentence (max 30 words) describing the very first frame of that scene so it can be used to generate a starting image via an image generation model. No brand names, no logos, no real people — describe visually. This field MUST be included for every scene.
+"startingImagePrompt" must be a SHORT single-line sentence (max 30 words) describing the very first frame of that scene so it can be used to generate a starting image via an image generation model. CRITICAL: every key listed in this scene's "useRefImages" will be sent to the image generator as actual visual input alongside this prompt. So do NOT re-describe what those refs show — do NOT describe the character's hair/clothing/face if a character ref is attached, do NOT describe the product's appearance if the product ref is attached, do NOT describe the environment's layout if an environment ref is attached. INSTEAD use phrases like "the character" / "the product" / "the environment" and focus the words on what the refs cannot supply: composition, camera angle, framing, pose, gesture, action, expression, lighting direction and quality, mood. No brand names, no logos, no real people. This field MUST be included for every scene.
 
 PART 2 — each scene's full prompt text, wrapped in tags (use the scene number from above):
 <scene_1>
