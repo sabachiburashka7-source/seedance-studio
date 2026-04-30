@@ -1076,8 +1076,32 @@ RULES:
 - referenceImages: generate ALL needed refs — one product sheet, all character sheets, all environments, key props.
 - type field rules:
   • "product" — exactly ONE entry with type "product". The user's actual product photo will be sent to the image generator alongside your prompt. Your prompt MUST be exactly: "Generate a product reference sheet photo." — nothing more. Do NOT describe the product, do NOT add details about angles, lighting, backgrounds, or annotations. The image generator will scan the input photo and knows how to create the reference sheet automatically.
-  • "character" — for each human or animal character. Prompt MUST be a detailed professional character reference sheet: full-body front/side/back panels on white background, clothing and accessories annotated, face close-up panel, skin/hair/eye color swatches, consistent lighting. Label format "CHAR ID: 001 STUDY 1". Include: age, build, expression, exact clothing colors, hairstyle. End with: "Character reference sheet, professional illustration format. No cartoon, no anime, no caricature. Photorealistic."
-  • "environment" — for each distinct location/setting. Prompt MUST be a detailed environment reference sheet with multiple panel layout (wide establishing shot, medium shot, close-up details), annotations pointing to key surfaces/materials/lighting. Label format "ENV ID: 001 STUDY 1". Specify: time of day, weather/light quality, architectural style, materials (brick, concrete, wood etc.), color palette, mood adjectives. End with: "Environment reference sheet, professional format. Photorealistic, shot on Canon R5. No illustration, no cartoon, no 3D render."
+  • "character" — for each human or animal character. Prompt MUST follow this exact structure:
+    - Opening: "Character reference sheet, professional studio format."
+    - Identity: name/role if any, nationality/ethnicity, age range, build (e.g. "medium build, slightly stocky")
+    - Physical details: hair color + length + texture, eye color, skin tone, facial hair, any distinguishing features (e.g. "heavy dark under-eyes, tired expression")
+    - Panel layout: "Full body front view on left side, full body side profile on right side. Multiple face close-ups in bottom half — front view, 3/4 angle view, and [key expression] expression. Color palette swatches shown on side."
+    - Clothing: every garment named with exact color + material + fit (e.g. "oversized heather grey crew neck t-shirt, black jogger sweatpants with ribbed cuffs, worn grey suede slip-on house slippers")
+    - Posture and expression: specific body language and emotional state (e.g. "posture slouched forward, shoulders dropped — expression blank and exhausted, not angry, just completely drained")
+    - Annotations: "Annotations pointing to hair style, eye color, fabric material, facial hair."
+    - Technical: "Clean white background. Photorealistic, shot on Canon R5, professional lighting."
+    - Labels: "Label at top left: CHAR ID: 00X STUDY 1. Label at top right: STUDY 1."
+    - Color swatches: list 3-5 specific swatches matching the character's palette (e.g. "Small color swatches showing: dark charcoal, black, heather grey, warm skin tone.")
+    - End with: "No cartoon, no anime, no caricature. No illustration, no 3D render."
+  • "environment" — for each distinct location/setting. Prompt MUST follow this exact structure:
+    - Opening: "Environment reference sheet, professional format."
+    - Location identity: specific place name/type, architectural style, country/culture if relevant
+    - Panel layout: "Three panel layout: wide angle full room [position], medium [area] [position], close-up [detail] [position]." — specify top-left, top-right, bottom-center etc.
+    - Key visual elements: list every surface, furniture piece, prop, and material with precise detail (concrete walls, worn wooden desk, metal shelving, etc.)
+    - Lighting: time of day, light source direction, quality and color temperature (e.g. "warm golden morning sunlight flooding through window, high key")
+    - Mood adjectives: 3-5 specific words (e.g. "calm, open, peaceful, focused")
+    - Color tone: overall grading direction (e.g. "warm golden color tone, high key")
+    - Annotations: "Annotation lines pointing to: [list 4-5 specific features]."
+    - Labels: "Label top left: ENV ID: 00X STUDY X. Label top right: [LOCATION NAME — STATE/MOOD]."
+    - Color swatches: "Color swatches bottom right."
+    - Technical: "Real interior/exterior photography, photorealistic, shot on Canon R5."
+    - End with: "No illustration, no cartoon, no 3D render, no sketch, no painting, no stylized."
+    - If this is a variant/alternate state of an existing environment, explicitly reference the original: "Exact same layout as ENV ID: 00X STUDY X — same [feature], same [feature] — but [what changed]."
   • "prop" — for important objects/products other than the hero product. Detailed prompt showing the object from multiple angles, materials labeled, scale reference.
 - scenes: 3-6 scenes. Each duration MUST be between 4 and 10 seconds (maximum 10). Total ad 20-50 seconds.
 - ratio must be one of: 9:16, 16:9, 1:1, 4:3, 3:4, 21:9
