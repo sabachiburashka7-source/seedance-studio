@@ -1455,23 +1455,27 @@ async function createAd() {
         if (!dcr.ok) throw new Error(dj.error || 'Not enough credits');
         userCredits = dj.credits; updateCreditsDisplay();
 
-        // Starting frame goes first with role 'first_frame' (BytePlus I2V), then text prompt, then ref images
+        // BytePlus rejects mixing first_frame with reference_image/reference_video.
+        // If we have a starting frame, use it alone (visual identity is already baked in via OpenAI).
+        // Otherwise fall back to text + ref images (+ prev video).
         const content = [];
         const startImg = sceneStartImages[i];
         if (startImg) {
           const softenedStart = await softenDataUrl(startImg);
           content.push({ type: 'image_url', image_url: { url: softenedStart }, role: 'first_frame' });
-        }
-        content.push({ type: 'text', text: prompt });
-        const useRefs = scene.useRefImages || [];
-        for (const rk of useRefs) {
-          if (refImages[rk]) {
-            const softenedUrl = await softenDataUrl(refImages[rk]);
-            content.push({ type: 'image_url', image_url: { url: softenedUrl }, role: 'reference_image' });
+          content.push({ type: 'text', text: prompt });
+        } else {
+          content.push({ type: 'text', text: prompt });
+          const useRefs = scene.useRefImages || [];
+          for (const rk of useRefs) {
+            if (refImages[rk]) {
+              const softenedUrl = await softenDataUrl(refImages[rk]);
+              content.push({ type: 'image_url', image_url: { url: softenedUrl }, role: 'reference_image' });
+            }
           }
-        }
-        if (prevVideoUrl) {
-          content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
+          if (prevVideoUrl) {
+            content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
+          }
         }
         const payload = buildPayload(model, content, false, ratio, dur, false, res);
         let taskId, j4;
