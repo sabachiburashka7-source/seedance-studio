@@ -1917,7 +1917,7 @@ function softenDataUrl(dataUrl) {
 
 // ══ BUILD PAYLOAD ═════════════════════════════════════════════════════
 function buildPayload(model, content, audio, ratio, dur, wm, res) {
-  return { model, content, generate_audio: audio, ratio, duration: dur, watermark: wm, resolution: res };
+  return { model, content, generate_audio: audio, aspect_ratio: ratio, duration: dur, watermark: wm, resolution: res };
 }
 
 // ══ GENERATE ══════════════════════════════════════════════════════════
