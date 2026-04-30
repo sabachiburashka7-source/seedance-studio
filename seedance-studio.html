@@ -1296,41 +1296,53 @@ async function createAd() {
     for (const ref of sortedRefList) {
       if (!ref.prompt || !ref.key) continue;
       const s = adLog(`Generating: ${ref.label || ref.key}…`, 'run');
-      try {
-        // Product ref: send the actual uploaded product photo as the only reference.
-        // Other refs with dependsOn: send ALL listed dependency images as visual references.
-        const inputImages = [];
-        if (ref.type === 'product' && adImages[0]?.dataUrl) {
-          const p = splitDataUrl(adImages[0].dataUrl);
-          if (p) inputImages.push(p);
-        } else if (ref.dependsOn && ref.dependsOn.length > 0) {
-          for (const k of ref.dependsOn) {
-            if (refImages[k]) {
-              const p = splitDataUrl(refImages[k]);
-              if (p) inputImages.push(p);
+      let succeeded = false;
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        try {
+          // Product ref: send the actual uploaded product photo as the only reference.
+          // Other refs with dependsOn: send ALL listed dependency images as visual references.
+          const inputImages = [];
+          if (ref.type === 'product' && adImages[0]?.dataUrl) {
+            const p = splitDataUrl(adImages[0].dataUrl);
+            if (p) inputImages.push(p);
+          } else if (ref.dependsOn && ref.dependsOn.length > 0) {
+            for (const k of ref.dependsOn) {
+              if (refImages[k]) {
+                const p = splitDataUrl(refImages[k]);
+                if (p) inputImages.push(p);
+              }
             }
           }
+          const ir = await fetch('/api/generate-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+            body: JSON.stringify({ prompt: ref.prompt, ratio: ref.ratio || '1:1', quality: 'high', images: inputImages })
+          });
+          const ij = await safeJson(ir);
+          if (!ir.ok) throw new Error(ij.error || 'Image gen failed');
+          if (ij.credits !== undefined) { userCredits = ij.credits; updateCreditsDisplay(); }
+          refImages[ref.key] = ij.url;
+          lib.unshift({ id: 'ref-' + Date.now() + '-' + ref.key, prompt: ref.prompt, url: ij.url,
+            ratio: ref.ratio || '1:1', model: 'gemini-flash', ts: Date.now(), done: Date.now(),
+            type: 'image', folder: concept.adTitle, label: ref.label || ref.key });
+          saveLib(); renderLib();
+          adLogUpdate(s, `✓ ${ref.label || ref.key}`, 'done');
+          succeeded = true;
+          break;
+        } catch(e) {
+          const isRetryable = /timeout|timed out|high demand|try again|temporar|overload|503|429/i.test(e.message);
+          if (isRetryable && attempt < 5) {
+            const waitSec = attempt * 30;
+            adLogUpdate(s, `${ref.label || ref.key} — retrying in ${waitSec}s (attempt ${attempt}/5)…`, 'warn');
+            await new Promise(r => setTimeout(r, waitSec * 1000));
+          } else {
+            adLogUpdate(s, `${ref.label || ref.key} skipped: ${e.message}`, 'warn');
+            break;
+          }
         }
-        const ir = await fetch('/api/generate-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-          body: JSON.stringify({ prompt: ref.prompt, ratio: ref.ratio || '1:1', quality: 'high', images: inputImages })
-        });
-        const ij = await safeJson(ir);
-        if (!ir.ok) throw new Error(ij.error || 'Image gen failed');
-        if (ij.credits !== undefined) { userCredits = ij.credits; updateCreditsDisplay(); }
-        refImages[ref.key] = ij.url;
-        lib.unshift({ id: 'ref-' + Date.now() + '-' + ref.key, prompt: ref.prompt, url: ij.url,
-          ratio: ref.ratio || '1:1', model: 'gemini-flash', ts: Date.now(), done: Date.now(),
-          type: 'image', folder: concept.adTitle, label: ref.label || ref.key });
-        saveLib(); renderLib();
-        adLogUpdate(s, `✓ ${ref.label || ref.key}`, 'done');
-        // brief pause between requests to avoid Gemini rate limits
-        if (ref !== sortedRefList[sortedRefList.length - 1]) await new Promise(r => setTimeout(r, 3000));
-      } catch(e) {
-        adLogUpdate(s, `${ref.label || ref.key} failed: ${e.message}`, 'err');
-        throw e;
       }
+      // brief pause between requests to avoid Gemini rate limits
+      if (succeeded && ref !== sortedRefList[sortedRefList.length - 1]) await new Promise(r => setTimeout(r, 3000));
     }
 
     // ── Step 3.5: Generate starting frame image for each scene ───────────────
