@@ -1024,7 +1024,10 @@ For each concept, develop completely:
 
 **The Hook:** The first 3 seconds as a visceral description. What stops everything?
 
-**The Story:** Scene-by-scene with specific sensory detail (not "a kitchen" — "a kitchen at 6am, still dark outside, one lamp on"). Include: setting, characters (body language, relationship), the conflict/tension, the turn (when the product enters and shifts something), the resolution (the feeling the audience is left with).
+**The Story (MANDATORY TWO-SCENE PROBLEM → SOLUTION STRUCTURE):** Every concept MUST be told in exactly two 15-second scenes:
+- Scene 1 (PROBLEM, 15s): the painful before-state. The target human in the moment of friction, frustration, lack, or longing — vividly specific, no product visible. Build the emotional ache. End on the peak of the pain.
+- Scene 2 (SOLUTION, 15s): the after-state with the product. The product enters and visibly resolves the tension from Scene 1. Same person/world as Scene 1 — clear continuity. End on the new emotional reality the product unlocks.
+Use sensory detail (not "a kitchen" — "a kitchen at 6am, still dark outside, one lamp on"). For each scene name body language, the emotional beat, and what the audience FEELS by the final frame.
 
 **Visual Language:** Color palette (reference films/photographers), cinematography style, editing rhythm, sound/music direction.
 
@@ -1096,11 +1099,21 @@ After working through all phases internally, output ONLY valid JSON (no markdown
   "scenes": [
     {
       "number": 1,
-      "name": "Scene name",
-      "description": "Visceral, specific scene description. Not 'a woman smiles' — 'a woman exhales for the first time all day'. Setting, character action, emotional beat, what the audience FEELS.",
-      "duration": 6,
+      "name": "Problem — short scene name",
+      "role": "problem",
+      "description": "The before-state: the target human in vivid friction/lack/longing. Product NOT visible. End on the peak of the pain.",
+      "duration": 15,
       "ratio": "9:16",
-      "refImageKeys": ["key1", "key2"]
+      "refImageKeys": ["key1"]
+    },
+    {
+      "number": 2,
+      "name": "Solution — short scene name",
+      "role": "solution",
+      "description": "Same person, same world as Scene 1. The product enters and visibly resolves Scene 1's tension. End on the new emotional reality.",
+      "duration": 15,
+      "ratio": "9:16",
+      "refImageKeys": ["key1", "product_sheet"]
     }
   ]
 }
@@ -1137,9 +1150,10 @@ RULES:
     - If this is a variant/alternate state of an existing environment, explicitly reference the original: "Exact same layout as ENV ID: 00X STUDY X — same [feature], same [feature] — but [what changed]."
   • "prop" — for important objects/products other than the hero product. Detailed prompt showing the object from multiple angles, materials labeled, scale reference.
 - dependsOn: if a reference image must visually contain or prominently feature another reference object (e.g. a gift box showing the product inside, a hand holding the product, a scene styled around the character), list that object's key in dependsOn. The already-generated image for each listed key will be fed as a visual reference to the image generator. This ensures the dependent image accurately depicts the referenced object rather than hallucinating it. Leave dependsOn empty or omit it entirely for fully self-contained images (e.g. the product sheet itself, a standalone character or environment that doesn't need to show the product). IMPORTANT: "product" type refs never need dependsOn since they get the real uploaded photo directly.
-- scenes: 3-6 scenes. Each duration MUST be between 4 and 10 seconds (maximum 10). Total ad 20-50 seconds.
+- scenes: EXACTLY 2 scenes — Scene 1 role="problem" (no product visible), Scene 2 role="solution" (product present and resolving the tension). Each scene duration MUST be exactly 15. Total ad = 30 seconds. Do not output 1, 3, or more scenes.
 - ratio must be one of: 9:16, 16:9, 1:1, 4:3, 3:4, 21:9
 - Every scene description must name which refImageKeys it needs
+- PRODUCT CONSISTENCY: Scene 2's description must explicitly state how the product is framed (e.g. "held in hand at chest height, centered, occupying ~35% of frame width") and Scene 1's resolution must establish the empty space where the product will land in Scene 2. The character/person, environment, lighting tone, and wardrobe must remain visually continuous across both scenes — only the presence of the product changes.
 - Write like a creative director pitching to skeptical CMOs — confident, specific, surprising. No generic language. Every detail serves an emotional purpose.`;
 
     try {
@@ -1219,9 +1233,18 @@ ENERGY ARC: one sentence — opening energy → signature peak → how it resolv
 
 ## DURATION CALIBRATION
 
-Each scene is 4-10 seconds MAXIMUM:
-- 4-6 seconds: 2-4 shots, punchy, 1 signature effect
-- 6-10 seconds: 4-7 shots, room for contrast, 1-2 signature effects
+There are EXACTLY 2 scenes, each EXACTLY 15 seconds. Do not shorten, do not extend.
+- Scene 1 (PROBLEM, 0:00–0:15): 5–7 shots. Build the ache, contrast HIGH/LOW density, end on the pain peak.
+- Scene 2 (SOLUTION, 0:00–0:15): 5–7 shots. Open by mirroring Scene 1's final frame, the product enters and resolves the tension, end on the new emotional reality.
+Shot timestamps must add up to 15 seconds per scene.
+
+## STORY STRUCTURE
+
+Scene 1 = PROBLEM (no product visible). Scene 2 = SOLUTION (product present, same person/environment as Scene 1). Treat them as a single 30-second arc: Scene 2 must visually echo Scene 1 (same character, same lighting tone, same space) so the contrast lands.
+
+## PRODUCT FRAMING CONSISTENCY (CRITICAL)
+
+The product must appear at a CONSISTENT scale and framing wherever it shows up — across all shots in Scene 2 and across the starting frame. Pick one specific framing rule for the product (e.g. "held in hand at chest height, centered, occupying ~35% of frame width" or "set on a wooden surface, centered, ~40% of frame width, shot from eye level") and state it explicitly in every shot that contains the product. Never let the product appear tiny in one shot and dominant in the next — the audience must feel one consistent object.
 
 ## COPYRIGHT SAFETY — CRITICAL
 
@@ -1237,9 +1260,11 @@ ByteDance's content filter rejects prompts containing brand names, trademarks, l
 Output in two parts with no extra text before or after:
 
 PART 1 — one line of compact JSON (no line breaks inside the JSON):
-SCENES_META: [{"number":1,"name":"Scene name","useRefImages":["key1","key2"],"ratio":"9:16","duration":6,"startingImagePrompt":"One concise sentence: exact composition of the first frame — subject, environment, camera angle, lighting, mood"},{"number":2,...}]
+SCENES_META: [{"number":1,"role":"problem","name":"Scene name","useRefImages":["key1"],"ratio":"9:16","duration":15,"startingImagePrompt":"One concise sentence: exact composition of the first frame — subject, environment, camera angle, lighting, mood"},{"number":2,"role":"solution",...,"duration":15,...}]
 
-"startingImagePrompt" must be a SHORT single-line sentence (max 30 words) describing the very first frame of that scene so it can be used to generate a starting image via an image generation model. CRITICAL: every key listed in this scene's "useRefImages" will be sent to the image generator as actual visual input alongside this prompt. So do NOT re-describe what those refs show — do NOT describe the character's hair/clothing/face if a character ref is attached, do NOT describe the product's appearance if the product ref is attached, do NOT describe the environment's layout if an environment ref is attached. INSTEAD use phrases like "the character" / "the product" / "the environment" and focus the words on what the refs cannot supply: composition, camera angle, framing, pose, gesture, action, expression, lighting direction and quality, mood. No brand names, no logos, no real people. This field MUST be included for every scene.
+Always exactly two entries: number 1 with role "problem" (no product in starting frame), number 2 with role "solution" (product present in starting frame at the agreed consistent framing). Both duration values must be 15.
+
+"startingImagePrompt" must be a SHORT single-line sentence (max 35 words) describing the very first frame of that scene so it can be used to generate a starting image via an image generation model. CRITICAL: every key listed in this scene's "useRefImages" will be sent to the image generator as actual visual input alongside this prompt. So do NOT re-describe what those refs show — do NOT describe the character's hair/clothing/face if a character ref is attached, do NOT describe the product's appearance if the product ref is attached, do NOT describe the environment's layout if an environment ref is attached. INSTEAD use phrases like "the character" / "the product" / "the environment" and focus the words on what the refs cannot supply: composition, camera angle, framing, pose, gesture, action, expression, lighting direction and quality, mood. No brand names, no logos, no real people. For Scene 2 specifically, the startingImagePrompt MUST state the exact product framing (position in frame, height, percentage of frame width occupied, camera angle to the product) and that framing must match what is described in the shot list. This field MUST be included for every scene.
 
 PART 2 — each scene's full prompt text, wrapped in tags (use the scene number from above):
 <scene_1>
@@ -1248,13 +1273,27 @@ SHOT 1 (0:00-0:03) — Shot Name
 • What is visually happening
 • Camera behaviour
 • How this shot exits
-SHOT 2 (0:03-0:06) — Shot Name
+SHOT 2 (0:03-0:07) — Shot Name
 • EFFECT: ...
-EFFECTS DENSITY: 0-3s HIGH, 3-6s MEDIUM
+SHOT 3 (0:07-0:11) — Shot Name
+• EFFECT: ...
+SHOT 4 (0:11-0:15) — Shot Name
+• EFFECT: ... (final beat — peak of the pain, no product visible)
+EFFECTS DENSITY: 0-5s LOW, 5-10s MEDIUM, 10-15s HIGH
 ENERGY ARC: Opening energy → signature peak → resolution
 </scene_1>
 <scene_2>
-...
+SHOT 1 (0:00-0:03) — Shot Name
+• EFFECT: ... (visually echoes Scene 1's final frame so continuity reads)
+• PRODUCT FRAMING: state the consistent framing rule for the product
+SHOT 2 (0:03-0:08) — Shot Name (product reveal at the agreed framing)
+• EFFECT: ...
+SHOT 3 (0:08-0:12) — Shot Name
+• EFFECT: ...
+SHOT 4 (0:12-0:15) — Shot Name
+• EFFECT: ... (resolution beat — product still framed at the agreed scale)
+EFFECTS DENSITY: 0-5s LOW, 5-10s HIGH, 10-15s MEDIUM
+ENERGY ARC: Continuity with Scene 1 → product reveal peak → resolved landing
 </scene_2>
 
 Match the mood, visual style, and color palette from the ad concept. Write like a director's shot notes — direct, technical, specific. No hype language.`;

@@ -1431,7 +1431,7 @@ async function createAd() {
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i];
       const ratio  = '9:16';
-      const dur    = Math.max(4, Math.min(10, scene.duration || 6));
+      const dur    = Math.max(5, Math.min(15, scene.duration || 15));
       // Sanitize prompt: remove brand name and "logo" to avoid ByteDance copyright filter
       const rawPrompt = scene.prompt || scene.description || `Scene ${i+1}`;
       const brandName = (concept.adTitle || '').trim();
