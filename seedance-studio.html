@@ -2732,7 +2732,8 @@ initAuth().then(() => {
   }
 });
 setInterval(() => { if (jobs.length) renderPending(); }, 1000);
-setInterval(() => { if (lib.some(i => i.upscaling)) renderLib(); }, 4000);
+// (removed) periodic renderLib while upscaling — pollUpscale calls renderLib
+// directly when state changes, so the periodic refresh just caused flicker.
 
 // ══ LIGHTBOX ═══════════════════════════════════════════════════════════
 function openLightbox(url, isVideo) {
