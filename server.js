@@ -1024,10 +1024,23 @@ For each concept, develop completely:
 
 **The Hook:** The first 3 seconds as a visceral description. What stops everything?
 
-**The Story (MANDATORY TWO-SCENE PROBLEM → SOLUTION STRUCTURE):** Every concept MUST be told in exactly two 15-second scenes:
-- Scene 1 (PROBLEM, 15s): the painful before-state. The target human in the moment of friction, frustration, lack, or longing — vividly specific, no product visible. Build the emotional ache. End on the peak of the pain.
-- Scene 2 (SOLUTION, 15s): the after-state with the product. The product enters and visibly resolves the tension from Scene 1. Same person/world as Scene 1 — clear continuity. End on the new emotional reality the product unlocks.
-Use sensory detail (not "a kitchen" — "a kitchen at 6am, still dark outside, one lamp on"). For each scene name body language, the emotional beat, and what the audience FEELS by the final frame.
+**The Story (MANDATORY TWO-SCENE PROBLEM → SOLUTION STRUCTURE):** Every concept MUST be told in exactly two 15-second scenes. The story must feel like a moment from a real person's everyday life — something the audience has lived themselves. Not a mood film, not a vibe piece, not stock-ad symbolism. A concrete situation with a clear micro-goal, an obstacle, and a turn.
+
+GROUND THE STORY IN EVERYDAY LIFE. Pick one specific, universally-recognizable everyday context — not a fashion shoot or perfume mood. Examples of the texture we want:
+- 7am, running late, can't find keys, coffee cold, kid yelling from the next room
+- Friday night, fridge half-empty, takeout app open, exhausted on the couch
+- Crowded subway, headphones dead, stranger's elbow in the ribs, twelve more stops
+- Kitchen post-dinner, dishes piled, partner already asleep, phone buzzing with work emails
+- Gym at 6am, alarm went off three times, sneakers untied, water bottle empty
+- Bathroom mirror at midnight, makeup half off, big day tomorrow, scrolling instead of sleeping
+
+PACE & ACTION DENSITY. Each 15-second scene must contain 4-6 distinct ACTION BEATS — concrete things the character DOES or that visibly happens. Not contemplation. Not held tableaux. Verbs, not adjectives. Each beat is 2-4 seconds. The audience never sits on a single image — there's always forward motion. Think a Wes Anderson sequence or a TikTok edit, not a fragrance commercial.
+
+Scene 1 (PROBLEM, 15s): the painful before-state. The target human ACTIVELY struggling with a specific everyday task — fumbling, searching, dropping, sighing, scrolling, slamming, retrying. Product NOT visible. Stack 4-6 micro-frustrations one after another so the pain compounds. End on the peak frustration beat.
+
+Scene 2 (SOLUTION, 15s): the after-state with the product. Same person, same room, same lighting tone — visible continuity with Scene 1. The product enters at a specific moment and the same kind of micro-actions now flow effortlessly. 4-6 beats again, but now they CLICK. End on the new emotional reality (a smile, a deep exhale, a small private moment of "yes").
+
+For each scene name the character's body language, the specific micro-actions, and what the audience FEELS by the final frame. Specificity wins: not "she relaxes" but "she kicks off one shoe, then the other, drops her bag on the floor, finally exhales."
 
 **Visual Language:** Color palette (reference films/photographers), cinematography style, editing rhythm, sound/music direction.
 
@@ -1043,7 +1056,7 @@ Apply these advertising psychology principles to every concept:
 
 Brand archetypes to consider: Hero (mastery, overcoming), Caregiver (protection, warmth), Rebel (challenge status quo), Sage (truth, education), Creator (imagination, craft), Lover (intimacy, pleasure), Jester (joy, irreverence), Innocent (purity, nostalgia), Explorer (freedom, adventure), Ruler (premium, authority), Magician (transformation, before/after), Everyman (belonging, accessibility).
 
-Run each concept through 8 stress tests (score 1–5):
+Run each concept through 10 stress tests (score 1–5):
 1. Stranger Test: would someone describe this at dinner tonight?
 2. Truth Test: could a competitor steal this idea verbatim? (If yes, it fails)
 3. Gut-Punch Test: does it make you feel something in your chest?
@@ -1052,6 +1065,8 @@ Run each concept through 8 stress tests (score 1–5):
 6. Audience Fit Test: would the target human feel deeply SEEN?
 7. Brand Fit Test: does this elevate the product's perceived value coherently?
 8. Longevity Test: could this be a campaign platform for 2+ years?
+9. Pace Test: in any 5-second window, are at least 2 distinct things happening (not held shots, not contemplation)? If not, the concept fails.
+10. Everyday Recognition Test: does the audience's first thought watching Scene 1 go "oh god, that's me on a Tuesday"? If not, the situation is too abstract — pick a more universal everyday moment.
 
 Identify each concept's fatal flaw and secret weapon.
 
@@ -1101,7 +1116,15 @@ After working through all phases internally, output ONLY valid JSON (no markdown
       "number": 1,
       "name": "Problem — short scene name",
       "role": "problem",
-      "description": "The before-state: the target human in vivid friction/lack/longing. Product NOT visible. End on the peak of the pain.",
+      "everydayContext": "One concrete sentence locating this moment in real life — time of day, what the character was just doing, the micro-goal they're failing at",
+      "description": "The before-state: the target human ACTIVELY struggling with a specific everyday task. Product NOT visible. Punchy verbs, not vibe.",
+      "actionBeats": [
+        "Beat 1: specific micro-action with a verb (≈2-3s)",
+        "Beat 2: next micro-frustration (≈2-3s)",
+        "Beat 3: another concrete failure or annoyance (≈2-3s)",
+        "Beat 4: stacking pressure (≈2-3s)",
+        "Beat 5: peak frustration — final pain beat the scene lands on (≈2-3s)"
+      ],
       "duration": 15,
       "ratio": "9:16",
       "refImageKeys": ["key1"]
@@ -1110,7 +1133,15 @@ After working through all phases internally, output ONLY valid JSON (no markdown
       "number": 2,
       "name": "Solution — short scene name",
       "role": "solution",
-      "description": "Same person, same world as Scene 1. The product enters and visibly resolves Scene 1's tension. End on the new emotional reality.",
+      "everydayContext": "Same time/place/character as Scene 1, now with the product present",
+      "description": "Same person, same room, same lighting as Scene 1. Product enters at a specific beat and the same kind of micro-actions now flow.",
+      "actionBeats": [
+        "Beat 1: visual echo of Scene 1's final frame so continuity reads (≈2-3s)",
+        "Beat 2: the product enters — specific gesture (≈2-3s)",
+        "Beat 3: a frictionless action that mirrors a Scene 1 frustration but now resolved (≈2-3s)",
+        "Beat 4: another mirrored beat — small win (≈2-3s)",
+        "Beat 5: resolution — the new emotional reality (≈2-3s)"
+      ],
       "duration": 15,
       "ratio": "9:16",
       "refImageKeys": ["key1", "product_sheet"]
@@ -1153,6 +1184,8 @@ RULES:
 - scenes: EXACTLY 2 scenes — Scene 1 role="problem" (no product visible), Scene 2 role="solution" (product present and resolving the tension). Each scene duration MUST be exactly 15. Total ad = 30 seconds. Do not output 1, 3, or more scenes.
 - ratio must be one of: 9:16, 16:9, 1:1, 4:3, 3:4, 21:9
 - Every scene description must name which refImageKeys it needs
+- ACTION BEATS REQUIRED: every scene MUST have an "actionBeats" array of 4-6 strings. Each string is a specific micro-action a director could shoot. Use VERBS. No "she feels", "she experiences", "the mood is" — instead "she fumbles with the keys", "she swipes left then sighs", "she drops her bag mid-stride". The beats are the cuts the editor will make.
+- EVERYDAY CONTEXT REQUIRED: every scene must have an "everydayContext" string — one concrete sentence locating the moment in a universally-recognizable real-life situation (morning rush, late-night kitchen, packed commute, post-work collapse, etc.). If you cannot fill this without resorting to abstract or aspirational language, the situation is wrong — pick a more grounded one.
 - PRODUCT CONSISTENCY: Scene 2's description must explicitly state how the product is framed (e.g. "held in hand at chest height, centered, occupying ~35% of frame width") and Scene 1's resolution must establish the empty space where the product will land in Scene 2. The character/person, environment, lighting tone, and wardrobe must remain visually continuous across both scenes — only the presence of the product changes.
 - Write like a creative director pitching to skeptical CMOs — confident, specific, surprising. No generic language. Every detail serves an emotional purpose.`;
 
@@ -1237,6 +1270,14 @@ There are EXACTLY 2 scenes, each EXACTLY 15 seconds. Do not shorten, do not exte
 - Scene 1 (PROBLEM, 0:00–0:15): 5–7 shots. Build the ache, contrast HIGH/LOW density, end on the pain peak.
 - Scene 2 (SOLUTION, 0:00–0:15): 5–7 shots. Open by mirroring Scene 1's final frame, the product enters and resolves the tension, end on the new emotional reality.
 Shot timestamps must add up to 15 seconds per scene.
+
+## PACE & CUTTING
+
+These ads must feel FAST — like a Wes Anderson sequence or a punchy TikTok edit, not a perfume commercial. Average shot length 2–3 seconds. Never hold a single composition for more than 4 seconds without internal motion (camera move, subject action, or effect). Cuts should land on action — a hand grabbing, a foot stepping, a door opening — not on dead air.
+
+## MAP ACTION BEATS TO SHOTS
+
+The concept JSON gives you "actionBeats" arrays for each scene. Each beat is a concrete micro-action the character does. Translate every beat into at least one shot — the shot should literally show that action with a verb (e.g. beat "she fumbles for keys in her bag" → SHOT showing close-up of hand digging in a bag, keys jangling). Do not skip beats, do not invent contemplative shots that aren't tied to an action beat. The beats ARE your shot list — your job is to choose the camera angle, the effect, and the cut for each.
 
 ## STORY STRUCTURE
 
