@@ -2081,10 +2081,15 @@ async function upscaleVideo(item) {
     });
     const j = await r.json();
     if (!r.ok || !j.requestId) throw new Error(j.error || 'submit failed');
-    // Persist the requestId so we can resume polling after a page refresh
+    // Persist requestId + the exact URLs Fal handed us. The status_url Fal
+    // returns is the authoritative one (the namespace differs from the model
+    // path for nested models like fal-ai/topaz/upscale/video) — using a
+    // hardcoded path was hitting a wrong endpoint and never seeing COMPLETED.
     item.upscaleRequestId = j.requestId;
+    if (j.statusUrl)   item.upscaleStatusUrl   = j.statusUrl;
+    if (j.responseUrl) item.upscaleResponseUrl = j.responseUrl;
     saveLib();
-    pollUpscale(item, j.requestId);
+    pollUpscale(item);
   } catch(e) {
     console.warn('[upscale] submit error:', e.message);
     item.upscaling = false;
@@ -2093,18 +2098,28 @@ async function upscaleVideo(item) {
   }
 }
 
-function pollUpscale(item, requestId) {
+function pollUpscale(item) {
+  const requestId = item.upscaleRequestId;
+  if (!requestId) return;
   let n = 0;
+  const buildUrl = () => {
+    const qs = new URLSearchParams({ id: requestId });
+    if (item.upscaleStatusUrl)   qs.set('statusUrl', item.upscaleStatusUrl);
+    if (item.upscaleResponseUrl) qs.set('responseUrl', item.upscaleResponseUrl);
+    return '/api/upscale/status?' + qs.toString();
+  };
   const run = async () => {
     if (++n > 60) {
       item.upscaling = false;
       delete item.upscaleRequestId;
+      delete item.upscaleStatusUrl;
+      delete item.upscaleResponseUrl;
       saveLib(); renderLib();
       toast('Upscale timed out — original video saved', 'warn');
       return;
     }
     try {
-      const r = await fetch('/api/upscale/status?id=' + encodeURIComponent(requestId), {
+      const r = await fetch(buildUrl(), {
         headers: { 'Authorization': 'Bearer ' + authToken }
       });
       const d = await r.json();
@@ -2113,11 +2128,15 @@ function pollUpscale(item, requestId) {
         item.upscaling = false;
         item.res = 'Upscaled';
         delete item.upscaleRequestId;
+        delete item.upscaleStatusUrl;
+        delete item.upscaleResponseUrl;
         saveLib(); renderLib();
         toast('Video upscaled!', 'ok');
       } else if (d.status === 'FAILED') {
         item.upscaling = false;
         delete item.upscaleRequestId;
+        delete item.upscaleStatusUrl;
+        delete item.upscaleResponseUrl;
         saveLib(); renderLib();
         toast('Upscale failed — original video saved', 'warn');
       } else {
@@ -2528,7 +2547,7 @@ function resumeUpscaling() {
   lib.forEach(item => {
     if (!item.upscaling) return;
     if (item.upscaleRequestId) {
-      pollUpscale(item, item.upscaleRequestId);
+      pollUpscale(item);
     } else {
       item.upscaling = false;
       changed = true;

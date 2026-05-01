@@ -1393,8 +1393,13 @@ Match the mood, visual style, and color palette from the ad concept. Write like 
         console.error('[fal] submit failed', result.status, JSON.stringify(result.body).substring(0, 200));
         return sendJSON(res, 502, { error: 'Fal submit failed: ' + (result.body?.detail || result.status) });
       }
-      console.log('[fal] upscale submitted, request_id:', requestId);
-      return sendJSON(res, 200, { requestId });
+      // Fal returns status_url and response_url scoped to the right namespace
+      // (for nested model paths like fal-ai/topaz/upscale/video the URLs Fal
+      // returns differ from the model path — using these directly avoids guessing).
+      const statusUrl = result.body?.status_url || null;
+      const responseUrl = result.body?.response_url || null;
+      console.log('[fal] upscale submitted', requestId, 'statusUrl:', statusUrl);
+      return sendJSON(res, 200, { requestId, statusUrl, responseUrl });
     } catch(e) {
       console.error('[fal] submit error:', e.message);
       return sendJSON(res, 502, { error: 'Upscale failed: ' + e.message });
@@ -1406,19 +1411,46 @@ Match the mood, visual style, and color palette from the ad concept. Write like 
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
     if (!FAL_KEY) return sendJSON(res, 503, { error: 'Upscaler not configured' });
-    const requestId = new URL('http://x' + url).searchParams.get('id');
+    const params = new URL('http://x' + url).searchParams;
+    const requestId = params.get('id');
     if (!requestId) return sendJSON(res, 400, { error: 'id required' });
+
+    // Validate any client-supplied URLs to ensure we only hit Fal's queue host.
+    const safePath = (raw) => {
+      if (!raw) return null;
+      try {
+        const u = new URL(raw);
+        if (u.hostname !== 'queue.fal.run') return null;
+        return u.pathname + u.search;
+      } catch { return null; }
+    };
+    // Prefer the URLs Fal returned at submit time; fall back to legacy guess
+    // for items submitted before this fix shipped.
+    const fallback = '/fal-ai/topaz/upscale/video/requests/' + encodeURIComponent(requestId);
+    const statusPath   = safePath(params.get('statusUrl'))   || (fallback + '/status');
+    const responsePath = safePath(params.get('responseUrl')) || fallback;
+
     try {
-      const statusRes = await falRequest('GET', '/fal-ai/topaz/upscale/video/requests/' + encodeURIComponent(requestId) + '/status');
-      console.log('[fal] poll status http=' + statusRes.status, JSON.stringify(statusRes.body).substring(0, 200));
-      const status = statusRes.body?.status;
-      if (status === 'COMPLETED') {
-        const resultRes = await falRequest('GET', '/fal-ai/topaz/upscale/video/requests/' + encodeURIComponent(requestId));
-        const videoUrl = resultRes.body?.video?.url || resultRes.body?.output?.video?.url || '';
+      const statusRes = await falRequest('GET', statusPath);
+      const rawStatus = String(statusRes.body?.status || '').toUpperCase();
+      console.log('[fal] poll http=' + statusRes.status + ' status=' + rawStatus + ' path=' + statusPath);
+
+      const looksProgress = rawStatus === 'IN_QUEUE' || rawStatus === 'IN_PROGRESS' || rawStatus === 'QUEUED' || rawStatus === 'RUNNING';
+      if (looksProgress) return sendJSON(res, 200, { status: rawStatus });
+
+      // Status is COMPLETED, unknown, or status fetch returned nothing useful —
+      // try the response endpoint. If it has a video URL the job is done,
+      // regardless of what the status field said.
+      const resultRes = await falRequest('GET', responsePath);
+      const videoUrl = resultRes.body?.video?.url || resultRes.body?.output?.video?.url || '';
+      if (videoUrl) {
         console.log('[fal] upscale complete, url:', videoUrl.substring(0, 80));
         return sendJSON(res, 200, { status: 'COMPLETED', url: videoUrl });
       }
-      return sendJSON(res, 200, { status: status || 'IN_QUEUE' });
+      if (rawStatus === 'COMPLETED' || rawStatus === 'OK' || rawStatus === 'SUCCESS') {
+        return sendJSON(res, 502, { error: 'Fal reports complete but no video URL. Body: ' + JSON.stringify(resultRes.body).substring(0, 200) });
+      }
+      return sendJSON(res, 200, { status: rawStatus || 'IN_QUEUE' });
     } catch(e) {
       console.error('[fal] status error:', e.message);
       return sendJSON(res, 502, { error: 'Status check failed: ' + e.message });
