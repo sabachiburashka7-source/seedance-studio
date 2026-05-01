@@ -2081,6 +2081,9 @@ async function upscaleVideo(item) {
     });
     const j = await r.json();
     if (!r.ok || !j.requestId) throw new Error(j.error || 'submit failed');
+    // Persist the requestId so we can resume polling after a page refresh
+    item.upscaleRequestId = j.requestId;
+    saveLib();
     pollUpscale(item, j.requestId);
   } catch(e) {
     console.warn('[upscale] submit error:', e.message);
@@ -2095,6 +2098,7 @@ function pollUpscale(item, requestId) {
   const run = async () => {
     if (++n > 60) {
       item.upscaling = false;
+      delete item.upscaleRequestId;
       saveLib(); renderLib();
       toast('Upscale timed out — original video saved', 'warn');
       return;
@@ -2108,10 +2112,12 @@ function pollUpscale(item, requestId) {
         item.url = d.url;
         item.upscaling = false;
         item.res = 'Upscaled';
+        delete item.upscaleRequestId;
         saveLib(); renderLib();
         toast('Video upscaled!', 'ok');
       } else if (d.status === 'FAILED') {
         item.upscaling = false;
+        delete item.upscaleRequestId;
         saveLib(); renderLib();
         toast('Upscale failed — original video saved', 'warn');
       } else {
@@ -2464,18 +2470,35 @@ async function logout() {
 // ══ LIBRARY ════════════════════════════════════════════════════════════
 function libLocalKey() { return 'sd_lib_' + (currentUser?.userId || 'anon'); }
 
+// Serialized + coalescing save: only one /library POST in flight at a time.
+// Saves requested while a POST is in flight collapse into a single follow-up
+// POST after it lands (using whatever lib is at that moment). This prevents
+// overlapping requests from completing out of order on the server, which used
+// to cause ads-pipeline items to vanish after a hard refresh.
+let _saveInFlight = null;
+let _saveDirty = false;
+
 async function saveLib() {
-  // Always write local backup first
+  // Local backup first — synchronous and unaffected by network races
   try { localStorage.setItem(libLocalKey(), JSON.stringify(lib)); } catch {}
   if (!authToken) return;
-  try {
-    const r = await fetch('/library', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-      body: JSON.stringify({ library: lib })
-    });
-    if (!r.ok) console.warn('saveLib server returned', r.status);
-  } catch(e) { console.warn('saveLib error:', e.message); }
+
+  if (_saveInFlight) { _saveDirty = true; return; }
+
+  _saveInFlight = (async () => {
+    do {
+      _saveDirty = false;
+      try {
+        const r = await fetch('/library', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+          body: JSON.stringify({ library: lib })
+        });
+        if (!r.ok) console.warn('saveLib server returned', r.status);
+      } catch(e) { console.warn('saveLib error:', e.message); }
+    } while (_saveDirty);
+    _saveInFlight = null;
+  })();
 }
 
 async function loadLib(userId) {
@@ -2484,7 +2507,7 @@ async function loadLib(userId) {
     const r = await fetch('/library', { headers: { 'Authorization': 'Bearer ' + authToken } });
     if (r.ok) {
       const j = await r.json();
-      if (Array.isArray(j.library)) { lib = j.library; clearStuckUpscaling(); return; }
+      if (Array.isArray(j.library)) { lib = j.library; resumeUpscaling(); return; }
       console.warn('loadLib: unexpected server response', j);
     } else {
       console.warn('loadLib: server returned', r.status, '— falling back to localStorage');
@@ -2493,12 +2516,24 @@ async function loadLib(userId) {
   // Fallback
   try { lib = JSON.parse(localStorage.getItem('sd_lib_' + userId) || '[]'); }
   catch { lib = []; }
-  clearStuckUpscaling();
+  resumeUpscaling();
 }
 
-function clearStuckUpscaling() {
+// Resume polling for items whose upscale was in flight when the page closed.
+// Items with a stored upscaleRequestId get their poller restarted; items
+// flagged upscaling but with no requestId are genuinely orphaned (e.g. submit
+// itself failed before the requestId was saved) and get cleared.
+function resumeUpscaling() {
   let changed = false;
-  lib.forEach(item => { if (item.upscaling) { item.upscaling = false; changed = true; } });
+  lib.forEach(item => {
+    if (!item.upscaling) return;
+    if (item.upscaleRequestId) {
+      pollUpscale(item, item.upscaleRequestId);
+    } else {
+      item.upscaling = false;
+      changed = true;
+    }
+  });
   if (changed) saveLib();
 }
 
