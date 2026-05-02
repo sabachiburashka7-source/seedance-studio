@@ -745,7 +745,7 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <div class="user-area" id="user-area" style="display:none">
       <span class="user-email" id="user-email"></span>
       <span id="credits-badge" style="font-size:12px;color:var(--accent2);font-weight:700;font-family:'Fira Code',monospace;background:rgba(124,110,247,0.12);padding:4px 10px;border-radius:20px;border:1px solid rgba(124,110,247,0.2);white-space:nowrap"></span>
-      <button onclick="openBuyModal()" title="Buy Credits" style="font-size:13px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid rgba(124,110,247,0.4);background:rgba(124,110,247,0.15);color:var(--accent2);cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='rgba(124,110,247,0.28)'" onmouseout="this.style.background='rgba(124,110,247,0.15)'">+ Buy</button>
+      <button onclick="openPromoModal()" title="Redeem Promo Code" style="font-size:13px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid rgba(124,110,247,0.4);background:rgba(124,110,247,0.15);color:var(--accent2);cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='rgba(124,110,247,0.28)'" onmouseout="this.style.background='rgba(124,110,247,0.15)'">+ Add Balance</button>
       <button class="logout-btn" onclick="logout()">Sign out</button>
     </div>
   </div>
@@ -1001,37 +1001,21 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
   </div>
 </div>
 
-<!-- BUY CREDITS MODAL -->
+<!-- PROMO CODE MODAL -->
 <div id="buy-overlay" class="hidden">
   <div class="buy-card">
-    <button class="buy-close" onclick="closeBuyModal()">×</button>
-    <div class="buy-title">Buy Credits</div>
-    <div class="buy-sub">Credits are used for video and image generation. They never expire.</div>
-    <div class="buy-packages">
-      <div class="buy-pkg" onclick="buyCredits('starter')">
-        <div class="buy-pkg-left">
-          <div class="buy-pkg-name">500 Credits</div>
-          <div class="buy-pkg-desc">Great for trying out features</div>
-        </div>
-        <div class="buy-pkg-price">$9</div>
-      </div>
-      <div class="buy-pkg" onclick="buyCredits('popular')">
-        <div class="buy-badge">BEST VALUE</div>
-        <div class="buy-pkg-left">
-          <div class="buy-pkg-name">1,500 Credits</div>
-          <div class="buy-pkg-desc">Most popular — save 18%</div>
-        </div>
-        <div class="buy-pkg-price">$22</div>
-      </div>
-      <div class="buy-pkg" onclick="buyCredits('pro')">
-        <div class="buy-pkg-left">
-          <div class="buy-pkg-name">4,000 Credits</div>
-          <div class="buy-pkg-desc">For heavy users — save 32%</div>
-        </div>
-        <div class="buy-pkg-price">$49</div>
-      </div>
+    <button class="buy-close" onclick="closePromoModal()">×</button>
+    <div class="buy-title">Redeem Promo Code</div>
+    <div class="buy-sub">Enter your promo code to add funds to your balance.</div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <input id="promo-input" type="text" placeholder="e.g. SEED50A" autocomplete="off" style="flex:1;padding:10px 14px;border-radius:10px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-size:14px;font-family:inherit;outline:none;text-transform:uppercase" onkeydown="if(event.key==='Enter')redeemPromo()">
+      <button onclick="redeemPromo()" style="padding:10px 20px;border-radius:10px;background:var(--accent);color:#fff;border:none;font-weight:700;font-size:14px;cursor:pointer;white-space:nowrap;transition:opacity 0.15s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">Redeem</button>
+    </div>
+    <div style="margin-top:14px;font-size:12px;color:var(--text3);line-height:1.6">
+      Available denominations: <span style="color:var(--accent2);font-weight:600">$10 · $20 · $50 · $100</span>
     </div>
     <div class="buy-err" id="buy-err"></div>
+    <div id="promo-ok" style="font-size:13px;color:var(--green);margin-top:10px;min-height:18px;text-align:center;font-weight:600"></div>
   </div>
 </div>
 
@@ -1139,7 +1123,7 @@ let imgProgTmr  = null;
 let authToken   = localStorage.getItem('sd_token') || null;
 let currentUser = null;
 let authMode    = 'login';
-let userCredits = null;
+let userBalance = null;
 
 // ══ ADS ════════════════════════════════════════════════════════════════
 
@@ -1245,7 +1229,7 @@ async function createAd() {
     });
     const j1 = await r1.json();
     if (!r1.ok) throw new Error(j1.error || 'Brainstorm failed');
-    if (j1.credits !== undefined) { userCredits = j1.credits; updateCreditsDisplay(); }
+    if (j1.balance !== undefined) { userBalance = j1.balance; updateCreditsDisplay(); }
     const concept = j1.concept;
     adLogUpdate(s1, `Ad concept: "${concept.adTitle}" — ${concept.scenes?.length || 0} scenes`, 'done');
 
@@ -1260,7 +1244,7 @@ async function createAd() {
     });
     const j2 = await r2.json();
     if (!r2.ok) throw new Error(j2.error || 'Video prompts failed');
-    if (j2.credits !== undefined) { userCredits = j2.credits; updateCreditsDisplay(); }
+    if (j2.balance !== undefined) { userBalance = j2.balance; updateCreditsDisplay(); }
     const scenes = j2.scenes || [];
     adLogUpdate(s2, `Video prompts ready for ${scenes.length} scene(s)`, 'done');
 
@@ -1320,7 +1304,7 @@ async function createAd() {
           });
           const ij = await safeJson(ir);
           if (!ir.ok) throw new Error(ij.error || 'Image gen failed');
-          if (ij.credits !== undefined) { userCredits = ij.credits; updateCreditsDisplay(); }
+          if (ij.balance !== undefined) { userBalance = ij.balance; updateCreditsDisplay(); }
           refImages[ref.key] = ij.url;
           lib.unshift({ id: 'ref-' + Date.now() + '-' + ref.key, prompt: ref.prompt, url: ij.url,
             ratio: ref.ratio || '1:1', model: 'gemini-flash', ts: Date.now(), done: Date.now(),
@@ -1385,7 +1369,7 @@ async function createAd() {
             });
             const ij = await safeJson(ir);
             if (ir.ok) {
-              if (ij.credits !== undefined) { userCredits = ij.credits; updateCreditsDisplay(); }
+              if (ij.balance !== undefined) { userBalance = ij.balance; updateCreditsDisplay(); }
               producedUrl = ij.url;
               break;
             }
@@ -1444,16 +1428,16 @@ async function createAd() {
       try {
         const [w, h] = (() => { const m = {'9:16':'480x864','16:9':'864x480','1:1':'640x640','4:3':'640x480','3:4':'480x640','21:9':'864x368'}; return ((m[ratio])||'480x864').split('x').map(Number); })();
         const tok = dur * w * h * 24 / 1024;
-        const cr = Math.round(tok * 7.0e-6 * 1.3 / 0.033 * 10) / 10;
+        const costUsd = Math.round(tok * 7.0e-6 * 1.3 * 100) / 100;
 
-        const dcr = await fetch('/api/deduct-credits', {
+        const dcr = await fetch('/api/deduct', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-          body: JSON.stringify({ amount: cr })
+          body: JSON.stringify({ amount: costUsd })
         });
         const dj = await dcr.json();
-        if (!dcr.ok) throw new Error(dj.error || 'Not enough credits');
-        userCredits = dj.credits; updateCreditsDisplay();
+        if (!dcr.ok) throw new Error(dj.error || 'Insufficient balance');
+        userBalance = dj.balance; updateCreditsDisplay();
 
         // Seedance 2.0 has two modes: (a) starting/ending frame I2V, (b) reference images + video.
         // Sending role:'first_frame' switches to mode (a) which forbids reference media.
@@ -1665,24 +1649,24 @@ function computeVideoCost() {
   return { usd, gel, cr, hasV, hasI };
 }
 function calcCost() {
-  const { usd, gel, cr, hasV, hasI } = computeVideoCost();
-  document.getElementById('cost-val').textContent  = `$${usd.toFixed(2)} · ${gel.toFixed(2)}₾ · ${cr} cr`;
+  const { usd, gel, hasV, hasI } = computeVideoCost();
+  document.getElementById('cost-val').textContent  = `$${usd.toFixed(2)} · ${gel.toFixed(2)}₾`;
   const mode      = hasV ? 'V2V' : (hasI ? 'I2V' : 'T2V');
   const rateLabel = hasV ? '$4.30' : '$7.00';
   document.getElementById('cost-mode').textContent = `Standard · ${mode} · ${rateLabel}/M tokens`;
 }
 function calcImgCost() {
-  const q  = getBtnGroupValue('img-quality-group') || 'high';
-  const cr = q === 'low' ? 0.5 : 2.5;
-  document.getElementById('img-cost-val').textContent  = cr + ' cr';
+  const q   = getBtnGroupValue('img-quality-group') || 'high';
+  const usd = q === 'low' ? 0.02 : 0.08;
+  document.getElementById('img-cost-val').textContent  = '$' + usd.toFixed(2);
   document.getElementById('img-cost-mode').textContent = q === 'low' ? 'Low quality' : 'High quality';
 }
 function updateCreditsDisplay() {
   const badge = document.getElementById('credits-badge');
   if (!badge) return;
-  if (userCredits === null) { badge.textContent = ''; return; }
-  badge.textContent = userCredits + ' cr';
-  const low = userCredits < 10;
+  if (userBalance === null) { badge.textContent = ''; return; }
+  badge.textContent = '$' + userBalance.toFixed(2);
+  const low = userBalance < 1;
   badge.style.color       = low ? 'var(--red)'              : 'var(--accent2)';
   badge.style.borderColor = low ? 'rgba(240,112,96,0.3)'    : 'rgba(124,110,247,0.2)';
   badge.style.background  = low ? 'rgba(240,112,96,0.1)'    : 'rgba(124,110,247,0.12)';
@@ -1948,18 +1932,18 @@ async function doGenerate() {
 
   const btn = document.getElementById('gen-btn');
   btn.disabled = true; btn.textContent = 'Working...';
-  showProg('Checking credits...');
+  showProg('Checking balance...');
 
   try {
-    const { cr: creditsNeeded } = computeVideoCost();
-    const cr = await fetch('/api/deduct-credits', {
+    const { usd: costUsd } = computeVideoCost();
+    const dr = await fetch('/api/deduct', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-      body: JSON.stringify({ amount: creditsNeeded })
+      body: JSON.stringify({ amount: costUsd })
     });
-    const cj = await safeJson(cr);
-    if (!cr.ok) throw new Error(cj.error || 'Not enough credits');
-    userCredits = cj.credits;
+    const cj = await safeJson(dr);
+    if (!dr.ok) throw new Error(cj.error || 'Insufficient balance');
+    userBalance = cj.balance;
     updateCreditsDisplay();
 
     showProg('Preparing files...');
@@ -1985,7 +1969,7 @@ async function doGenerate() {
     if (!taskId) throw new Error(j.error?.message || j.error?.code || JSON.stringify(j).substring(0, 400));
 
     toast('Task submitted! Polling for result...', 'ok');
-    const job = { id: taskId, prompt: pt, model, res, ratio, dur, audio, wm, content, cr: creditsNeeded, ts: Date.now(), status: 'running' };
+    const job = { id: taskId, prompt: pt, model, res, ratio, dur, audio, wm, content, cost: costUsd, ts: Date.now(), status: 'running' };
     jobs.push(job);
     poll(job);
 
@@ -2017,8 +2001,8 @@ function poll(job) {
       } else if (status === 'failed' || status === 'error' || status === 'cancelled') {
         const errCode = d.error?.code || '';
         if (errCode === 'OutputAudioSensitiveContentDetected') {
-          refundCredits(job.cr);
-          finish(job, null, 'BytePlus blocked the audio on this generation — credits refunded. Try again, the filter is inconsistent and often passes on retry.');
+          refundCredits(job.cost);
+          finish(job, null, 'BytePlus blocked the audio on this generation — balance refunded. Try again, the filter is inconsistent and often passes on retry.');
         } else {
           finish(job, null, d.error?.message || d.message || 'Status: ' + d.status);
         }
@@ -2038,13 +2022,13 @@ function poll(job) {
 async function refundCredits(amount) {
   if (!amount || amount <= 0) return;
   try {
-    const r = await fetch('/api/refund-credits', {
+    const r = await fetch('/api/refund', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
       body: JSON.stringify({ amount })
     });
     const j = await r.json();
-    if (j.credits !== undefined) { userCredits = j.credits; updateCreditsDisplay(); }
+    if (j.balance !== undefined) { userBalance = j.balance; updateCreditsDisplay(); }
   } catch(e) { console.warn('[refund] failed:', e.message); }
 }
 
@@ -2204,7 +2188,7 @@ async function doGenerateImage() {
     });
     const j = await safeJson(r);
     if (!r.ok || j.error) throw new Error(j.error || JSON.stringify(j).substring(0, 400));
-    if (j.credits !== undefined) { userCredits = j.credits; updateCreditsDisplay(); }
+    if (j.balance !== undefined) { userBalance = j.balance; updateCreditsDisplay(); }
 
     const jobId = 'img-' + Date.now();
     lib.unshift({ id: jobId, prompt: pt, url: j.url, ratio, model: 'gemini-flash', ts: Date.now(), done: Date.now(), type: 'image' });
@@ -2259,7 +2243,7 @@ async function initAuth() {
       if (!r.ok) throw new Error('server_error'); // 5xx — retry
 
       currentUser = await r.json();
-      if (currentUser.credits !== undefined) { userCredits = currentUser.credits; updateCreditsDisplay(); }
+      if (currentUser.balance !== undefined) { userBalance = currentUser.balance; updateCreditsDisplay(); }
       await loadLib(currentUser.userId);
       hideWakeupBanner();
       hideAuthModal();
@@ -2280,28 +2264,38 @@ async function initAuth() {
   }
 }
 
-// ── Buy Credits ───────────────────────────────────────────────────────────────
-function openBuyModal() {
+// ── Promo Code ────────────────────────────────────────────────────────────────
+function openPromoModal() {
   document.getElementById('buy-err').textContent = '';
+  document.getElementById('promo-ok').textContent = '';
+  document.getElementById('promo-input').value = '';
   document.getElementById('buy-overlay').classList.remove('hidden');
+  setTimeout(() => document.getElementById('promo-input').focus(), 80);
 }
-function closeBuyModal() {
+function closePromoModal() {
   document.getElementById('buy-overlay').classList.add('hidden');
 }
-async function buyCredits(packageId) {
+async function redeemPromo() {
+  const code  = document.getElementById('promo-input').value.trim().toUpperCase();
   const errEl = document.getElementById('buy-err');
-  errEl.textContent = '';
-  if (!authToken) { closeBuyModal(); showAuthModal(); return; }
+  const okEl  = document.getElementById('promo-ok');
+  errEl.textContent = ''; okEl.textContent = '';
+  if (!code) { errEl.textContent = 'Enter a promo code'; return; }
+  if (!authToken) { closePromoModal(); showAuthModal(); return; }
   try {
-    errEl.textContent = 'Redirecting to checkout…';
-    const r = await fetch('/api/stripe/create-checkout', {
+    errEl.textContent = 'Checking…';
+    const r = await fetch('/api/redeem-promo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-      body: JSON.stringify({ packageId })
+      body: JSON.stringify({ code })
     });
     const j = await r.json();
-    if (!r.ok) { errEl.textContent = j.error || 'Something went wrong'; return; }
-    window.location.href = j.url;
+    errEl.textContent = '';
+    if (!r.ok) { errEl.textContent = j.error || 'Invalid promo code'; return; }
+    userBalance = j.balance;
+    updateCreditsDisplay();
+    okEl.textContent = `+$${j.added.toFixed(2)} added! Balance: $${j.balance.toFixed(2)}`;
+    document.getElementById('promo-input').value = '';
   } catch(e) {
     errEl.textContent = 'Network error — please try again';
   }
@@ -2472,7 +2466,7 @@ async function submitReset() {
 async function onLoggedIn(j) {
   authToken = j.token; localStorage.setItem('sd_token', authToken);
   currentUser = { email: j.email, userId: j.userId };
-  if (j.credits !== undefined) { userCredits = j.credits; updateCreditsDisplay(); }
+  if (j.balance !== undefined) { userBalance = j.balance; updateCreditsDisplay(); }
   await loadLib(j.userId);
   hideAuthModal();
   showScreen('main');
@@ -2480,7 +2474,7 @@ async function onLoggedIn(j) {
 
 async function logout() {
   try { await fetch('/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + authToken } }); } catch {}
-  authToken = null; currentUser = null; lib = []; jobs = []; userCredits = null;
+  authToken = null; currentUser = null; lib = []; jobs = []; userBalance = null;
   localStorage.removeItem('sd_token');
   updateCreditsDisplay();
   showAuthModal(); renderLib();
@@ -2724,11 +2718,11 @@ initAuth().then(() => {
   if (new URLSearchParams(location.search).get('payment') === 'success') {
     history.replaceState(null, '', '/');
     // Refresh credits from server then show toast
-    fetch('/api/credits', { headers: { 'Authorization': 'Bearer ' + authToken } })
+    fetch('/api/balance', { headers: { 'Authorization': 'Bearer ' + authToken } })
       .then(r => r.json()).then(j => {
-        if (j.credits !== undefined) { userCredits = j.credits; updateCreditsDisplay(); }
-        toast('Payment successful! Your credits have been added.', 'ok', 7000);
-      }).catch(() => toast('Payment successful! Refresh to see your new credits.', 'ok', 7000));
+        if (j.balance !== undefined) { userBalance = j.balance; updateCreditsDisplay(); }
+        toast('Payment successful! Your balance has been updated.', 'ok', 7000);
+      }).catch(() => toast('Payment successful! Refresh to see your new balance.', 'ok', 7000));
   }
 });
 setInterval(() => { if (jobs.length) renderPending(); }, 1000);

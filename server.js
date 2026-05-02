@@ -34,14 +34,15 @@ const FAL_KEY          = process.env.FAL_API_KEY          || '';
 const BYTEPLUS_API_KEY = process.env.BYTEPLUS_API_KEY     || '';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY   || '';
 
-const CREDIT_PACKAGES = {
-  starter: { credits: 500,  usdCents:  900, name: '500 Credits'  },
-  popular: { credits: 1500, usdCents: 2200, name: '1500 Credits' },
-  pro:     { credits: 4000, usdCents: 4900, name: '4000 Credits' },
+const PROMO_CODES = {
+  'SEED10A': 10, 'SEED10B': 10, 'SEED10C': 10, 'SEED10D': 10,
+  'SEED20A': 20, 'SEED20B': 20, 'SEED20C': 20, 'SEED20D': 20,
+  'SEED50A': 50, 'SEED50B': 50, 'SEED50C': 50,
+  'SEED100A': 100, 'SEED100B': 100, 'SEED100C': 100,
 };
 
 // ── In-memory DB cache ────────────────────────────────────────────────────────
-let dbCache = { users: {}, emailIndex: {}, sessions: {}, library: {}, verifyCodes: {}, resetCodes: {} };
+let dbCache = { users: {}, emailIndex: {}, sessions: {}, library: {}, verifyCodes: {}, resetCodes: {}, redeemedPromos: {} };
 
 // Safety flag: only write to Redis AFTER we've confirmed Redis responded at startup.
 // This prevents wiping Redis with an empty DB when Redis was temporarily unreachable on boot.
@@ -138,19 +139,26 @@ async function initDB() {
         dbCache = { verifyCodes: {}, resetCodes: {}, ...raw };
       } catch { /* fresh db */ }
     }
-    migrateCredits();
+    migrateBalance();
   } catch(e) {
     console.error('[db] initDB error (continuing with empty db):', e.message);
   }
 }
 
-function migrateCredits() {
+function migrateBalance() {
   if (!dbCache.users) return;
+  if (!dbCache.redeemedPromos) dbCache.redeemedPromos = {};
   let n = 0;
   for (const uid of Object.keys(dbCache.users)) {
-    if (dbCache.users[uid].credits === undefined) { dbCache.users[uid].credits = 1000; n++; }
+    const u = dbCache.users[uid];
+    if (u.balance === undefined) {
+      // Convert legacy credits to dollars (1 cr = $0.033), or start at $0 for brand-new accounts
+      u.balance = u.credits !== undefined ? Math.round(u.credits * 0.033 * 100) / 100 : 0;
+      n++;
+    }
+    delete u.credits;
   }
-  if (n > 0) { console.log(`[db] Granted 1000 starting credits to ${n} existing user(s)`); saveDB(dbCache); }
+  if (n > 0) { console.log(`[db] Migrated balance for ${n} user(s)`); saveDB(dbCache); }
 }
 
 // Keeps retrying Redis every 10s until it responds, then restores dbCache.
@@ -168,7 +176,7 @@ async function retryRedisBackground() {
         if (data) {
           dbCache = { verifyCodes: {}, resetCodes: {}, ...data };
           console.log('[redis] background retry succeeded —', Object.keys(data.users || {}).length, 'users restored');
-          migrateCredits();
+          migrateBalance();
         } else {
           console.log('[redis] background retry succeeded — empty DB');
         }
@@ -490,7 +498,7 @@ async function handleRequest(req, res) {
     const userId = makeId();
     const salt   = crypto.randomBytes(16).toString('hex');
     const needsVerify = !!RESEND_KEY;
-    db.users[userId]   = { email: key, hash: hashPass(password, salt), salt, createdAt: Date.now(), verified: !needsVerify, credits: 1000 };
+    db.users[userId]   = { email: key, hash: hashPass(password, salt), salt, createdAt: Date.now(), verified: !needsVerify, balance: 0 };
     db.emailIndex[key] = userId;
     db.library[userId] = [];
     if (!db.verifyCodes) db.verifyCodes = {};
@@ -529,7 +537,7 @@ async function handleRequest(req, res) {
     const token = makeToken();
     db.sessions[token] = { userId, createdAt: Date.now() };
     saveDB(db);
-    return sendJSON(res, 200, { token, email: key, userId, credits: db.users[userId].credits ?? 1000 });
+    return sendJSON(res, 200, { token, email: key, userId, balance: db.users[userId].balance ?? 0 });
   }
 
   // ── Resend verification code ───────────────────────────────────────────────
@@ -595,7 +603,7 @@ async function handleRequest(req, res) {
     const token = makeToken();
     db.sessions[token] = { userId, createdAt: Date.now() };
     saveDB(db);
-    return sendJSON(res, 200, { token, email: key, userId, credits: db.users[userId].credits ?? 1000 });
+    return sendJSON(res, 200, { token, email: key, userId, balance: db.users[userId].balance ?? 0 });
   }
 
   // ── Login ─────────────────────────────────────────────────────────────────
@@ -613,7 +621,7 @@ async function handleRequest(req, res) {
     const token = makeToken();
     db.sessions[token] = { userId, createdAt: Date.now() };
     saveDB(db);
-    return sendJSON(res, 200, { token, email: user.email, userId, credits: user.credits ?? 1000 });
+    return sendJSON(res, 200, { token, email: user.email, userId, balance: user.balance ?? 0 });
   }
 
   // ── Logout ────────────────────────────────────────────────────────────────
@@ -629,7 +637,7 @@ async function handleRequest(req, res) {
     if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
     const db   = loadDB();
     const user = db.users[sess.userId];
-    return sendJSON(res, 200, { email: user.email, userId: sess.userId, credits: user.credits ?? 1000 });
+    return sendJSON(res, 200, { email: user.email, userId: sess.userId, balance: user.balance ?? 0 });
   }
 
   // ── Get library ───────────────────────────────────────────────────────────
@@ -809,48 +817,69 @@ async function handleRequest(req, res) {
         const db   = loadDB();
         const user = db.users[userId];
         if (user) {
-          user.credits = (user.credits ?? 0) + credits;
+          const added = Math.round(credits * 0.033 * 100) / 100;
+          user.balance = Math.round(((user.balance ?? 0) + added) * 100) / 100;
           saveDB(db);
-          console.log('[stripe] +' + credits + ' credits → user ' + userId + ' (total: ' + user.credits + ')');
+          console.log('[stripe] +$' + added + ' → user ' + userId + ' (total: $' + user.balance + ')');
         }
       }
     }
     return sendJSON(res, 200, { received: true });
   }
 
-  // ── Credits ───────────────────────────────────────────────────────────
-  if (url === '/api/credits' && method === 'GET') {
+  // ── Balance ───────────────────────────────────────────────────────────
+  if (url === '/api/balance' && method === 'GET') {
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
     const db   = loadDB();
-    return sendJSON(res, 200, { credits: db.users[sess.userId].credits ?? 1000 });
+    return sendJSON(res, 200, { balance: db.users[sess.userId].balance ?? 0 });
   }
 
-  if (url === '/api/refund-credits' && method === 'POST') {
+  if (url === '/api/refund' && method === 'POST') {
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
     const { amount } = await readBody(req);
     if (!amount || amount <= 0) return sendJSON(res, 400, { error: 'Invalid amount' });
     const db = loadDB();
     const user = db.users[sess.userId];
-    user.credits = Math.round(((user.credits ?? 0) + amount) * 100) / 100;
+    user.balance = Math.round(((user.balance ?? 0) + amount) * 100) / 100;
     saveDB(db);
-    console.log('[refund] +' + amount + ' credits → user ' + sess.userId + ' (total: ' + user.credits + ')');
-    return sendJSON(res, 200, { credits: user.credits });
+    console.log('[refund] +$' + amount + ' → user ' + sess.userId + ' (total: $' + user.balance + ')');
+    return sendJSON(res, 200, { balance: user.balance });
   }
 
-  if (url === '/api/deduct-credits' && method === 'POST') {
+  if (url === '/api/deduct' && method === 'POST') {
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
     const { amount } = await readBody(req);
     if (!amount || amount <= 0) return sendJSON(res, 400, { error: 'Invalid amount' });
     const db   = loadDB();
     const user = db.users[sess.userId];
-    const cur  = user.credits ?? 1000;
-    if (cur < amount) return sendJSON(res, 402, { error: `Not enough credits. Need ${amount}, have ${cur}.`, credits: cur });
-    user.credits = Math.round((cur - amount) * 100) / 100;
+    const cur  = user.balance ?? 0;
+    if (cur < amount) return sendJSON(res, 402, { error: `Insufficient balance. Need $${amount.toFixed(2)}, have $${cur.toFixed(2)}.`, balance: cur });
+    user.balance = Math.round((cur - amount) * 100) / 100;
     saveDB(db);
-    return sendJSON(res, 200, { credits: user.credits });
+    return sendJSON(res, 200, { balance: user.balance });
+  }
+
+  if (url === '/api/redeem-promo' && method === 'POST') {
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
+    const { code } = await readBody(req);
+    if (!code) return sendJSON(res, 400, { error: 'Code required' });
+    const upper = String(code).toUpperCase().trim();
+    const amount = PROMO_CODES[upper];
+    if (!amount) return sendJSON(res, 400, { error: 'Invalid promo code' });
+    const db = loadDB();
+    if (!db.redeemedPromos) db.redeemedPromos = {};
+    if (db.redeemedPromos[upper]) return sendJSON(res, 409, { error: 'This promo code has already been redeemed' });
+    const user = db.users[sess.userId];
+    if (!user) return sendJSON(res, 404, { error: 'User not found' });
+    db.redeemedPromos[upper] = { userId: sess.userId, at: Date.now() };
+    user.balance = Math.round(((user.balance ?? 0) + amount) * 100) / 100;
+    saveDB(db);
+    console.log('[promo] ' + upper + ' redeemed by user ' + sess.userId + ' (+$' + amount + ', total: $' + user.balance + ')');
+    return sendJSON(res, 200, { balance: user.balance, added: amount });
   }
 
   // ── Gemini image generation ───────────────────────────────────────────────
@@ -864,11 +893,11 @@ async function handleRequest(req, res) {
     if (!geminiKey) return sendJSON(res, 503, { error: 'Image generation not configured on server (GEMINI_API_KEY missing).' });
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to generate images.' });
-    const imgCost = quality === 'low' ? 0.5 : 2.5;
+    const imgCost = quality === 'low' ? 0.02 : 0.08;
     {
       const db  = loadDB();
-      const cur = db.users[sess.userId].credits ?? 1000;
-      if (cur < imgCost) return sendJSON(res, 402, { error: `Not enough credits. Need ${imgCost}, have ${cur}.`, credits: cur });
+      const cur = db.users[sess.userId].balance ?? 0;
+      if (cur < imgCost) return sendJSON(res, 402, { error: `Insufficient balance. Need $${imgCost.toFixed(2)}, have $${cur.toFixed(2)}.`, balance: cur });
     }
     if (!prompt) return sendJSON(res, 400, { error: 'Prompt required' });
 
@@ -944,10 +973,10 @@ async function handleRequest(req, res) {
         console.log('[gemini-image] done, dataUrl length:', dataUrl.length);
         const db2  = loadDB();
         const usr2 = db2.users[sess.userId];
-        const cur2 = usr2.credits ?? 1000;
-        usr2.credits = Math.round((cur2 - imgCost) * 100) / 100;
+        const cur2 = usr2.balance ?? 0;
+        usr2.balance = Math.round((cur2 - imgCost) * 100) / 100;
         saveDB(db2);
-        return sendJSON(res, 200, { url: dataUrl, credits: usr2.credits });
+        return sendJSON(res, 200, { url: dataUrl, balance: usr2.balance });
       } catch(e) {
         const isTimeout = e.message.includes('timed out');
         console.error(`[gemini-image] attempt ${attempt} error:`, e.message);
@@ -971,10 +1000,10 @@ async function handleRequest(req, res) {
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
     if (!images || !images.length) return sendJSON(res, 400, { error: 'Upload at least one product image.' });
 
-    const BRAINSTORM_COST = 5;
+    const BRAINSTORM_COST = 0.17;
     const db = loadDB(); const user = db.users[sess.userId];
-    const cur = user.credits ?? 1000;
-    if (cur < BRAINSTORM_COST) return sendJSON(res, 402, { error: `Not enough credits. Need ${BRAINSTORM_COST}, have ${cur}.` });
+    const cur = user.balance ?? 0;
+    if (cur < BRAINSTORM_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${BRAINSTORM_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
 
     const userContent = [];
     for (const img of images) {
@@ -1199,9 +1228,9 @@ RULES:
       const concept = safeParseClaudeJSON(text);
       if (!concept) return sendJSON(res, 502, { error: 'Claude returned invalid JSON: ' + text.substring(0, 200) });
 
-      user.credits = Math.round((cur - BRAINSTORM_COST) * 100) / 100;
+      user.balance = Math.round((cur - BRAINSTORM_COST) * 100) / 100;
       saveDB(db);
-      return sendJSON(res, 200, { concept, credits: user.credits });
+      return sendJSON(res, 200, { concept, balance: user.balance });
     } catch(e) {
       return sendJSON(res, 502, { error: 'Brainstorm failed: ' + e.message });
     }
@@ -1215,10 +1244,10 @@ RULES:
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
 
-    const PROMPTS_COST = 5;
+    const PROMPTS_COST = 0.17;
     const db = loadDB(); const user = db.users[sess.userId];
-    const cur = user.credits ?? 1000;
-    if (cur < PROMPTS_COST) return sendJSON(res, 402, { error: `Not enough credits. Need ${PROMPTS_COST}, have ${cur}.` });
+    const cur = user.balance ?? 0;
+    if (cur < PROMPTS_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${PROMPTS_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
 
     if (!concept) return sendJSON(res, 400, { error: 'Concept required.' });
 
@@ -1371,9 +1400,9 @@ Match the mood, visual style, and color palette from the ad concept. Write like 
         return { ...s, prompt };
       });
 
-      user.credits = Math.round((cur - PROMPTS_COST) * 100) / 100;
+      user.balance = Math.round((cur - PROMPTS_COST) * 100) / 100;
       saveDB(db);
-      return sendJSON(res, 200, { scenes, credits: user.credits });
+      return sendJSON(res, 200, { scenes, balance: user.balance });
     } catch(e) {
       return sendJSON(res, 502, { error: 'Video prompts failed: ' + e.message });
     }
