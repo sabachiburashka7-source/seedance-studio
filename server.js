@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Lepton — Backend Server
  *
  * - Serves the HTML frontend
@@ -246,12 +246,12 @@ function sendEmail(to, subject, html) {
 function makeCode() { return String(Math.floor(100000 + Math.random() * 900000)); }
 
 // ── Claude (Anthropic) API helper ─────────────────────────────────────────────
-function claudeApiCall(apiKey, system, messages) {
+function claudeApiCall(apiKey, system, messages, maxTokens = 8192) {
   apiKey = apiKey || ANTHROPIC_API_KEY;
   return new Promise((resolve, reject) => {
     const body = Buffer.from(JSON.stringify({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
+      max_tokens: maxTokens,
       system,
       messages
     }));
@@ -297,6 +297,60 @@ function safeParseClaudeJSON(text) {
   const s = t.indexOf('{'), e = t.lastIndexOf('}');
   if (s !== -1 && e > s) { try { return JSON.parse(sanitizeJsonNewlines(t.slice(s, e + 1))); } catch {} }
   return null;
+}
+
+// ── Ad pipeline skill prompts ──────────────────────────────────────────────
+const SKILL_BRIEF   = fs.readFileSync(path.join(__dirname, 'skills/ad-idea-generator.md'), 'utf8').replace(/^---[\s\S]*?---\s*/m, '').trim();
+const SKILL_SHOTS   = fs.readFileSync(path.join(__dirname, 'skills/video-prompt-builder.md'), 'utf8').replace(/^---[\s\S]*?---\s*/m, '').trim();
+const SKILL_REFS    = fs.readFileSync(path.join(__dirname, 'skills/ref-sheet-generator.md'), 'utf8').replace(/^---[\s\S]*?---\s*/m, '').trim();
+const SKILL_FRAMES  = fs.readFileSync(path.join(__dirname, 'skills/starting-frame-generator.md'), 'utf8').replace(/^---[\s\S]*?---\s*/m, '').trim();
+
+// ── Ad pipeline output parsers ─────────────────────────────────────────────
+function parseShotsOutput(text) {
+  const scenes = [];
+  const parts = text.split(/(?====\s*SCENE\s+\d+\s+OF\s+\d+)/);
+  for (const part of parts) {
+    const hm = part.match(/===\s*SCENE\s+(\d+)\s+OF\s+\d+\s*[—–-]\s*([^\n=]+?)[\s]*===\s*\n?([\s\S]*)/);
+    if (!hm) continue;
+    scenes.push({ number: parseInt(hm[1]), name: hm[2].trim(), prompt: hm[3].trim(), duration: 15, ratio: '9:16' });
+  }
+  return scenes;
+}
+
+function parseRefSheetsOutput(text) {
+  const entities = [];
+  const charSec = (text.match(/===\s*CHARACTER REFERENCE SHEETS\s*===([\s\S]*?)(?====\s*PRODUCT)/) || [])[1] || '';
+  charSec.split(/(?=^CHARACTER:)/m).filter(b => b.trim().startsWith('CHARACTER:')).forEach(block => {
+    const nm = block.match(/^CHARACTER:\s*(.+)/m);
+    const id = block.match(/SUBJECT ID:\s*(\d{3})/i);
+    if (nm) entities.push({ type: 'character', name: nm[1].trim(), subjectId: id ? id[1] : null, prompt: block.replace(/^CHARACTER:[^\n]+\n?/, '').trim() });
+  });
+  const prodSec = (text.match(/===\s*PRODUCT REFERENCE SHEET\s*===([\s\S]*?)(?====\s*ENVIRONMENT)/) || [])[1] || '';
+  const pnm = prodSec.match(/^PRODUCT:\s*(.+)/m);
+  if (pnm) entities.push({ type: 'product', name: pnm[1].trim(), subjectId: null, prompt: 'generate this product reference sheet for consistency' });
+  const envSec = (text.match(/===\s*ENVIRONMENT REFERENCE SHEETS\s*===([\s\S]*)$/) || [])[1] || '';
+  envSec.split(/(?=^ENVIRONMENT:)/m).filter(b => b.trim().startsWith('ENVIRONMENT:')).forEach(block => {
+    const nm = block.match(/^ENVIRONMENT:\s*(.+)/m);
+    const id = block.match(/ENV ID:\s*(\d{3})/i);
+    if (nm) entities.push({ type: 'environment', name: nm[1].trim(), envId: id ? id[1] : null, prompt: block.replace(/^ENVIRONMENT:[^\n]+\n?/, '').trim() });
+  });
+  return entities;
+}
+
+function parseStartFramesOutput(text) {
+  const frames = [];
+  const section = (text.match(/===\s*STARTING FRAMES\s*===([\s\S]*)/) || [])[1] || text;
+  section.split(/\n(?=SCENE\s+\d+:\s*\n)/).forEach(block => {
+    const m = block.match(/^SCENE\s+(\d+):\s*\n([\s\S]+)/);
+    if (!m) return;
+    const prompt = m[2].trim();
+    frames.push({
+      scene: parseInt(m[1]), prompt,
+      subjectIds: [...prompt.matchAll(/SUBJECT ID:\s*(\d{3})/g)].map(x => x[1]),
+      envIds:     [...prompt.matchAll(/ENV ID:\s*(\d{3})/g)].map(x => x[1])
+    });
+  });
+  return frames;
 }
 
 // ── Fal.ai helper ─────────────────────────────────────────────────────────────
@@ -993,14 +1047,14 @@ async function handleRequest(req, res) {
 
   // ── Ads: Claude brainstorm ────────────────────────────────────────────────
   if (url === '/api/gen/brief' && method === 'POST') {
-    const { images, description } = await readBody(req); // must read body before any early return
+    const { images, description } = await readBody(req);
     const anthropicKey = ANTHROPIC_API_KEY;
     if (!anthropicKey) return sendJSON(res, 503, { error: 'Anthropic API key not configured on server (ANTHROPIC_API_KEY missing).' });
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
     if (!images || !images.length) return sendJSON(res, 400, { error: 'Upload at least one product image.' });
 
-    const BRAINSTORM_COST = 0.17;
+    const BRAINSTORM_COST = 0.15;
     const db = loadDB(); const user = db.users[sess.userId];
     const cur = user.balance ?? 0;
     if (cur < BRAINSTORM_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${BRAINSTORM_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
@@ -1009,402 +1063,125 @@ async function handleRequest(req, res) {
     for (const img of images) {
       userContent.push({ type: 'image', source: { type: 'base64', media_type: img.mime || 'image/jpeg', data: img.base64 } });
     }
-    userContent.push({ type: 'text', text: description ? `Product description: ${description}\n\nAnalyze these product images and create a compelling video ad concept.` : 'Analyze these product images and create a compelling video ad concept.' });
+    const descText = description ? `Product description: ${description}\n\n` : '';
+    userContent.push({ type: 'text', text: `${descText}Generate one short-form ad concept for this product following your methodology. Output ONLY the CONCEPT block and SCENES list — no preamble, no rationale.` });
 
-    const system = `You are an expert advertising creative director. You generate emotionally powerful, battle-tested ad concepts using a rigorous four-phase methodology. Work through every phase internally before producing your JSON output.
-
----
-
-## PHASE 0 — VISUAL PRODUCT INTELLIGENCE
-
-Perform a deep read of the product image(s). Extract:
-- Physical attributes: category, form, materials, colors, size cues, packaging, quality signals (premium vs. accessible, artisan vs. industrial), era/aesthetic (modern, vintage, futuristic, organic, clinical)
-- Functional promise: what does it do, what problem does it solve, what transformation does it offer (speed, convenience, pleasure, protection, status)
-- Sensory imagination: how does it feel/smell/sound to use, what moment of the day does it belong to
-- Cultural & social signals: what tribe does it belong to, what does owning/using it say about you, who does this product say you are
-
----
-
-## PHASE 1 — EMOTIONAL TERRITORY MAPPING
-
-Map the product to its 3 most powerful emotional territories from this framework:
-- Belonging: to be part of something — community, shared identity
-- Freedom: escape, autonomy, self-expression — rebellion, open road, release
-- Love & Connection: intimacy, being seen, relationships — romance, family, friendship
-- Achievement: progress, mastery, winning — transformation, milestone, pride
-- Safety & Trust: security, certainty, protection — reliability, science, care
-- Joy & Play: delight, humor, spontaneity — surprise, absurdist, warmth
-- Identity & Status: who I am and who sees me — aspiration, exclusivity, taste
-- Nostalgia: return, comfort, the past — memory, heritage, simplicity
-- Fear & Urgency: threat removal, loss aversion — problem-solution, stakes
-- Transcendence: meaning, purpose beyond self — legacy, spirituality, beauty
-
-For each chosen territory, identify: the core emotional tension it creates and resolves, the human insight that makes it feel true, the moment of vulnerability where the message lands deepest.
-
----
-
-## PHASE 2 — GENERATE AND EVALUATE 3 FULL AD CONCEPTS
-
-For each concept, develop completely:
-
-**Strategic Insight:** The single human truth this ad exploits. One sentence. This is the "because this is true about humans, our ad works" statement.
-
-**Target Human:** Not a demographic. A person in a moment — what they just did, what they're feeling, what they secretly want, what they're afraid to admit.
-
-**The Hook:** The first 3 seconds as a visceral description. What stops everything?
-
-**The Story (MANDATORY TWO-SCENE PROBLEM → SOLUTION STRUCTURE):** Every concept MUST be told in exactly two 15-second scenes. The story must feel like a moment from a real person's everyday life — something the audience has lived themselves. Not a mood film, not a vibe piece, not stock-ad symbolism. A concrete situation with a clear micro-goal, an obstacle, and a turn.
-
-GROUND THE STORY IN EVERYDAY LIFE. Pick one specific, universally-recognizable everyday context — not a fashion shoot or perfume mood. Examples of the texture we want:
-- 7am, running late, can't find keys, coffee cold, kid yelling from the next room
-- Friday night, fridge half-empty, takeout app open, exhausted on the couch
-- Crowded subway, headphones dead, stranger's elbow in the ribs, twelve more stops
-- Kitchen post-dinner, dishes piled, partner already asleep, phone buzzing with work emails
-- Gym at 6am, alarm went off three times, sneakers untied, water bottle empty
-- Bathroom mirror at midnight, makeup half off, big day tomorrow, scrolling instead of sleeping
-
-PACE & ACTION DENSITY. Each 15-second scene must contain 4-6 distinct ACTION BEATS — concrete things the character DOES or that visibly happens. Not contemplation. Not held tableaux. Verbs, not adjectives. Each beat is 2-4 seconds. The audience never sits on a single image — there's always forward motion. Think a Wes Anderson sequence or a TikTok edit, not a fragrance commercial.
-
-Scene 1 (PROBLEM, 15s): the painful before-state. The target human ACTIVELY struggling with a specific everyday task — fumbling, searching, dropping, sighing, scrolling, slamming, retrying. Product NOT visible. Stack 4-6 micro-frustrations one after another so the pain compounds. End on the peak frustration beat.
-
-Scene 2 (SOLUTION, 15s): the after-state with the product. Same person, same room, same lighting tone — visible continuity with Scene 1. The product enters at a specific moment and the same kind of micro-actions now flow effortlessly. 4-6 beats again, but now they CLICK. End on the new emotional reality (a smile, a deep exhale, a small private moment of "yes").
-
-For each scene name the character's body language, the specific micro-actions, and what the audience FEELS by the final frame. Specificity wins: not "she relaxes" but "she kicks off one shoe, then the other, drops her bag on the floor, finally exhales."
-
-**Visual Language:** Color palette (reference films/photographers), cinematography style, editing rhythm, sound/music direction.
-
-**Tagline:** One line, 10 words or fewer, contains a tension or surprise.
-
-Apply these advertising psychology principles to every concept:
-- Identity-based persuasion: mirror the audience's self-image → show what their tribe does → make the product a self-affirmation
-- Peak-End Rule: design for one moment of maximum emotional intensity + a resolved landing
-- Somatic markers: create a body response — goosebumps, smile, lump in the throat — that becomes inseparable from the product
-- Loss aversion: frame the ABSENCE of the product as the problem, not the product as the solution
-- Vulnerability principle: name an unspoken truth the audience feels but rarely says out loud — with empathy, not shame
-- Specificity: "she buries her feet in the sand and doesn't look at her phone once" not "a woman relaxes on a beach"
-
-Brand archetypes to consider: Hero (mastery, overcoming), Caregiver (protection, warmth), Rebel (challenge status quo), Sage (truth, education), Creator (imagination, craft), Lover (intimacy, pleasure), Jester (joy, irreverence), Innocent (purity, nostalgia), Explorer (freedom, adventure), Ruler (premium, authority), Magician (transformation, before/after), Everyman (belonging, accessibility).
-
-Run each concept through 10 stress tests (score 1–5):
-1. Stranger Test: would someone describe this at dinner tonight?
-2. Truth Test: could a competitor steal this idea verbatim? (If yes, it fails)
-3. Gut-Punch Test: does it make you feel something in your chest?
-4. Cocktail Party Test: is there something people would share or quote?
-5. Scale Test: does the core idea survive compression to 6s AND expansion to 2 minutes?
-6. Audience Fit Test: would the target human feel deeply SEEN?
-7. Brand Fit Test: does this elevate the product's perceived value coherently?
-8. Longevity Test: could this be a campaign platform for 2+ years?
-9. Pace Test: in any 5-second window, are at least 2 distinct things happening (not held shots, not contemplation)? If not, the concept fails.
-10. Everyday Recognition Test: does the audience's first thought watching Scene 1 go "oh god, that's me on a Tuesday"? If not, the situation is too abstract — pick a more universal everyday moment.
-
-Identify each concept's fatal flaw and secret weapon.
-
----
-
-## PHASE 3 — SELECT THE WINNER
-
-Declare the winning concept based on stress test scores + qualitative judgment. No hedging — make a call. Identify: the specific emotional mechanism it activates, why this cultural moment makes it land harder now, the 3 most important things to protect in production, the bold choice that must not be watered down.
-
----
-
-## PHASE 4 — REFERENCE IMAGES
-
-Think like a visual effects supervisor. Generate a complete list of ALL reference images needed: every character (full body front/side/back reference sheets), every product angle, every key environment, every important prop. No fixed limit — generate as many as the concept requires.
-
----
-
-## OUTPUT
-
-After working through all phases internally, output ONLY valid JSON (no markdown, no code fences) for the WINNING concept:
-
-{
-  "adTitle": "Short campaign title",
-  "tagline": "Unforgettable one-liner, 10 words or fewer, contains a tension or surprise",
-  "emotionalTerritory": "Primary emotional territory name",
-  "brandArchetype": "The archetype this concept embodies",
-  "strategicInsight": "The single human truth this ad exploits. One sentence, sharp as a knife.",
-  "targetHuman": "Not a demographic — a person in a moment. What they just did, what they feel, what they secretly want.",
-  "vulnerability": "The unspoken truth this ad names — said with empathy, not shame.",
-  "hook": "The first 3 seconds as a visceral description.",
-  "mood": "Visual mood in 3-5 words",
-  "visualStyle": "Cinematography/aesthetic reference — specific (e.g. handheld intimacy, wide epic, macro close-ups, slow burn, rapid cuts)",
-  "colorPalette": "Specific color direction — reference films, photographers, or describe precisely",
-  "soundDirection": "Music feel, tempo, instrumentation, and key sound design notes",
-  "referenceImages": [
-    {
-      "key": "unique_snake_case_key",
-      "label": "Human-readable label",
-      "type": "product | character | environment | prop",
-      "prompt": "See prompt rules below",
-      "ratio": "1:1 or 16:9 or 9:16",
-      "dependsOn": ["key_of_another_ref_image"]
-    }
-  ],
-  "scenes": [
-    {
-      "number": 1,
-      "name": "Problem — short scene name",
-      "role": "problem",
-      "everydayContext": "One concrete sentence locating this moment in real life — time of day, what the character was just doing, the micro-goal they're failing at",
-      "description": "The before-state: the target human ACTIVELY struggling with a specific everyday task. Product NOT visible. Punchy verbs, not vibe.",
-      "actionBeats": [
-        "Beat 1: specific micro-action with a verb (≈2-3s)",
-        "Beat 2: next micro-frustration (≈2-3s)",
-        "Beat 3: another concrete failure or annoyance (≈2-3s)",
-        "Beat 4: stacking pressure (≈2-3s)",
-        "Beat 5: peak frustration — final pain beat the scene lands on (≈2-3s)"
-      ],
-      "duration": 15,
-      "ratio": "9:16",
-      "refImageKeys": ["key1"]
-    },
-    {
-      "number": 2,
-      "name": "Solution — short scene name",
-      "role": "solution",
-      "everydayContext": "Same time/place/character as Scene 1, now with the product present",
-      "description": "Same person, same room, same lighting as Scene 1. Product enters at a specific beat and the same kind of micro-actions now flow.",
-      "actionBeats": [
-        "Beat 1: visual echo of Scene 1's final frame so continuity reads (≈2-3s)",
-        "Beat 2: the product enters — specific gesture (≈2-3s)",
-        "Beat 3: a frictionless action that mirrors a Scene 1 frustration but now resolved (≈2-3s)",
-        "Beat 4: another mirrored beat — small win (≈2-3s)",
-        "Beat 5: resolution — the new emotional reality (≈2-3s)"
-      ],
-      "duration": 15,
-      "ratio": "9:16",
-      "refImageKeys": ["key1", "product_sheet"]
-    }
-  ]
-}
-
-RULES:
-- referenceImages: generate ALL needed refs — one product sheet, all character sheets, all environments, key props.
-- type field rules:
-  • "product" — exactly ONE entry with type "product". The user's actual product photo will be sent to the image generator alongside your prompt. Your prompt MUST be exactly: "Generate a product reference sheet photo." — nothing more. Do NOT describe the product, do NOT add details about angles, lighting, backgrounds, or annotations. The image generator will scan the input photo and knows how to create the reference sheet automatically.
-  • "character" — for each human or animal character. Prompt MUST follow this exact structure:
-    - Opening: "Character reference sheet, professional studio format."
-    - Identity: name/role if any, nationality/ethnicity, age range, build (e.g. "medium build, slightly stocky")
-    - Physical details: hair color + length + texture, eye color, skin tone, facial hair, any distinguishing features (e.g. "heavy dark under-eyes, tired expression")
-    - Panel layout: "Full body front view on left side, full body side profile on right side. Multiple face close-ups in bottom half — front view, 3/4 angle view, and [key expression] expression. Color palette swatches shown on side."
-    - Clothing: every garment named with exact color + material + fit (e.g. "oversized heather grey crew neck t-shirt, black jogger sweatpants with ribbed cuffs, worn grey suede slip-on house slippers")
-    - Posture and expression: specific body language and emotional state (e.g. "posture slouched forward, shoulders dropped — expression blank and exhausted, not angry, just completely drained")
-    - Annotations: "Annotations pointing to hair style, eye color, fabric material, facial hair."
-    - Technical: "Clean white background. Photorealistic, shot on Canon R5, professional lighting."
-    - Labels: "Label at top left: CHAR ID: 00X STUDY 1. Label at top right: STUDY 1."
-    - Color swatches: list 3-5 specific swatches matching the character's palette (e.g. "Small color swatches showing: dark charcoal, black, heather grey, warm skin tone.")
-    - End with: "No cartoon, no anime, no caricature. No illustration, no 3D render."
-  • "environment" — for each distinct location/setting. Prompt MUST follow this exact structure:
-    - Opening: "Environment reference sheet, professional format."
-    - Location identity: specific place name/type, architectural style, country/culture if relevant
-    - Panel layout: "Three panel layout: wide angle full room [position], medium [area] [position], close-up [detail] [position]." — specify top-left, top-right, bottom-center etc.
-    - Key visual elements: list every surface, furniture piece, prop, and material with precise detail (concrete walls, worn wooden desk, metal shelving, etc.)
-    - Lighting: time of day, light source direction, quality and color temperature (e.g. "warm golden morning sunlight flooding through window, high key")
-    - Mood adjectives: 3-5 specific words (e.g. "calm, open, peaceful, focused")
-    - Color tone: overall grading direction (e.g. "warm golden color tone, high key")
-    - Annotations: "Annotation lines pointing to: [list 4-5 specific features]."
-    - Labels: "Label top left: ENV ID: 00X STUDY X. Label top right: [LOCATION NAME — STATE/MOOD]."
-    - Color swatches: "Color swatches bottom right."
-    - Technical: "Real interior/exterior photography, photorealistic, shot on Canon R5."
-    - End with: "No illustration, no cartoon, no 3D render, no sketch, no painting, no stylized."
-    - If this is a variant/alternate state of an existing environment, explicitly reference the original: "Exact same layout as ENV ID: 00X STUDY X — same [feature], same [feature] — but [what changed]."
-  • "prop" — for important objects/products other than the hero product. Detailed prompt showing the object from multiple angles, materials labeled, scale reference.
-- dependsOn: if a reference image must visually contain or prominently feature another reference object (e.g. a gift box showing the product inside, a hand holding the product, a scene styled around the character), list that object's key in dependsOn. The already-generated image for each listed key will be fed as a visual reference to the image generator. This ensures the dependent image accurately depicts the referenced object rather than hallucinating it. Leave dependsOn empty or omit it entirely for fully self-contained images (e.g. the product sheet itself, a standalone character or environment that doesn't need to show the product). IMPORTANT: "product" type refs never need dependsOn since they get the real uploaded photo directly.
-- scenes: EXACTLY 2 scenes — Scene 1 role="problem" (no product visible), Scene 2 role="solution" (product present and resolving the tension). Each scene duration MUST be exactly 15. Total ad = 30 seconds. Do not output 1, 3, or more scenes.
-- ratio must be one of: 9:16, 16:9, 1:1, 4:3, 3:4, 21:9
-- Every scene description must name which refImageKeys it needs
-- ACTION BEATS REQUIRED: every scene MUST have an "actionBeats" array of 4-6 strings. Each string is a specific micro-action a director could shoot. Use VERBS. No "she feels", "she experiences", "the mood is" — instead "she fumbles with the keys", "she swipes left then sighs", "she drops her bag mid-stride". The beats are the cuts the editor will make.
-- EVERYDAY CONTEXT REQUIRED: every scene must have an "everydayContext" string — one concrete sentence locating the moment in a universally-recognizable real-life situation (morning rush, late-night kitchen, packed commute, post-work collapse, etc.). If you cannot fill this without resorting to abstract or aspirational language, the situation is wrong — pick a more grounded one.
-- PRODUCT CONSISTENCY: Scene 2's description must explicitly state how the product is framed (e.g. "held in hand at chest height, centered, occupying ~35% of frame width") and Scene 1's resolution must establish the empty space where the product will land in Scene 2. The character/person, environment, lighting tone, and wardrobe must remain visually continuous across both scenes — only the presence of the product changes.
-- Write like a creative director pitching to skeptical CMOs — confident, specific, surprising. No generic language. Every detail serves an emotional purpose.`;
-
+    const system = SKILL_BRIEF;
     try {
       const claudeRes = await claudeApiCall(anthropicKey, system, [{ role: 'user', content: userContent }]);
       if (claudeRes.status !== 200) {
         const msg = claudeRes.body?.error?.message || JSON.stringify(claudeRes.body).substring(0, 300);
         return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
       }
-      const text = claudeRes.body?.content?.[0]?.text || '';
-      const concept = safeParseClaudeJSON(text);
-      if (!concept) return sendJSON(res, 502, { error: 'Claude returned invalid JSON: ' + text.substring(0, 200) });
-
+      const ideaText = claudeRes.body?.content?.[0]?.text || '';
+      if (!ideaText.includes('CONCEPT') || !ideaText.includes('SCENES')) {
+        return sendJSON(res, 502, { error: 'Claude returned unexpected format. Raw: ' + ideaText.substring(0, 200) });
+      }
       user.balance = Math.round((cur - BRAINSTORM_COST) * 100) / 100;
       saveDB(db);
-      return sendJSON(res, 200, { concept, balance: user.balance });
+      return sendJSON(res, 200, { ideaText, balance: user.balance });
     } catch(e) {
-      return sendJSON(res, 502, { error: 'Brainstorm failed: ' + e.message });
+      return sendJSON(res, 502, { error: 'Brief failed: ' + e.message });
     }
   }
 
-  // ── Ads: Claude video prompts ─────────────────────────────────────────────
+  // ── Ads: Stage 2 — video prompts (video-prompt-builder skill) ─────────────
   if (url === '/api/gen/shots' && method === 'POST') {
-    const { concept, refImages } = await readBody(req); // must read body before any early return
+    const { ideaText } = await readBody(req);
     const anthropicKey = ANTHROPIC_API_KEY;
-    if (!anthropicKey) return sendJSON(res, 503, { error: 'Anthropic API key not configured on server (ANTHROPIC_API_KEY missing).' });
+    if (!anthropicKey) return sendJSON(res, 503, { error: 'Anthropic API key not configured.' });
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
+    if (!ideaText) return sendJSON(res, 400, { error: 'ideaText required.' });
 
-    const PROMPTS_COST = 0.17;
+    const PROMPTS_COST = 0.15;
     const db = loadDB(); const user = db.users[sess.userId];
     const cur = user.balance ?? 0;
     if (cur < PROMPTS_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${PROMPTS_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
 
-    if (!concept) return sendJSON(res, 400, { error: 'Concept required.' });
-
-    // Don't send ref images — OpenAI PNG base64 per image is ~2MB; 12 images would exceed
-    // Anthropic's request size limit. The concept JSON already describes every ref image
-    // (label + generation prompt) which is all Claude needs to write video prompts.
-    const userContent = [
-      { type: 'text', text: `Ad concept:\n${JSON.stringify(concept, null, 2)}\n\nCreate a Seedance 2.0 video generation prompt for EACH scene listed in the concept.` }
-    ];
-
-    const system = `You are an expert AI video prompt engineer specializing in Seedance 2.0 (ByteDance's video generation model). You use the Video Prompt Builder methodology — every prompt is built shot-by-shot with precise effect names, density contrast, a signature moment, and a clear energy arc.
-
-## HOW TO BUILD EACH SCENE PROMPT
-
-For each scene in the ad concept, write a complete video generation prompt using this exact shot structure:
-
-SHOT [N] ([timestamp]) — [Shot Name]
-• EFFECT: [Primary effect name] + [secondary effects if stacked]
-• [What is visually happening — subject, camera angle, environment]
-• [Camera behaviour — movement, angle, lens behaviour]
-• [Speed/timing — be specific: "approximately 20-25% speed", not just "slow motion"]
-• [How this shot exits / transitions to the next]
-
-Name effects precisely:
-- Speed: "speed ramp (deceleration)", "speed ramp (acceleration)", "slow-motion at ~20-25% speed"
-- Camera: "dolly in", "handheld tracking", "static overhead", "Dutch angle ~30°", "high-angle wide"
-- Digital: "digital zoom punch (scale-in)", "digital zoom pull-back (scale-out)", "zoom pump (rapid in-out pulse)"
-- Transitions: "white bloom flash entry", "whip pan exit (motion blur smear)", "motion blur as connector"
-- Atmosphere: "motion blur streaks", "light flares", "depth-of-field rack focus", "camera shake/vibration"
-
-Describe stacked effects explicitly — if 3 things happen at once, list all 3.
-Mark the most impactful shot: "This is the SIGNATURE VISUAL EFFECT."
-
-After the shot list, append on separate lines:
-EFFECTS DENSITY: list each 2-3s segment as HIGH (4+ effects), MEDIUM (2-3 effects), or LOW (1 effect)
-ENERGY ARC: one sentence — opening energy → signature peak → how it resolves
-
-## CREATIVE PRINCIPLES
-
-- Contrast drives impact: alternate HIGH-density and LOW-density moments
-- Every scene must have one SIGNATURE moment — called out explicitly
-- Transitions ARE shots: whip pans, bloom flashes, motion blur smears are creative moments, not filler
-- Specificity always: "the frame scales inward rapidly" not "zoom in"
-- Energy must resolve: the final beat should feel intentional, not abrupt
-
-## DURATION CALIBRATION
-
-There are EXACTLY 2 scenes, each EXACTLY 15 seconds. Do not shorten, do not extend.
-- Scene 1 (PROBLEM, 0:00–0:15): 5–7 shots. Build the ache, contrast HIGH/LOW density, end on the pain peak.
-- Scene 2 (SOLUTION, 0:00–0:15): 5–7 shots. Open by mirroring Scene 1's final frame, the product enters and resolves the tension, end on the new emotional reality.
-Shot timestamps must add up to 15 seconds per scene.
-
-## PACE & CUTTING
-
-These ads must feel FAST — like a Wes Anderson sequence or a punchy TikTok edit, not a perfume commercial. Average shot length 2–3 seconds. Never hold a single composition for more than 4 seconds without internal motion (camera move, subject action, or effect). Cuts should land on action — a hand grabbing, a foot stepping, a door opening — not on dead air.
-
-## MAP ACTION BEATS TO SHOTS
-
-The concept JSON gives you "actionBeats" arrays for each scene. Each beat is a concrete micro-action the character does. Translate every beat into at least one shot — the shot should literally show that action with a verb (e.g. beat "she fumbles for keys in her bag" → SHOT showing close-up of hand digging in a bag, keys jangling). Do not skip beats, do not invent contemplative shots that aren't tied to an action beat. The beats ARE your shot list — your job is to choose the camera angle, the effect, and the cut for each.
-
-## STORY STRUCTURE
-
-Scene 1 = PROBLEM (no product visible). Scene 2 = SOLUTION (product present, same person/environment as Scene 1). Treat them as a single 30-second arc: Scene 2 must visually echo Scene 1 (same character, same lighting tone, same space) so the contrast lands.
-
-## PRODUCT FRAMING CONSISTENCY (CRITICAL)
-
-The product must appear at a CONSISTENT scale and framing wherever it shows up — across all shots in Scene 2 and across the starting frame. Pick one specific framing rule for the product (e.g. "held in hand at chest height, centered, occupying ~35% of frame width" or "set on a wooden surface, centered, ~40% of frame width, shot from eye level") and state it explicitly in every shot that contains the product. Never let the product appear tiny in one shot and dominant in the next — the audience must feel one consistent object.
-
-## COPYRIGHT SAFETY — CRITICAL
-
-ByteDance's content filter rejects prompts containing brand names, trademarks, logos, or real person names. Violating this causes the entire video generation to fail.
-- NEVER write the brand/company name — use "the brand", "the company", or describe its visual role
-- NEVER write "logo" — describe visually: "a colorful emblem on the chest", "a distinctive mark on the package"
-- NEVER name real people, celebrities, or public figures
-- NEVER reference song titles, film titles, or other IP
-- Describe clothing, products, environments by visual characteristics only: colors, shapes, textures, materials
-
-## OUTPUT FORMAT — FOLLOW EXACTLY
-
-Output in two parts with no extra text before or after:
-
-PART 1 — one line of compact JSON (no line breaks inside the JSON):
-SCENES_META: [{"number":1,"role":"problem","name":"Scene name","useRefImages":["key1"],"ratio":"9:16","duration":15,"startingImagePrompt":"One concise sentence: exact composition of the first frame — subject, environment, camera angle, lighting, mood"},{"number":2,"role":"solution",...,"duration":15,...}]
-
-Always exactly two entries: number 1 with role "problem" (no product in starting frame), number 2 with role "solution" (product present in starting frame at the agreed consistent framing). Both duration values must be 15.
-
-"startingImagePrompt" must be a SHORT single-line sentence (max 35 words) describing the very first frame of that scene so it can be used to generate a starting image via an image generation model. CRITICAL: every key listed in this scene's "useRefImages" will be sent to the image generator as actual visual input alongside this prompt. So do NOT re-describe what those refs show — do NOT describe the character's hair/clothing/face if a character ref is attached, do NOT describe the product's appearance if the product ref is attached, do NOT describe the environment's layout if an environment ref is attached. INSTEAD use phrases like "the character" / "the product" / "the environment" and focus the words on what the refs cannot supply: composition, camera angle, framing, pose, gesture, action, expression, lighting direction and quality, mood. No brand names, no logos, no real people. For Scene 2 specifically, the startingImagePrompt MUST state the exact product framing (position in frame, height, percentage of frame width occupied, camera angle to the product) and that framing must match what is described in the shot list. This field MUST be included for every scene.
-
-PART 2 — each scene's full prompt text, wrapped in tags (use the scene number from above):
-<scene_1>
-SHOT 1 (0:00-0:03) — Shot Name
-• EFFECT: primary effect + secondary effect
-• What is visually happening
-• Camera behaviour
-• How this shot exits
-SHOT 2 (0:03-0:07) — Shot Name
-• EFFECT: ...
-SHOT 3 (0:07-0:11) — Shot Name
-• EFFECT: ...
-SHOT 4 (0:11-0:15) — Shot Name
-• EFFECT: ... (final beat — peak of the pain, no product visible)
-EFFECTS DENSITY: 0-5s LOW, 5-10s MEDIUM, 10-15s HIGH
-ENERGY ARC: Opening energy → signature peak → resolution
-</scene_1>
-<scene_2>
-SHOT 1 (0:00-0:03) — Shot Name
-• EFFECT: ... (visually echoes Scene 1's final frame so continuity reads)
-• PRODUCT FRAMING: state the consistent framing rule for the product
-SHOT 2 (0:03-0:08) — Shot Name (product reveal at the agreed framing)
-• EFFECT: ...
-SHOT 3 (0:08-0:12) — Shot Name
-• EFFECT: ...
-SHOT 4 (0:12-0:15) — Shot Name
-• EFFECT: ... (resolution beat — product still framed at the agreed scale)
-EFFECTS DENSITY: 0-5s LOW, 5-10s HIGH, 10-15s MEDIUM
-ENERGY ARC: Continuity with Scene 1 → product reveal peak → resolved landing
-</scene_2>
-
-Match the mood, visual style, and color palette from the ad concept. Write like a director's shot notes — direct, technical, specific. No hype language.`;
+    const userContent = [{ type: 'text', text: `Here is the ad concept and scene breakdown:\n\n${ideaText}\n\nGenerate the per-scene cinematic video prompts for Seedance 2.0. Use the per-scene output format (one self-contained document per scene with === SCENE N OF M === headers, shot timeline, effects inventory, density map, energy arc).` }];
 
     try {
-      const claudeRes = await claudeApiCall(anthropicKey, system, [{ role: 'user', content: userContent }]);
+      const claudeRes = await claudeApiCall(anthropicKey, SKILL_SHOTS, [{ role: 'user', content: userContent }]);
       if (claudeRes.status !== 200) {
         const msg = claudeRes.body?.error?.message || JSON.stringify(claudeRes.body).substring(0, 300);
         return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
       }
-      const text = claudeRes.body?.content?.[0]?.text || '';
-
-      // Parse hybrid format: "SCENES_META: [...]" + <scene_N>...</scene_N> blocks
-      // Use bracket-balancing to extract the array — simple non-greedy regex would stop
-      // at the first nested ']' (e.g. inside "useRefImages": ["k1","k2"]) and break.
-      const metaStart = text.indexOf('SCENES_META:');
-      if (metaStart === -1) return sendJSON(res, 502, { error: 'Claude response missing SCENES_META line. Raw: ' + text.substring(0, 300) });
-      const arrOpen = text.indexOf('[', metaStart);
-      if (arrOpen === -1) return sendJSON(res, 502, { error: 'SCENES_META has no array. Raw: ' + text.substring(metaStart, metaStart + 200) });
-      let depth = 0, arrClose = -1;
-      for (let i = arrOpen; i < text.length; i++) {
-        if (text[i] === '[') depth++;
-        else if (text[i] === ']') { depth--; if (depth === 0) { arrClose = i; break; } }
-      }
-      if (arrClose === -1) return sendJSON(res, 502, { error: 'SCENES_META array never closes.' });
-      let metaArr;
-      try { metaArr = JSON.parse(text.slice(arrOpen, arrClose + 1)); }
-      catch(e) { return sendJSON(res, 502, { error: 'SCENES_META JSON invalid: ' + e.message + '. Raw: ' + text.slice(arrOpen, arrOpen + 200) }); }
-
-      const scenes = metaArr.map(s => {
-        const m = text.match(new RegExp('<scene_' + s.number + '>([\\s\\S]*?)<\\/scene_' + s.number + '>'));
-        const prompt = m ? m[1].trim() : '';
-        if (!prompt) console.warn('[shots] scene', s.number, 'has no <scene_N> block — prompt will be empty');
-        return { ...s, prompt };
-      });
-
+      const shotsText = claudeRes.body?.content?.[0]?.text || '';
+      const scenes = parseShotsOutput(shotsText);
+      if (!scenes.length) console.warn('[shots] parseShotsOutput returned 0 scenes. Raw start:', shotsText.substring(0, 200));
       user.balance = Math.round((cur - PROMPTS_COST) * 100) / 100;
       saveDB(db);
-      return sendJSON(res, 200, { scenes, balance: user.balance });
+      return sendJSON(res, 200, { scenes, shotsText, balance: user.balance });
     } catch(e) {
       return sendJSON(res, 502, { error: 'Video prompts failed: ' + e.message });
+    }
+  }
+
+
+  // ── Ads: Stage 3 — reference sheet prompts (ref-sheet-generator skill) ─────
+  if (url === '/api/gen/refsheets' && method === 'POST') {
+    const { ideaText, shotsText } = await readBody(req);
+    const anthropicKey = ANTHROPIC_API_KEY;
+    if (!anthropicKey) return sendJSON(res, 503, { error: 'Anthropic API key not configured.' });
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
+    if (!ideaText || !shotsText) return sendJSON(res, 400, { error: 'ideaText and shotsText required.' });
+
+    const REFS_COST = 0.10;
+    const db = loadDB(); const user = db.users[sess.userId];
+    const cur = user.balance ?? 0;
+    if (cur < REFS_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${REFS_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
+
+    const userMsg = `INPUT A — CONCEPT + SCENES (from ad-idea-generator):\n${ideaText}\n\nINPUT B — PER-SCENE CINEMATIC DOCUMENTS (from video-prompt-builder):\n${shotsText}\n\nGenerate the reference sheet prompts for all characters, the product, and all environments. Output ONLY the three labeled blocks (=== CHARACTER REFERENCE SHEETS ===, === PRODUCT REFERENCE SHEET ===, === ENVIRONMENT REFERENCE SHEETS ===) with no preamble.`;
+
+    try {
+      const claudeRes = await claudeApiCall(anthropicKey, SKILL_REFS, [{ role: 'user', content: userMsg }]);
+      if (claudeRes.status !== 200) {
+        const msg = claudeRes.body?.error?.message || JSON.stringify(claudeRes.body).substring(0, 300);
+        return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
+      }
+      const refSheetsText = claudeRes.body?.content?.[0]?.text || '';
+      const entities = parseRefSheetsOutput(refSheetsText);
+      if (!entities.length) console.warn('[refsheets] parseRefSheetsOutput returned 0 entities. Raw start:', refSheetsText.substring(0, 200));
+      user.balance = Math.round((cur - REFS_COST) * 100) / 100;
+      saveDB(db);
+      return sendJSON(res, 200, { entities, refSheetsText, balance: user.balance });
+    } catch(e) {
+      return sendJSON(res, 502, { error: 'Ref sheets failed: ' + e.message });
+    }
+  }
+
+  // ── Ads: Stage 4 — starting frame prompts (starting-frame-generator skill) ──
+  if (url === '/api/gen/startframes' && method === 'POST') {
+    const { ideaText, shotsText, refSheetsText } = await readBody(req);
+    const anthropicKey = ANTHROPIC_API_KEY;
+    if (!anthropicKey) return sendJSON(res, 503, { error: 'Anthropic API key not configured.' });
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
+    if (!ideaText || !shotsText || !refSheetsText) return sendJSON(res, 400, { error: 'ideaText, shotsText, and refSheetsText required.' });
+
+    const FRAMES_COST = 0.05;
+    const db = loadDB(); const user = db.users[sess.userId];
+    const cur = user.balance ?? 0;
+    if (cur < FRAMES_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${FRAMES_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
+
+    const userMsg = `INPUT A — CONCEPT + SCENES:\n${ideaText}\n\nINPUT B — PER-SCENE CINEMATIC DOCUMENTS:\n${shotsText}\n\nINPUT C — REFERENCE SHEET PROMPTS:\n${refSheetsText}\n\nGenerate the starting frame prompts for all scenes. Output ONLY the === STARTING FRAMES === block.`;
+
+    try {
+      const claudeRes = await claudeApiCall(anthropicKey, SKILL_FRAMES, [{ role: 'user', content: userMsg }]);
+      if (claudeRes.status !== 200) {
+        const msg = claudeRes.body?.error?.message || JSON.stringify(claudeRes.body).substring(0, 300);
+        return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
+      }
+      const framesText = claudeRes.body?.content?.[0]?.text || '';
+      const startFrames = parseStartFramesOutput(framesText);
+      if (!startFrames.length) console.warn('[startframes] parseStartFramesOutput returned 0 frames. Raw start:', framesText.substring(0, 200));
+      user.balance = Math.round((cur - FRAMES_COST) * 100) / 100;
+      saveDB(db);
+      return sendJSON(res, 200, { startFrames, balance: user.balance });
+    } catch(e) {
+      return sendJSON(res, 502, { error: 'Start frames failed: ' + e.message });
     }
   }
 

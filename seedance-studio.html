@@ -1196,320 +1196,246 @@ async function createAd() {
   btn.disabled = true; btn.textContent = 'Creating...';
   adLogClear();
 
-  const model = 'dreamina-seedance-2-0-260128';
-  const res   = '480p';
+  const model       = 'dreamina-seedance-2-0-260128';
+  const vidRes      = '480p';
   const description = document.getElementById('ad-description').value.trim();
 
+  // Helper: split a data URL into { base64, mime }
+  const splitDataUrl = du => {
+    if (!du) return null;
+    const c = du.indexOf(',');
+    return { base64: c >= 0 ? du.substring(c + 1) : du, mime: (c >= 0 ? du.substring(0, c) : '').replace('data:', '').replace(';base64', '') || 'image/jpeg' };
+  };
+
+  // Helper: retry an image generation call with exponential backoff
+  async function genImage(prompt, ratio, inputImages, label) {
+    let attempt = 0;
+    while (true) {
+      attempt++;
+      try {
+        const ir = await fetch('/api/generate-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+          body: JSON.stringify({ prompt, ratio, quality: 'high', images: inputImages })
+        });
+        const ij = await safeJson(ir);
+        if (ir.ok) {
+          if (ij.balance !== undefined) { userBalance = ij.balance; updateCreditsDisplay(); }
+          return ij.url;
+        }
+        const errMsg = (ij && ij.error) || `HTTP ${ir.status}`;
+        const retryable = /high demand|try again later|temporar|rate limit|429|5\d\d|timeout|timed out|fetch/i.test(String(errMsg)) || ir.status >= 500 || ir.status === 429;
+        if (!retryable) throw new Error(errMsg);
+        const waitSec = Math.min(120, 15 + attempt * 15);
+        throw Object.assign(new Error(errMsg), { retryable: true, waitSec });
+      } catch(e) {
+        if (!e.retryable && !/fetch|network|timeout|ECONN|ENET|abort/i.test(e.message)) throw e;
+        if (attempt >= 8) throw e;
+        const waitSec = e.waitSec || Math.min(120, 15 + attempt * 15);
+        await new Promise(r => setTimeout(r, waitSec * 1000));
+      }
+    }
+  }
+
   try {
-    // ── Step 0: Ensure server is awake (Render free tier cold-start) ───
+    // ── Step 0: Ensure server is awake ─────────────────────────────────
     const s0 = adLog('Connecting to server…', 'run');
     let serverOk = false;
     for (let i = 0; i < 6; i++) {
       try { const hr = await fetch('/health'); if (hr.ok) { serverOk = true; break; } } catch (_) {}
-      if (i < 5) {
-        adLogUpdate(s0, `Server warming up… (${i + 1}/6, retrying in 5s)`, 'run');
-        await new Promise(r => setTimeout(r, 5000));
-      }
+      if (i < 5) { adLogUpdate(s0, `Server warming up… (${i+1}/6, retrying in 5s)`, 'run'); await new Promise(r => setTimeout(r, 5000)); }
     }
-    if (!serverOk) throw new Error('Server is not responding. Please refresh the page and try again in ~30 seconds.');
+    if (!serverOk) throw new Error('Server not responding. Refresh and try again in ~30 seconds.');
     adLogUpdate(s0, 'Server ready', 'done');
 
-    // ── Step 1: Brainstorm ad concept ──────────────────────────────────
-    const s1 = adLog('Sending product images to Claude for ad concept…', 'run');
+    // ── Step 1: Ad idea (ad-idea-generator) ───────────────────────────
+    const s1 = adLog('Stage 1: Claude generating ad concept…', 'run');
     const imagesPayload = await Promise.all(adImages.map(async img => {
       const processed = await resizeForClaude(img.file);
       const comma = processed.indexOf(',');
       return { base64: processed.substring(comma + 1), mime: 'image/jpeg' };
     }));
-
     const r1 = await fetch('/api/gen/brief', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
       body: JSON.stringify({ images: imagesPayload, description })
     });
     const j1 = await r1.json();
-    if (!r1.ok) throw new Error(j1.error || 'Brainstorm failed');
+    if (!r1.ok) throw new Error(j1.error || 'Brief failed');
     if (j1.balance !== undefined) { userBalance = j1.balance; updateCreditsDisplay(); }
-    const concept = j1.concept;
-    adLogUpdate(s1, `Ad concept: "${concept.adTitle}" — ${concept.scenes?.length || 0} scenes`, 'done');
+    const ideaText = j1.ideaText;
+    const sceneCount = (ideaText.match(/^\d+\./gm) || []).length || 2;
+    const adTitle = description ? description.replace(/\s+/g, ' ').trim().substring(0, 40) :
+      (() => { const m = ideaText.match(/CONCEPT\s*\n+([\s\S]*?)\n+SCENES/); const prose = m ? m[1] : ideaText; return prose.split(/[.,]/)[0].trim().substring(0, 40) || ('Ad — ' + new Date().toLocaleDateString()); })();
+    adLogUpdate(s1, `Stage 1 done: "${adTitle}" — ${sceneCount} scene(s)`, 'done');
 
-    // ── Step 2: Generate video prompts ────────────────────────────────
-    // Scene prompts come first — they define exactly how characters and
-    // environments should look, which then drives reference image generation.
-    const s2 = adLog('Claude is writing video prompts for each scene…', 'run');
+    // ── Step 2: Video prompts (video-prompt-builder) ───────────────────
+    const s2 = adLog('Stage 2: Claude writing cinematic shot prompts…', 'run');
     const r2 = await fetch('/api/gen/shots', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-      body: JSON.stringify({ concept })
+      body: JSON.stringify({ ideaText })
     });
     const j2 = await r2.json();
     if (!r2.ok) throw new Error(j2.error || 'Video prompts failed');
     if (j2.balance !== undefined) { userBalance = j2.balance; updateCreditsDisplay(); }
     const scenes = j2.scenes || [];
-    adLogUpdate(s2, `Video prompts ready for ${scenes.length} scene(s)`, 'done');
+    const shotsText = j2.shotsText || '';
+    adLogUpdate(s2, `Stage 2 done: ${scenes.length} scene prompt(s) ready`, 'done');
 
-    // ── Step 3: Generate all reference images ──────────────────────────
-    const refImages = {}; // key → dataUrl
-    const refList = concept.referenceImages || [];
+    // ── Step 3: Reference sheet prompts (ref-sheet-generator) ──────────
+    const s3 = adLog('Stage 3: Claude generating reference sheet prompts…', 'run');
+    const r3 = await fetch('/api/gen/refsheets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+      body: JSON.stringify({ ideaText, shotsText })
+    });
+    const j3 = await r3.json();
+    if (!r3.ok) throw new Error(j3.error || 'Ref sheets failed');
+    if (j3.balance !== undefined) { userBalance = j3.balance; updateCreditsDisplay(); }
+    const entities = j3.entities || [];
+    const refSheetsText = j3.refSheetsText || '';
+    adLogUpdate(s3, `Stage 3 done: ${entities.length} entity reference sheet(s)`, 'done');
 
-    // Helper: split a data URL into { base64, mime }
-    const splitDataUrl = (du) => {
-      if (!du) return null;
-      const comma = du.indexOf(',');
-      const base64 = comma >= 0 ? du.substring(comma + 1) : du;
-      const meta = comma >= 0 ? du.substring(0, comma) : '';
-      const mime = meta.replace('data:', '').replace(';base64', '') || 'image/jpeg';
-      return { base64, mime };
-    };
-
-    // Topological sort: generate dependencies before dependents
-    const sortedRefList = (() => {
-      const byKey = Object.fromEntries(refList.map(r => [r.key, r]));
-      const sorted = [], visited = new Set();
-      const visit = r => {
-        if (!r || visited.has(r.key)) return;
-        visited.add(r.key);
-        (r.dependsOn || []).forEach(k => visit(byKey[k]));
-        sorted.push(r);
-      };
-      refList.forEach(r => visit(r));
-      return sorted;
-    })();
-
-    adLog(`Generating ${sortedRefList.length} reference image(s)…`, 'info');
-    for (const ref of sortedRefList) {
-      if (!ref.prompt || !ref.key) continue;
-      const s = adLog(`Generating: ${ref.label || ref.key}…`, 'run');
-      let succeeded = false;
-      for (let attempt = 1; attempt <= 5; attempt++) {
-        try {
-          // Product ref: send the actual uploaded product photo as the only reference.
-          // Other refs with dependsOn: send ALL listed dependency images as visual references.
-          const inputImages = [];
-          if (ref.type === 'product' && adImages[0]?.dataUrl) {
-            const p = splitDataUrl(adImages[0].dataUrl);
-            if (p) inputImages.push(p);
-          } else if (ref.dependsOn && ref.dependsOn.length > 0) {
-            for (const k of ref.dependsOn) {
-              if (refImages[k]) {
-                const p = splitDataUrl(refImages[k]);
-                if (p) inputImages.push(p);
-              }
-            }
-          }
-          const ir = await fetch('/api/generate-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-            body: JSON.stringify({ prompt: ref.prompt, ratio: ref.ratio || '1:1', quality: 'high', images: inputImages })
-          });
-          const ij = await safeJson(ir);
-          if (!ir.ok) throw new Error(ij.error || 'Image gen failed');
-          if (ij.balance !== undefined) { userBalance = ij.balance; updateCreditsDisplay(); }
-          refImages[ref.key] = ij.url;
-          lib.unshift({ id: 'ref-' + Date.now() + '-' + ref.key, prompt: ref.prompt, url: ij.url,
-            ratio: ref.ratio || '1:1', model: 'gemini-flash', ts: Date.now(), done: Date.now(),
-            type: 'image', folder: concept.adTitle, label: ref.label || ref.key });
-          saveLib(); renderLib();
-          adLogUpdate(s, `✓ ${ref.label || ref.key}`, 'done');
-          succeeded = true;
-          break;
-        } catch(e) {
-          const isRetryable = /timeout|timed out|high demand|try again|temporar|overload|503|429/i.test(e.message);
-          if (isRetryable && attempt < 5) {
-            const waitSec = attempt * 30;
-            adLogUpdate(s, `${ref.label || ref.key} — retrying in ${waitSec}s (attempt ${attempt}/5)…`, 'warn');
-            await new Promise(r => setTimeout(r, waitSec * 1000));
-          } else {
-            adLogUpdate(s, `${ref.label || ref.key} skipped: ${e.message}`, 'warn');
-            break;
-          }
+    // ── Step 3.5: Generate reference images ──────────────────────────────
+    // refMap keys: 'SUBJECT_001', 'ENV_001', 'product'
+    const refMap = {};
+    adLog(`Generating ${entities.length} reference image(s)…`, 'info');
+    for (let ei = 0; ei < entities.length; ei++) {
+      const entity = entities[ei];
+      const key = entity.type === 'character' ? 'SUBJECT_' + entity.subjectId :
+                  entity.type === 'environment' ? 'ENV_' + entity.envId : 'product';
+      const label = entity.name || key;
+      const sRef = adLog(`Ref image ${ei+1}/${entities.length}: ${label}…`, 'run');
+      try {
+        const inputImages = [];
+        if (entity.type === 'product' && adImages[0]?.dataUrl) {
+          const p = splitDataUrl(adImages[0].dataUrl); if (p) inputImages.push(p);
         }
+        const ratio = entity.type === 'environment' ? '16:9' : '1:1';
+        const url = await genImage(entity.prompt, ratio, inputImages, label);
+        refMap[key] = url;
+        lib.unshift({ id: 'ref-' + Date.now() + '-' + ei, prompt: entity.prompt, url,
+          ratio, model: 'gemini-flash', ts: Date.now(), done: Date.now(),
+          type: 'image', folder: adTitle, label });
+        saveLib(); renderLib();
+        adLogUpdate(sRef, `✓ ${label}`, 'done');
+      } catch(e) {
+        adLogUpdate(sRef, `${label} skipped: ${e.message}`, 'warn');
       }
-      // brief pause between requests to avoid Gemini rate limits
-      if (succeeded && ref !== sortedRefList[sortedRefList.length - 1]) await new Promise(r => setTimeout(r, 3000));
+      if (ei < entities.length - 1) await new Promise(r => setTimeout(r, 3000));
     }
 
-    // ── Step 3.5: Generate starting frame image for each scene ───────────────
+    // ── Step 4: Starting frame prompts (starting-frame-generator) ───────
+    const s4 = adLog('Stage 4: Claude generating starting frame prompts…', 'run');
+    const r4 = await fetch('/api/gen/startframes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+      body: JSON.stringify({ ideaText, shotsText, refSheetsText })
+    });
+    const j4 = await r4.json();
+    if (!r4.ok) throw new Error(j4.error || 'Start frames failed');
+    if (j4.balance !== undefined) { userBalance = j4.balance; updateCreditsDisplay(); }
+    const startFrames = j4.startFrames || [];
+    adLogUpdate(s4, `Stage 4 done: ${startFrames.length} starting frame prompt(s)`, 'done');
+
+    // ── Step 4.5: Generate starting frame images ─────────────────────────
     const sceneStartImages = [];
-    {
-      adLog(`Generating ${scenes.length} scene starting frame(s)…`, 'info');
-      for (let i = 0; i < scenes.length; i++) {
-        const scene = scenes[i];
-        const sip = scene.startingImagePrompt;
-        if (!sip) { sceneStartImages.push(null); continue; }
-        const s = adLog(`Starting frame ${i+1}/${scenes.length}: "${scene.name}"…`, 'run');
-
-        // Feed every ref image the scene declares (characters, environment, product, props)
-        // so the starting frame matches the established look instead of hallucinating it.
-        const sceneInputs = [];
-        // Scenes from /api/gen/shots use `useRefImages`; brainstorm scenes use `refImageKeys`. Accept both.
-        const sceneRefKeys = scene.useRefImages || scene.refImageKeys || [];
-        for (const k of sceneRefKeys) {
-          if (refImages[k]) {
-            const p = splitDataUrl(refImages[k]);
-            if (p) sceneInputs.push(p);
-          }
-        }
-        if (sceneInputs.length) {
-          adLog(`  → using ${sceneInputs.length} ref(s): ${sceneRefKeys.filter(k => refImages[k]).join(', ')}`, 'info');
-        }
-
-        // Retry until success — transient errors (high demand, rate limit, 5xx, network)
-        // get backed off; only a definitive non-retryable error breaks out and falls back.
-        let attempt = 0;
-        let producedUrl = null;
-        let lastErr = null;
-        while (true) {
-          attempt++;
-          try {
-            const ir = await fetch('/api/generate-image', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-              body: JSON.stringify({ prompt: sip, ratio: scene.ratio || '9:16', quality: 'high', images: sceneInputs })
-            });
-            const ij = await safeJson(ir);
-            if (ir.ok) {
-              if (ij.balance !== undefined) { userBalance = ij.balance; updateCreditsDisplay(); }
-              producedUrl = ij.url;
-              break;
-            }
-            const errMsg = (ij && ij.error) || `HTTP ${ir.status}`;
-            lastErr = errMsg;
-            const retryable = /high demand|try again later|temporar|rate limit|429|500|502|503|504|timeout|timed out|fetch/i.test(String(errMsg)) || ir.status >= 500 || ir.status === 429;
-            if (!retryable) throw new Error(errMsg);
-            const waitSec = Math.min(120, 15 + attempt * 15);
-            adLogUpdate(s, `Scene ${i+1} frame: ${errMsg.substring(0,80)} — retry ${attempt} in ${waitSec}s…`, 'warn');
-            await new Promise(r => setTimeout(r, waitSec * 1000));
-          } catch(e) {
-            lastErr = e.message;
-            // Network-level failure: also retryable
-            const retryable = /fetch|network|timeout|timed out|ECONN|ENET|abort/i.test(String(e.message));
-            if (!retryable) {
-              adLogUpdate(s, `Scene ${i+1} starting frame failed (non-retryable): ${e.message} — will use text-to-video`, 'warn');
-              break;
-            }
-            const waitSec = Math.min(120, 15 + attempt * 15);
-            adLogUpdate(s, `Scene ${i+1} frame: ${e.message.substring(0,80)} — retry ${attempt} in ${waitSec}s…`, 'warn');
-            await new Promise(r => setTimeout(r, waitSec * 1000));
-          }
-        }
-
-        if (producedUrl) {
-          sceneStartImages.push(producedUrl);
-          lib.unshift({ id: 'start-' + Date.now() + '-' + i, prompt: sip, url: producedUrl,
-            ratio: scene.ratio || '9:16', model: 'gemini-flash', ts: Date.now(), done: Date.now(),
-            type: 'image', folder: concept.adTitle, label: `Scene ${i+1} start` });
-          saveLib(); renderLib();
-          adLogUpdate(s, `Scene ${i+1} starting frame ✓${attempt > 1 ? ` (after ${attempt} attempts)` : ''}`, 'done');
-        } else {
-          sceneStartImages.push(null);
-        }
-        if (i < scenes.length - 1) await new Promise(r => setTimeout(r, 3000));
+    adLog(`Generating ${startFrames.length} starting frame image(s)…`, 'info');
+    for (let i = 0; i < scenes.length; i++) {
+      const sf = startFrames.find(f => f.scene === i + 1);
+      if (!sf || !sf.prompt) { sceneStartImages.push(null); continue; }
+      const sSf = adLog(`Starting frame ${i+1}/${scenes.length}: scene ${i+1}…`, 'run');
+      try {
+        // Attach the reference images the starting frame references by SUBJECT/ENV ID
+        const sfInputs = [];
+        for (const sid of (sf.subjectIds || [])) { if (refMap['SUBJECT_' + sid]) { const p = splitDataUrl(refMap['SUBJECT_' + sid]); if (p) sfInputs.push(p); } }
+        for (const eid of (sf.envIds || []))     { if (refMap['ENV_' + eid])     { const p = splitDataUrl(refMap['ENV_' + eid]);     if (p) sfInputs.push(p); } }
+        if (refMap['product']) { const p = splitDataUrl(refMap['product']); if (p) sfInputs.push(p); }
+        if (sfInputs.length) adLog(`  → ${sfInputs.length} ref image(s) attached`, 'info');
+        const url = await genImage(sf.prompt, '9:16', sfInputs, `Scene ${i+1} start`);
+        sceneStartImages.push(url);
+        lib.unshift({ id: 'start-' + Date.now() + '-' + i, prompt: sf.prompt, url,
+          ratio: '9:16', model: 'gemini-flash', ts: Date.now(), done: Date.now(),
+          type: 'image', folder: adTitle, label: `Scene ${i+1} start` });
+        saveLib(); renderLib();
+        adLogUpdate(sSf, `Scene ${i+1} starting frame ✓`, 'done');
+      } catch(e) {
+        sceneStartImages.push(null);
+        adLogUpdate(sSf, `Scene ${i+1} starting frame failed: ${e.message} — will use T2V`, 'warn');
       }
+      if (i < scenes.length - 1) await new Promise(r => setTimeout(r, 3000));
     }
 
-    // ── Step 4: Submit video generation for each scene (sequential so each
-    //           completed video can be used as reference_video for the next) ──
-    const folder = concept.adTitle || ('Ad ' + new Date().toLocaleDateString());
+    // ── Step 5: Video generation (sequential, each scene uses prev as ref) ──
     let prevVideoUrl = null;
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i];
-      const ratio  = '9:16';
-      const dur    = Math.max(5, Math.min(15, scene.duration || 15));
-      // Sanitize prompt: remove brand name and "logo" to avoid ByteDance copyright filter
-      const rawPrompt = scene.prompt || scene.description || `Scene ${i+1}`;
-      const brandName = (concept.adTitle || '').trim();
-      const prompt = rawPrompt
-        .replace(brandName ? new RegExp(brandName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi') : /(?!)/g, 'the brand')
-        .replace(/\b(logo|trademark|brand name|registered mark)\b/gi, 'emblem');
+      const ratio = '9:16';
+      const dur   = Math.max(5, Math.min(15, scene.duration || 15));
+      const rawPrompt = scene.prompt || `Scene ${i+1}`;
+      const prompt = rawPrompt.replace(/\b(logo|trademark|brand name|registered mark)\b/gi, 'emblem');
 
-      const s4 = adLog(`Scene ${i+1}/${scenes.length}: "${scene.name}" — submitting…`, 'run');
-
+      const sV = adLog(`Scene ${i+1}/${scenes.length}: "${scene.name || ('Scene '+(i+1))}" — submitting…`, 'run');
       try {
         const [w, h] = (() => { const m = {'9:16':'480x864','16:9':'864x480','1:1':'640x640','4:3':'640x480','3:4':'480x640','21:9':'864x368'}; return ((m[ratio])||'480x864').split('x').map(Number); })();
-        const tok = dur * w * h * 24 / 1024;
-        const costUsd = Math.round(tok * 7.0e-6 * 1.3 * 100) / 100;
-
-        const dcr = await fetch('/api/deduct', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-          body: JSON.stringify({ amount: costUsd })
-        });
+        const costUsd = Math.round(dur * w * h * 24 / 1024 * 7.0e-6 * 1.3 * 100) / 100;
+        const dcr = await fetch('/api/deduct', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken }, body: JSON.stringify({ amount: costUsd }) });
         const dj = await dcr.json();
         if (!dcr.ok) throw new Error(dj.error || 'Insufficient balance');
         userBalance = dj.balance; updateCreditsDisplay();
 
-        // Seedance 2.0 has two modes: (a) starting/ending frame I2V, (b) reference images + video.
-        // Sending role:'first_frame' switches to mode (a) which forbids reference media.
-        // We want mode (b) with the starting frame as a guide — so send everything as reference_image
-        // (starting frame first) and instruct the prompt to open the scene matching it.
+        // Build content: starting frame first (reference_image), then all ref images, then optional prev video
         const content = [];
-        const useRefs = scene.useRefImages || [];
         const startImg = sceneStartImages[i];
-        const refCount = (startImg ? 1 : 0) + useRefs.filter(rk => refImages[rk]).length;
         let openingHint = '';
         if (startImg) {
-          const sip = (scene.startingImagePrompt || '').trim();
-          openingHint = sip
-            ? `Open the scene exactly matching reference image 1 (${sip}). `
-            : `Open the scene exactly matching reference image 1. `;
-          if (refCount > 1) openingHint += `Use the other reference images for product, character, and environment fidelity. `;
-        } else if (refCount > 0) {
-          openingHint = `Use the reference images for product, character, and environment fidelity. `;
+          openingHint = `Open the scene exactly matching reference image 1. Use remaining reference images for character, product, and environment fidelity. `;
+        } else if (Object.keys(refMap).length > 0) {
+          openingHint = `Use the reference images for character, product, and environment fidelity. `;
         }
-        if (prevVideoUrl) {
-          openingHint += `Use the reference video for visual continuity from the previous scene. `;
-        }
-        const finalPrompt = openingHint ? openingHint + prompt : prompt;
-        content.push({ type: 'text', text: finalPrompt });
+        if (prevVideoUrl) openingHint += `Use the reference video for visual continuity from the previous scene. `;
+        content.push({ type: 'text', text: openingHint + prompt });
         if (startImg) {
           const softenedStart = await softenDataUrl(startImg);
           content.push({ type: 'image_url', image_url: { url: softenedStart }, role: 'reference_image' });
         }
-        for (const rk of useRefs) {
-          if (refImages[rk]) {
-            const softenedUrl = await softenDataUrl(refImages[rk]);
-            content.push({ type: 'image_url', image_url: { url: softenedUrl }, role: 'reference_image' });
-          }
+        // Attach all reference images (characters, environments, product)
+        for (const url of Object.values(refMap)) {
+          if (url) { const softened = await softenDataUrl(url); content.push({ type: 'image_url', image_url: { url: softened }, role: 'reference_image' }); }
         }
-        if (prevVideoUrl) {
-          content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
-        }
-        const payload = buildPayload(model, content, false, ratio, dur, false, res);
-        let taskId, j4;
+        if (prevVideoUrl) content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
+
+        const payload = buildPayload(model, content, false, ratio, dur, false, vidRes);
+        let taskId, jV;
         for (let attempt = 1; attempt <= 6; attempt++) {
-          const r4 = await fetch('/proxy/api/v3/contents/generations/tasks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-          j4 = await r4.json();
-          taskId = j4.id || j4.task_id;
+          const rV = await fetch('/proxy/api/v3/contents/generations/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          jV = await rV.json();
+          taskId = jV.id || jV.task_id;
           if (taskId) break;
-          const errMsg = j4.error?.message || JSON.stringify(j4).substring(0, 200);
-          const isHighDemand = /high demand|try again later|temporar/i.test(errMsg);
-          if (!isHighDemand || attempt === 6) throw new Error(errMsg);
+          const errMsg = jV.error?.message || JSON.stringify(jV).substring(0, 200);
+          if (!/high demand|try again later|temporar/i.test(errMsg) || attempt === 6) throw new Error(errMsg);
           const waitSec = attempt * 60;
-          adLogUpdate(s4, `Scene ${i+1} "${scene.name}" — model busy, retrying in ${waitSec}s (attempt ${attempt}/6)…`, 'warn');
+          adLogUpdate(sV, `Scene ${i+1} — model busy, retrying in ${waitSec}s (attempt ${attempt}/6)…`, 'warn');
           await new Promise(r => setTimeout(r, waitSec * 1000));
         }
-        if (!taskId) throw new Error(j4.error?.message || JSON.stringify(j4).substring(0, 200));
+        if (!taskId) throw new Error(jV?.error?.message || 'No task ID returned');
 
-        const job = { id: taskId, prompt, model, res, ratio, dur, audio: false, ts: Date.now(), status: 'running', folder };
+        const job = { id: taskId, prompt, model, res: vidRes, ratio, dur, audio: false, ts: Date.now(), status: 'running', folder: adTitle };
         jobs.push(job);
-        adLogUpdate(s4, `Scene ${i+1} "${scene.name}" generating${prevVideoUrl ? ' (using scene ' + i + ' as reference)' : ''}…`, 'run');
+        adLogUpdate(sV, `Scene ${i+1} generating${prevVideoUrl ? ' (visual continuity from prev scene)' : ''}…`, 'run');
         prevVideoUrl = await pollAd(job);
-        adLogUpdate(s4, prevVideoUrl ? `Scene ${i+1} "${scene.name}" ✓` : `Scene ${i+1} "${scene.name}" failed`, prevVideoUrl ? 'done' : 'err');
+        adLogUpdate(sV, prevVideoUrl ? `Scene ${i+1} "${scene.name || ''}" ✓` : `Scene ${i+1} failed`, prevVideoUrl ? 'done' : 'err');
       } catch(e) {
-        adLogUpdate(s4, `Scene ${i+1} failed: ${e.message}`, 'err');
+        adLogUpdate(sV, `Scene ${i+1} failed: ${e.message}`, 'err');
         throw e;
       }
     }
 
-    adLog(`All scenes done! See "${folder}" in your Library.`, 'done');
+    adLog(`All ${scenes.length} scene(s) done! See "${adTitle}" in your Library.`, 'done');
     goPage('library', document.querySelector('.tab[data-page="library"]'));
     renderLib();
-    toast(`Ad pipeline running! ${scenes.length} scene(s) generating.`, 'ok', 7000);
+    toast(`Ad pipeline complete! ${scenes.length} scene(s) generating.`, 'ok', 7000);
 
   } catch(e) {
     adLog('Error: ' + e.message, 'err');
