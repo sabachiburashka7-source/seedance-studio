@@ -936,15 +936,14 @@ async function handleRequest(req, res) {
     return sendJSON(res, 200, { balance: user.balance, added: amount });
   }
 
-  // ── Gemini image generation ───────────────────────────────────────────────
+  // ── Seedream image generation (BytePlus Ark) ─────────────────────────────
   if (url === '/api/generate-image' && method === 'POST') {
     const { prompt, ratio, quality, imageBase64, imageMime, images } = await readBody(req); // must read body before any early return
     // Normalize to a list of {base64, mime}: legacy single-image fields still supported
     const refImagesList = Array.isArray(images) && images.length
       ? images.filter(i => i && i.base64).map(i => ({ base64: i.base64, mime: i.mime || 'image/jpeg' }))
       : (imageBase64 ? [{ base64: imageBase64, mime: imageMime || 'image/jpeg' }] : []);
-    const geminiKey = process.env.GEMINI_API_KEY;
-    if (!geminiKey) return sendJSON(res, 503, { error: 'Image generation not configured on server (GEMINI_API_KEY missing).' });
+    if (!BYTEPLUS_API_KEY) return sendJSON(res, 503, { error: 'Image generation not configured on server (BYTEPLUS_API_KEY missing).' });
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to generate images.' });
     const imgCost = quality === 'low' ? 0.02 : 0.08;
@@ -955,76 +954,73 @@ async function handleRequest(req, res) {
     }
     if (!prompt) return sendJSON(res, 400, { error: 'Prompt required' });
 
-    // Gemini supports: 1:1, 3:4, 4:3, 9:16, 16:9 — map unsupported ratios to closest
-    const RATIO_MAP = { '21:9': '16:9' };
-    const aspectRatio = RATIO_MAP[ratio] || ratio || '1:1';
-    const useEdit = refImagesList.length > 0;
-    console.log('[gemini-image]', useEdit ? `editing with ${refImagesList.length} ref(s):` : 'generating:', aspectRatio, quality, prompt.substring(0, 80));
+    // Map ratio to pixel size — Seedream 5.0 lite supported sizes
+    const SIZE_MAP = { '1:1': '1024x1024', '16:9': '1280x720', '9:16': '720x1280', '4:3': '1024x768', '3:4': '768x1024', '21:9': '1280x549' };
+    const size = SIZE_MAP[ratio] || '1024x1024';
+    const useRef = refImagesList.length > 0;
+    console.log('[seedream-image]', useRef ? `with ${refImagesList.length} ref(s):` : 'generating:', size, quality, prompt.substring(0, 80));
 
-    const msgParts = [];
-    for (const img of refImagesList) {
-      msgParts.push({ inlineData: { mimeType: img.mime, data: img.base64 } });
+    const payload = {
+      model: 'doubao-seedream-5-0-lite-t2i-250414',
+      prompt,
+      size,
+      response_format: 'b64_json',
+      n: 1
+    };
+    if (useRef) {
+      payload.ref_images = refImagesList.map(img => `data:${img.mime};base64,${img.base64}`);
     }
-    msgParts.push({ text: prompt });
-
-    // Embed aspect ratio in prompt — generationConfig doesn't accept aspectRatio/numberOfImages for this model
-    msgParts[msgParts.length - 1].text += ` Output in ${aspectRatio} aspect ratio.`;
-    const reqBody = Buffer.from(JSON.stringify({
-      contents: [{ parts: msgParts }],
-      generationConfig: { responseModalities: ['IMAGE'] }
-    }));
+    const reqBody = Buffer.from(JSON.stringify(payload));
 
     const MAX_IMG_ATTEMPTS = 4;
-    const geminiRequest = () => new Promise((resolve, reject) => {
-      const model = 'gemini-3.1-flash-image-preview';
+    const seedreamRequest = () => new Promise((resolve, reject) => {
       const opts = {
-        hostname: 'generativelanguage.googleapis.com', port: 443,
-        path: `/v1beta/models/${model}:generateContent?key=${geminiKey}`, method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': reqBody.length }
+        hostname: BYTEPLUS, port: 443,
+        path: '/api/v3/images/generations', method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': reqBody.length, 'Authorization': 'Bearer ' + BYTEPLUS_API_KEY }
       };
       const r = https.request(opts, resp => {
         const ch = [];
         resp.on('data', c => ch.push(c));
         resp.on('end', () => {
           const raw = Buffer.concat(ch).toString();
-          if (!raw) { reject(new Error(`Gemini returned empty body (HTTP ${resp.statusCode})`)); return; }
+          if (!raw) { reject(new Error(`Seedream returned empty body (HTTP ${resp.statusCode})`)); return; }
           try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
-          catch(e) { reject(new Error(`Gemini non-JSON response (HTTP ${resp.statusCode}): ${raw.substring(0, 200)}`)); }
+          catch(e) { reject(new Error(`Seedream non-JSON response (HTTP ${resp.statusCode}): ${raw.substring(0, 200)}`)); }
         });
       });
-      // 150s per attempt — if Gemini stalls longer it's rate-limited; retry handles it
-      r.setTimeout(150000, () => { r.destroy(); reject(new Error('Gemini request timed out after 150s')); });
+      // 150s per attempt
+      r.setTimeout(150000, () => { r.destroy(); reject(new Error('Seedream request timed out after 150s')); });
       r.on('error', reject);
       r.write(reqBody); r.end();
     });
 
     for (let attempt = 1; attempt <= MAX_IMG_ATTEMPTS; attempt++) {
       try {
-        const result = await geminiRequest();
+        const result = await seedreamRequest();
 
         if (result.status === 429) {
           const waitSec = attempt * 20;
-          console.log(`[gemini-image] rate limited (attempt ${attempt}/${MAX_IMG_ATTEMPTS}), waiting ${waitSec}s`);
+          console.log(`[seedream-image] rate limited (attempt ${attempt}/${MAX_IMG_ATTEMPTS}), waiting ${waitSec}s`);
           if (attempt < MAX_IMG_ATTEMPTS) {
             await new Promise(r => setTimeout(r, waitSec * 1000));
             continue;
           }
-          const errMsg = result.body?.error?.message || 'Gemini rate limit exceeded — try again in a moment';
+          const errMsg = result.body?.error?.message || 'Seedream rate limit exceeded — try again in a moment';
           return sendJSON(res, 429, { error: errMsg });
         }
 
         if (result.status !== 200) {
           const errMsg = result.body?.error?.message || JSON.stringify(result.body).substring(0, 400);
-          console.error('[gemini-image] error', result.status, errMsg);
+          console.error('[seedream-image] error', result.status, errMsg);
           return sendJSON(res, result.status >= 400 && result.status < 600 ? result.status : 500, { error: errMsg });
         }
 
-        const imgPart = result.body.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-        if (!imgPart) return sendJSON(res, 500, { error: 'No image data returned by Gemini' });
+        const b64 = result.body.data?.[0]?.b64_json;
+        if (!b64) return sendJSON(res, 500, { error: 'No image data returned by Seedream' });
 
-        const mime = imgPart.inlineData.mimeType || 'image/jpeg';
-        const dataUrl = `data:${mime};base64,${imgPart.inlineData.data}`;
-        console.log('[gemini-image] done, dataUrl length:', dataUrl.length);
+        const dataUrl = `data:image/jpeg;base64,${b64}`;
+        console.log('[seedream-image] done, dataUrl length:', dataUrl.length);
         const db2  = loadDB();
         const usr2 = db2.users[sess.userId];
         const cur2 = usr2.balance ?? 0;
@@ -1033,14 +1029,14 @@ async function handleRequest(req, res) {
         return sendJSON(res, 200, { url: dataUrl, balance: usr2.balance });
       } catch(e) {
         const isTimeout = e.message.includes('timed out');
-        console.error(`[gemini-image] attempt ${attempt} error:`, e.message);
+        console.error(`[seedream-image] attempt ${attempt} error:`, e.message);
         if (attempt < MAX_IMG_ATTEMPTS && isTimeout) {
           const waitSec = attempt * 15;
-          console.log(`[gemini-image] timeout, retrying after ${waitSec}s (attempt ${attempt})`);
+          console.log(`[seedream-image] timeout, retrying after ${waitSec}s (attempt ${attempt})`);
           await new Promise(r => setTimeout(r, waitSec * 1000));
           continue;
         }
-        return sendJSON(res, 502, { error: 'Gemini request failed: ' + e.message });
+        return sendJSON(res, 502, { error: 'Seedream request failed: ' + e.message });
       }
     }
   }

@@ -801,7 +801,7 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         <div class="setting-group">
           <span class="setting-label">Model</span>
           <div class="btn-group" id="img-model-group">
-            <button class="bg-btn active" data-value="gemini-flash" onclick="onBtnGroup(this,'img-model-group')">Gemini Flash</button>
+            <button class="bg-btn active" data-value="seedream-5-0-lite" onclick="onBtnGroup(this,'img-model-group')">Seedream 5.0 Lite</button>
           </div>
         </div>
 
@@ -1316,7 +1316,7 @@ async function createAd() {
         const url = await genImage(entity.prompt, ratio, inputImages, label);
         refMap[key] = url;
         lib.unshift({ id: 'ref-' + Date.now() + '-' + ei, prompt: entity.prompt, url,
-          ratio, model: 'gemini-flash', ts: Date.now(), done: Date.now(),
+          ratio, model: 'seedream-5-0-lite', ts: Date.now(), done: Date.now(),
           type: 'image', folder: adTitle, label });
         saveLib(); renderLib();
         adLogUpdate(sRef, `✓ ${label}`, 'done');
@@ -1356,7 +1356,7 @@ async function createAd() {
         const url = await genImage(sf.prompt, '9:16', sfInputs, `Scene ${i+1} start`);
         sceneStartImages.push(url);
         lib.unshift({ id: 'start-' + Date.now() + '-' + i, prompt: sf.prompt, url,
-          ratio: '9:16', model: 'gemini-flash', ts: Date.now(), done: Date.now(),
+          ratio: '9:16', model: 'seedream-5-0-lite', ts: Date.now(), done: Date.now(),
           type: 'image', folder: adTitle, label: `Scene ${i+1} start` });
         saveLib(); renderLib();
         adLogUpdate(sSf, `Scene ${i+1} starting frame ✓`, 'done');
@@ -2102,7 +2102,7 @@ async function doGenerateImage() {
 
   const btn = document.getElementById('img-gen-btn');
   btn.disabled = true; btn.textContent = 'Generating...';
-  showImgProg('Sending to Gemini...');
+  showImgProg('Sending to Seedream...');
 
   try {
     const body = { prompt: pt, ratio, quality };
@@ -2117,7 +2117,7 @@ async function doGenerateImage() {
     if (j.balance !== undefined) { userBalance = j.balance; updateCreditsDisplay(); }
 
     const jobId = 'img-' + Date.now();
-    lib.unshift({ id: jobId, prompt: pt, url: j.url, ratio, model: 'gemini-flash', ts: Date.now(), done: Date.now(), type: 'image' });
+    lib.unshift({ id: jobId, prompt: pt, url: j.url, ratio, model: 'seedream-5-0-lite', ts: Date.now(), done: Date.now(), type: 'image' });
     saveLib(); renderLib(); badge();
     toast('Image ready! Check your Library.', 'ok');
   } catch(e) {
