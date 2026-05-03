@@ -246,7 +246,7 @@ function sendEmail(to, subject, html) {
 function makeCode() { return String(Math.floor(100000 + Math.random() * 900000)); }
 
 // ── Claude (Anthropic) API helper ─────────────────────────────────────────────
-function claudeApiCall(apiKey, system, messages, maxTokens = 8192) {
+function claudeApiCall(apiKey, system, messages, maxTokens = 8192, timeoutMs = 240000) {
   apiKey = apiKey || ANTHROPIC_API_KEY;
   return new Promise((resolve, reject) => {
     const body = Buffer.from(JSON.stringify({
@@ -271,7 +271,7 @@ function claudeApiCall(apiKey, system, messages, maxTokens = 8192) {
         catch(e) { reject(new Error('Claude parse error: ' + e.message)); }
       });
     });
-    req.setTimeout(120000, () => req.destroy(new Error('Claude timeout')));
+    req.setTimeout(timeoutMs, () => req.destroy(new Error('Claude timeout')));
     req.on('error', reject);
     req.write(body); req.end();
   });
