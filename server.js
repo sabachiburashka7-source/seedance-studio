@@ -992,8 +992,8 @@ async function handleRequest(req, res) {
           catch(e) { reject(new Error(`Gemini non-JSON response (HTTP ${resp.statusCode}): ${raw.substring(0, 200)}`)); }
         });
       });
-      // 90s per attempt — if Gemini stalls longer it's rate-limited; retry handles it
-      r.setTimeout(90000, () => { r.destroy(); reject(new Error('Gemini request timed out after 90s')); });
+      // 150s per attempt — if Gemini stalls longer it's rate-limited; retry handles it
+      r.setTimeout(150000, () => { r.destroy(); reject(new Error('Gemini request timed out after 150s')); });
       r.on('error', reject);
       r.write(reqBody); r.end();
     });
