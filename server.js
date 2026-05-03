@@ -961,7 +961,7 @@ async function handleRequest(req, res) {
     console.log('[seedream-image]', useRef ? `with ${refImagesList.length} ref(s):` : 'generating:', size, quality, prompt.substring(0, 80));
 
     const payload = {
-      model: 'doubao-seedream-5-0-lite-t2i-250414',
+      model: 'seedream-5-0-260128',
       prompt,
       size,
       response_format: 'b64_json',
