@@ -954,8 +954,8 @@ async function handleRequest(req, res) {
     }
     if (!prompt) return sendJSON(res, 400, { error: 'Prompt required' });
 
-    // Map ratio to pixel size — Seedream 5.0 lite supported sizes
-    const SIZE_MAP = { '1:1': '1024x1024', '16:9': '1280x720', '9:16': '720x1280', '4:3': '1024x768', '3:4': '768x1024', '21:9': '1280x549' };
+    // Map ratio to pixel size — Seedream requires ≥ 3,686,400 pixels (1920×1920 minimum)
+    const SIZE_MAP = { '1:1': '1920x1920', '16:9': '2560x1440', '9:16': '1440x2560', '4:3': '2560x1920', '3:4': '1920x2560', '21:9': '2560x1440' };
     const size = SIZE_MAP[ratio] || '1024x1024';
     const useRef = refImagesList.length > 0;
     console.log('[seedream-image]', useRef ? `with ${refImagesList.length} ref(s):` : 'generating:', size, quality, prompt.substring(0, 80));
