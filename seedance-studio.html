@@ -1309,8 +1309,15 @@ async function createAd() {
       const sRef = adLog(`Ref image ${ei+1}/${entities.length}: ${label}…`, 'run');
       try {
         const inputImages = [];
-        if (entity.type === 'product' && adImages[0]?.dataUrl) {
-          const p = splitDataUrl(adImages[0].dataUrl); if (p) inputImages.push(p);
+        if (entity.type === 'product' && adImages.length) {
+          for (const ai of adImages) {
+            try {
+              const resized = await resizeForClaude(ai.file, 1024);
+              const p = splitDataUrl(resized);
+              if (p) inputImages.push(p);
+            } catch (_) {}
+          }
+          if (inputImages.length) adLog(`  → ${inputImages.length} product photo(s) attached`, 'info');
         }
         const ratio = entity.type === 'environment' ? '16:9' : '1:1';
         const url = await genImage(entity.prompt, ratio, inputImages, label);
