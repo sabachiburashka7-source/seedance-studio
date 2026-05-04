@@ -954,9 +954,9 @@ async function handleRequest(req, res) {
     }
     if (!prompt) return sendJSON(res, 400, { error: 'Prompt required' });
 
-    // Seedream 5.0 uses aspect ratio strings for size, resolution controlled via metadata
-    const VALID_RATIOS = new Set(['1:1','4:3','3:4','16:9','9:16','3:2','2:3','21:9','9:21']);
-    const size = VALID_RATIOS.has(ratio) ? ratio : '1:1';
+    // Seedream 5.0: size must be WIDTHxHEIGHT, '2k', '3k', or '4k'
+    const SIZE_MAP = { '1:1': '2048x2048', '16:9': '2688x1512', '9:16': '1512x2688', '4:3': '2560x1920', '3:4': '1920x2560', '21:9': '2688x1152' };
+    const size = SIZE_MAP[ratio] || (quality === 'low' ? '2k' : '3k');
     const useRef = refImagesList.length > 0;
     console.log('[seedream-image]', useRef ? `with ${refImagesList.length} ref(s):` : 'generating:', size, quality, prompt.substring(0, 80));
 
@@ -964,12 +964,16 @@ async function handleRequest(req, res) {
       model: 'seedream-5-0-260128',
       prompt,
       size,
-      response_format: 'b64_json',
-      n: 1,
-      metadata: { resolution: quality === 'low' ? '2K' : '3K' }
+      output_format: 'jpeg',
+      watermark: false
     };
     if (useRef) {
-      payload.image_urls = refImagesList.map(img => `data:${img.mime};base64,${img.base64}`);
+      // Single image: use 'image' field; multiple: use 'image_urls' array
+      if (refImagesList.length === 1) {
+        payload.image = `data:${refImagesList[0].mime};base64,${refImagesList[0].base64}`;
+      } else {
+        payload.image_urls = refImagesList.map(img => `data:${img.mime};base64,${img.base64}`);
+      }
     }
     const reqBody = Buffer.from(JSON.stringify(payload));
 
@@ -1017,10 +1021,22 @@ async function handleRequest(req, res) {
           return sendJSON(res, result.status >= 400 && result.status < 600 ? result.status : 500, { error: errMsg });
         }
 
-        const b64 = result.body.data?.[0]?.b64_json;
-        if (!b64) return sendJSON(res, 500, { error: 'No image data returned by Seedream' });
+        // API returns a URL; fetch it and convert to base64 data URL
+        const imgUrl = result.body.data?.[0]?.url || result.body.data?.[0]?.b64_json && `data:image/jpeg;base64,${result.body.data[0].b64_json}`;
+        if (!imgUrl) return sendJSON(res, 500, { error: 'No image data returned by Seedream' });
 
-        const dataUrl = `data:image/jpeg;base64,${b64}`;
+        let dataUrl = imgUrl;
+        if (imgUrl.startsWith('http')) {
+          try {
+            const imgBuf = await new Promise((resolve, reject) => {
+              https.get(imgUrl, r => { const c = []; r.on('data', d => c.push(d)); r.on('end', () => resolve(Buffer.concat(c))); r.on('error', reject); }).on('error', reject);
+            });
+            dataUrl = `data:image/jpeg;base64,${imgBuf.toString('base64')}`;
+          } catch (fe) {
+            console.warn('[seedream-image] could not fetch image URL, storing URL directly:', fe.message);
+            dataUrl = imgUrl;
+          }
+        }
         console.log('[seedream-image] done, dataUrl length:', dataUrl.length);
         const db2  = loadDB();
         const usr2 = db2.users[sess.userId];
