@@ -955,7 +955,10 @@ async function handleRequest(req, res) {
     if (!prompt) return sendJSON(res, 400, { error: 'Prompt required' });
 
     // Seedream 5.0: size must be WIDTHxHEIGHT, '2k', '3k', or '4k'
-    const SIZE_MAP = { '1:1': '2048x2048', '16:9': '2688x1512', '9:16': '1512x2688', '4:3': '2560x1920', '3:4': '1920x2560', '21:9': '2688x1152' };
+    // low = 2k output (~2048px), high = 3k output (~3072px)
+    const SIZE_MAP_LOW  = { '1:1': '2048x2048', '16:9': '2688x1512', '9:16': '1512x2688', '4:3': '2560x1920', '3:4': '1920x2560', '21:9': '2688x1152' };
+    const SIZE_MAP_HIGH = { '1:1': '3072x3072', '16:9': '4032x2268', '9:16': '2268x4032', '4:3': '3840x2880', '3:4': '2880x3840', '21:9': '4032x1728' };
+    const SIZE_MAP = quality === 'low' ? SIZE_MAP_LOW : SIZE_MAP_HIGH;
     const size = SIZE_MAP[ratio] || (quality === 'low' ? '2k' : '3k');
     const useRef = refImagesList.length > 0;
     console.log('[seedream-image]', useRef ? `with ${refImagesList.length} ref(s):` : 'generating:', size, quality, prompt.substring(0, 80));
