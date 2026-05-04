@@ -954,9 +954,9 @@ async function handleRequest(req, res) {
     }
     if (!prompt) return sendJSON(res, 400, { error: 'Prompt required' });
 
-    // Map ratio to pixel size — Seedream requires ≥ 3,686,400 pixels (1920×1920 minimum)
-    const SIZE_MAP = { '1:1': '1920x1920', '16:9': '2560x1440', '9:16': '1440x2560', '4:3': '2560x1920', '3:4': '1920x2560', '21:9': '2560x1440' };
-    const size = SIZE_MAP[ratio] || '1024x1024';
+    // Seedream 5.0 uses aspect ratio strings for size, resolution controlled via metadata
+    const VALID_RATIOS = new Set(['1:1','4:3','3:4','16:9','9:16','3:2','2:3','21:9','9:21']);
+    const size = VALID_RATIOS.has(ratio) ? ratio : '1:1';
     const useRef = refImagesList.length > 0;
     console.log('[seedream-image]', useRef ? `with ${refImagesList.length} ref(s):` : 'generating:', size, quality, prompt.substring(0, 80));
 
@@ -965,10 +965,11 @@ async function handleRequest(req, res) {
       prompt,
       size,
       response_format: 'b64_json',
-      n: 1
+      n: 1,
+      metadata: { resolution: quality === 'low' ? '2K' : '3K' }
     };
     if (useRef) {
-      payload.ref_images = refImagesList.map(img => `data:${img.mime};base64,${img.base64}`);
+      payload.image_urls = refImagesList.map(img => `data:${img.mime};base64,${img.base64}`);
     }
     const reqBody = Buffer.from(JSON.stringify(payload));
 
