@@ -1503,18 +1503,28 @@ function addImgRef(input) {
   const zone  = document.getElementById('img-ref-zone');
   const inner = document.getElementById('img-ref-inner');
   inner.innerHTML = `<div class="vid-text">Loading…</div>`;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const dataUrl = e.target.result;
-    const comma   = dataUrl.indexOf(',');
-    imgRefBase64  = dataUrl.substring(comma + 1);
-    imgRefMime    = file.type || 'image/png';
+  resizeForClaude(file, 1024).then(dataUrl => {
+    const comma  = dataUrl.indexOf(',');
+    imgRefBase64 = dataUrl.substring(comma + 1);
+    imgRefMime   = 'image/jpeg';
     zone.classList.add('filled');
     document.getElementById('img-ref-del').hidden = false;
     inner.innerHTML = `<img src="${dataUrl}" style="max-height:80px;max-width:100%;border-radius:6px;display:block;margin:0 auto">
       <div class="vid-text" style="margin-top:6px;color:var(--green)">${file.name}</div>`;
-  };
-  reader.readAsDataURL(file);
+  }).catch(() => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const dataUrl = e.target.result;
+      const comma   = dataUrl.indexOf(',');
+      imgRefBase64  = dataUrl.substring(comma + 1);
+      imgRefMime    = file.type || 'image/jpeg';
+      zone.classList.add('filled');
+      document.getElementById('img-ref-del').hidden = false;
+      inner.innerHTML = `<img src="${dataUrl}" style="max-height:80px;max-width:100%;border-radius:6px;display:block;margin:0 auto">
+        <div class="vid-text" style="margin-top:6px;color:var(--green)">${file.name}</div>`;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function clearImgRef(e) {
