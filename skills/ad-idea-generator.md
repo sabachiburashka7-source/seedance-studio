@@ -192,6 +192,7 @@ Guidelines for writing scenes:
 - Describe what happens, who is there, what the audience can see and hear. Sound design or specific physical details that matter to the beat can be included.
 - The final scene must contain the twist landing. The twist usually arrives partway through the final scene, with the remaining seconds letting it breathe.
 - No camera grammar. No "wide shot," "close-up," "cut to," "the camera pulls back." The prompt-builder handles all of that.
+- Describe not just what happens but what the character is experiencing: their hesitations, their micro-reactions, the emotional texture visible in how they move, hold something, pause, or go still. A scene that only describes physical actions is half-written. The emotion does not need to be named — it needs to be visible in the body and behavior.
 - Be specific about what the scene contains, but don't over-pack. If you need to describe more than a 15-second beat's worth of action in one scene, split it into two scenes.
 
 **Output format:**
