@@ -304,7 +304,9 @@ function parseRefSheetsOutput(text) {
   charSec.split(/(?=^CHARACTER:)/m).filter(b => b.trim().startsWith('CHARACTER:')).forEach(block => {
     const nm = block.match(/^CHARACTER:\s*(.+)/m);
     const id = block.match(/SUBJECT ID:\s*(\d{3})/i);
-    if (nm) entities.push({ type: 'character', name: nm[1].trim(), subjectId: id ? id[1] : null, prompt: block.replace(/^CHARACTER:[^\n]+\n?/, '').trim() });
+    const vw = block.match(/^VIEWS:\s*(\d+)/im);
+    const prompt = block.replace(/^CHARACTER:[^\n]+\n?/, '').replace(/^VIEWS:[^\n]+\n?/m, '').trim();
+    if (nm) entities.push({ type: 'character', name: nm[1].trim(), subjectId: id ? id[1] : null, views: vw ? parseInt(vw[1]) : 1, prompt });
   });
   const prodSec = (text.match(/===\s*PRODUCT REFERENCE SHEET\s*===([\s\S]*?)(?====\s*ENVIRONMENT)/) || [])[1] || '';
   const pnm = prodSec.match(/^PRODUCT:\s*(.+)/m);
@@ -313,7 +315,9 @@ function parseRefSheetsOutput(text) {
   envSec.split(/(?=^ENVIRONMENT:)/m).filter(b => b.trim().startsWith('ENVIRONMENT:')).forEach(block => {
     const nm = block.match(/^ENVIRONMENT:\s*(.+)/m);
     const id = block.match(/ENV ID:\s*(\d{3})/i);
-    if (nm) entities.push({ type: 'environment', name: nm[1].trim(), envId: id ? id[1] : null, prompt: block.replace(/^ENVIRONMENT:[^\n]+\n?/, '').trim() });
+    const vw = block.match(/^VIEWS:\s*(\d+)/im);
+    const prompt = block.replace(/^ENVIRONMENT:[^\n]+\n?/, '').replace(/^VIEWS:[^\n]+\n?/m, '').trim();
+    if (nm) entities.push({ type: 'environment', name: nm[1].trim(), envId: id ? id[1] : null, views: vw ? parseInt(vw[1]) : 1, prompt });
   });
   return entities;
 }

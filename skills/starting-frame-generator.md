@@ -70,13 +70,13 @@ One starting frame prompt per scene, in scene order. Nothing else.
 Each prompt has a fixed four-part structure:
 
 **Part 1 — Reference extraction opener (1 sentence)**
-Start every prompt with a sentence that explicitly tells the image generator what to take from each attached reference image, addressing each image by its position number (`Image 1`, `Image 2`, `Image 3`…). The pipeline always attaches reference images in this fixed order:
+Start every prompt with a sentence that explicitly tells the image generator what to take from each attached reference image, addressing images by their position numbers (`Image 1`, `Image 2`, `Images 1–4`…). The pipeline attaches reference images in this fixed order, and each entity has multiple views:
 
-1. Subject references first, in ascending SUBJECT ID order (SUBJECT_001 → SUBJECT_002 → …)
-2. Environment references next, in ascending ENV ID order (ENV_001 → ENV_002 → …)
-3. Product reference last, if the product appears in the scene
+- Subject references first, in ascending SUBJECT ID order — **each character has 4 views** (front, side, face 3/4, expression)
+- Environment references next, in ascending ENV ID order — **each environment has 3 views** (wide, medium, close-up)
+- Product reference last, if the product appears in the scene — **1 image**
 
-Count the images for each scene using this rule and write the opener accordingly. Example — scene with protagonist (SUBJECT_001) + gift shop (ENV_001): `Use the protagonist's appearance from Image 1 and the gift shop's layout from Image 2.` Example — scene with protagonist (SUBJECT_001) + girlfriend (SUBJECT_002) + apartment (ENV_001) + product: `Use the protagonist's appearance from Image 1, the girlfriend's appearance from Image 2, the apartment's layout from Image 3, and the product from Image 4.` This positional referencing is the signal Seedream needs to bind each attached image to the correct entity in the generated frame — descriptive references alone are not enough.
+Count the images for each scene using this rule. Example — scene with protagonist only (SUBJECT_001, 4 views) + gift shop (ENV_001, 3 views): Images 1–4 are the protagonist's views, Images 5–7 are the gift shop's views. Opener: `Use the protagonist's appearance from Images 1–4 and the gift shop's layout from Images 5–7.` Example — scene with protagonist (SUBJECT_001, 4 views) + apartment (ENV_001, 3 views) + product (1 image): `Use the protagonist's appearance from Images 1–4, the apartment's layout from Images 5–7, and the product from Image 8.` Multiple views of the same entity give Seedream much stronger identity signal than a single image — reference all of them explicitly.
 
 **Part 2 — Subject + action + environment backbone (1 sentence)**
 Write one clear natural-language sentence: `[subject] [action] [in/at environment]`, naming every entity in the frame with its ID. This is the compositional spine of the prompt. Example: `The protagonist (SUBJECT ID: 001) stands frozen mid-aisle inside the gift shop (ENV ID: 001), facing slightly away from camera, head bowed.`
@@ -123,8 +123,8 @@ Every named entity that has a reference sheet must be identified in the prompt w
 **4. Every prompt follows the four-part structure.**
 Part 1 (reference opener) → Part 2 (subject + action + environment backbone) → Part 3 (composition, camera, lighting, emotion, product scale — max 5 sentences) → Part 4 (style line + mood). Every prompt. No exceptions. The opener and closer are not optional add-ons — they are structurally required for Seedream to lock identity to the references and to produce photorealistic output.
 
-**5. The opener uses positional image numbers, not descriptions.**
-Seedream reads multi-image inputs by position. The pipeline attaches images in this fixed order: subjects (ascending SUBJECT ID) → environments (ascending ENV ID) → product (if present). Count images per scene and write the opener with `Image 1`, `Image 2`, etc.: `Use the protagonist's appearance from Image 1 and the gift shop's layout from Image 2.` Do not write "from the attached character reference" or similar — Seedream does not parse descriptive labels, only positional numbers. Getting the numbering wrong assigns the wrong reference to the wrong entity.
+**5. The opener uses positional image ranges, not descriptions.**
+Seedream reads multi-image inputs by position. The pipeline attaches images in this fixed order: subjects (ascending SUBJECT ID, 4 views each) → environments (ascending ENV ID, 3 views each) → product (1 image). Count the image slots for each entity present in the scene and write ranges: `Use the protagonist's appearance from Images 1–4 and the gift shop's layout from Images 5–7.` Do not write "from the attached character reference" — Seedream reads position numbers, not descriptive labels. Getting the numbering wrong binds the wrong reference to the wrong entity. If a character or environment has fewer views than expected (e.g., their batch generation partially failed), the pipeline still attaches whatever views it has in order — number accordingly.
 
 **6. The style line is always `Photorealistic, cinematic photographic style, sharp focus.`**
 Write it verbatim as the first line of Part 4, before the mood phrase. Do not paraphrase it, drop it, or merge it into another sentence. It is the quality directive that pulls Seedream toward realism.
@@ -166,7 +166,7 @@ Also decide: (a) each character's specific facial expression and the emotion ben
 
 **Step 4 — Write each scene's starting frame prompt using the four-part structure.**
 
-- **Part 1 (opener):** Count the attached images for this scene (subjects in ascending ID order, then envs in ascending ID order, then product if present) and write one sentence using positional numbers: `Use the protagonist's appearance from Image 1 and the gift shop's layout from Image 2.` Do not use descriptive labels — use `Image N`.
+- **Part 1 (opener):** Count image slots for each entity in this scene: each character = 4 images, each environment = 3 images, product = 1 image. Subjects come first (ascending ID), then envs, then product. Write ranges: `Use the protagonist's appearance from Images 1–4 and the gift shop's layout from Images 5–7.`
 - **Part 2 (backbone):** One sentence — `[subject] [action] [in/at environment]` — naming every entity with its ID, describing posture, and anchoring them spatially.
 - **Part 3 (details, max 5 sentences):** Camera angle and framing. Lighting direction and colour grade. Facial expression per character (eyes, brow, mouth, underlying emotion). Product scale with consistent anchor if product is present.
 - **Part 4 (closer):** `Photorealistic, cinematic photographic style, sharp focus.` Then: `The mood is [X].`
@@ -219,8 +219,8 @@ If the user specifically asks for the entity tracking logic or the reasoning, sh
 === STARTING FRAMES ===
 
 SCENE 1:
-[Images attached by pipeline: Image 1 = protagonist (SUBJECT_001), Image 2 = gift shop (ENV_001)]
-Use the protagonist's appearance from Image 1 and the gift shop's layout from Image 2.
+[Images attached by pipeline: Images 1–4 = protagonist (SUBJECT_001, 4 views), Images 5–7 = gift shop (ENV_001, 3 views)]
+Use the protagonist's appearance from Images 1–4 and the gift shop's layout from Images 5–7.
 The protagonist (SUBJECT ID: 001) stands frozen mid-aisle inside the gift shop (ENV ID: 001), facing slightly away from camera, head bowed, hands at his sides.
 Wide static frame, camera at standing eye-level slightly low, framing him small in the centre with shelves rising tall on either side and the back wall receding into shadow; sharp focus on him, surrounding shop slightly soft.
 Hard side-light from frame right in a cool teal-and-amber thriller grade casts deep shadows across the aisle.
@@ -229,8 +229,8 @@ Photorealistic, cinematic photographic style, sharp focus.
 The mood is taut, suspenseful.
 
 SCENE 2:
-[Images attached by pipeline: Image 1 = protagonist (SUBJECT_001), Image 2 = gift shop (ENV_001)]
-Use the protagonist's appearance from Image 1 and the gift shop's layout from Image 2.
+[Images attached by pipeline: Images 1–4 = protagonist (SUBJECT_001, 4 views), Images 5–7 = gift shop (ENV_001, 3 views)]
+Use the protagonist's appearance from Images 1–4 and the gift shop's layout from Images 5–7.
 The protagonist (SUBJECT ID: 001) reaches slowly toward a shelf at the right edge of frame inside the gift shop (ENV ID: 001), his body in three-quarter rear angle, head turned in profile, right arm extending forward.
 Static medium frame, camera at shoulder height, background shelves soft and out of focus, the composition drawing the eye along the line of his extended arm toward the off-screen right.
 Same cool teal-and-amber thriller grade as Scene 1, but a faint warm bloom enters from the right edge of frame — the colour grade beginning its turn toward warmth.
@@ -239,8 +239,8 @@ Photorealistic, cinematic photographic style, sharp focus.
 The mood is the suspended breath before a discovery.
 
 SCENE 3:
-[Images attached by pipeline: Image 1 = girlfriend (SUBJECT_003), Image 2 = apartment (ENV_002)]
-Use the girlfriend's appearance from Image 1 and the apartment's layout from Image 2.
+[Images attached by pipeline: Images 1–4 = girlfriend (SUBJECT_003, 4 views), Images 5–7 = apartment (ENV_002, 3 views)]
+Use the girlfriend's appearance from Images 1–4 and the apartment's layout from Images 5–7.
 The girlfriend (SUBJECT ID: 003) sits on the sofa inside the apartment (ENV ID: 002), her body angled slightly forward, hands holding a small handmade paper card she has just opened — the card's interior angled away from camera, unreadable.
 Medium-wide static frame, camera at standing eye-level looking gently down at her seated position; the sofa and wall behind her slightly out of focus.
 Warm amber light from a floor lamp pools across her left side; her right side falls into soft shadow; warm domestic golden-hour colour grade.
