@@ -139,6 +139,8 @@ These are not "scenarios." They are *opening situations a viewer would stop scro
 
 Pick three *different* twist types from the taxonomy below. Write each as a single sentence: *"What if the video seems to be about [setup], and then in the last beat we see [payoff]?"*
 
+**A face reacting is NOT a twist.** It is a landing pad. The twist must be an event — something that happens, a revelation that changes how the audience understands everything they just watched. Comedy twists land as a punchline. Drama twists land as a reversal. Both must happen *to the story*, not just *to a character's expression*. If your twist is "and then she looks touched" or "and then he smiles" — it is not a twist, it is a ending. Go back and find the event.
+
 Because the video is silent, the twist almost always lands as a **single revealing image, gesture, or cut** — not an explanation.
 
 **Misdirected subject.** The video appears to be about one person or thing; the final image reveals it was about someone or something else entirely.
@@ -218,6 +220,7 @@ Output ONLY this. No preamble, no "Here is the ad:", no explanation of which ang
 - **The story works without the product.** Strip the product out mentally. Is the rest still something a viewer would watch silently? If no, redesign.
 - **Each scene has roughly 15 seconds of action.** Is any scene too thin (3 seconds of action stretched to 15) or too dense (30 seconds of action crushed into 15)? If yes, resize.
 - **The twist lands in the final scene, not earlier.** Does the misdirection pay off in the last numbered scene? If the twist lands earlier, the remaining scenes are dead weight — restructure.
+- **The twist is an event, not a reaction.** Does the final scene contain something that actually *happens* — a reveal, a punchline, a reversal — or does it only show a character's face feeling something? A quiet face is not a twist. If nothing occurs, redesign until something does.
 
 If you cannot fix a failure, generate an entirely new winning angle from Step 4 and start the output again. Do not ship a flawed scene.
 
