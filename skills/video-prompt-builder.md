@@ -32,7 +32,7 @@ If the brief is too vague to build a full prompt (e.g. "make something cool"), a
 The output structure depends on the input shape:
 
 - **Single creative brief input** (a one-off video idea, a description, a reference film) → output one combined document covering the whole video, with all four sections (timeline, inventory, density, arc) computed across the entire runtime.
-- **Concept + scenes input** (a CONCEPT block followed by a numbered SCENES list, the format produced by `ad-idea-generator`) → output **one self-contained document per scene**, in scene order. Each per-scene document is a complete standalone prompt with its own timeline, inventory, density map, and arc — because each scene will be sent to Seedance as a separate generation call. See the per-scene format below.
+- **Concept + scenes input** (a CONCEPT block followed by a numbered SCENES list, the format produced by `ad-idea-generator`, optionally with reference sheet prompts and starting frame prompts appended) → output **one self-contained document per scene**, in scene order. Each per-scene document is a complete standalone prompt with its own timeline, inventory, density map, and arc — because each scene will be sent to Seedance as a separate generation call. See the per-scene format below.
 
 ### Per-scene output format (for concept + scenes input)
 
@@ -161,6 +161,12 @@ If the brief is structured as a CONCEPT block followed by a numbered SCENES list
 - Do not collapse scenes, do not skip scenes, do not invent extra scenes that change the story. The number of per-scene documents you output must equal the number of scenes in the input.
 - The final scene contains the twist. Pace it so the twist lands partway through the scene with enough remaining time for the moment to breathe — don't crush the reveal into the last second.
 - Treat both the "language-free / silent video" and "no readable screen content" constraints above as automatically active for any concept-and-scenes input, unless the input explicitly contradicts them. These inputs are designed for silent organic-feeling content by default.
+
+**When reference sheet prompts are provided.**
+If the input includes a REFERENCE SHEET PROMPTS block (output of `reference-sheet-prompt-generator`), use the SUBJECT IDs and ENV IDs assigned there to identify entities in your shot descriptions where helpful — e.g. "the protagonist (SUBJECT ID: 001)" or "the gift shop (ENV ID: 001)". Do not re-describe identity details (face, clothing, room furnishings) that the reference images already carry.
+
+**When starting frame prompts are provided.**
+If the input includes a STARTING FRAME PROMPTS block (output of `starting-frame-prompt-generator`), these describe the literal first frame of each scene as an image that has already been generated. **Shot 1 of each scene must match its starting frame prompt exactly** — same camera angle, same framing, same colour grade, same lighting direction, same entity positions, same mood. The starting frame is the seed the video generator animates from; Shot 1 is the text description of that same image. Treat the starting frame as the locked visual contract for how each scene opens.
 
 ## Tone and style
 

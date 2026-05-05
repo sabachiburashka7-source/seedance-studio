@@ -983,7 +983,7 @@ async function handleRequest(req, res) {
 
   // ── Ads: Stage 2 — video prompts (video-prompt-builder skill) ─────────────
   if (url === '/api/gen/shots' && method === 'POST') {
-    const { ideaText } = await readBody(req);
+    const { ideaText, refSheetsText, startFramesText } = await readBody(req);
     const anthropicKey = ANTHROPIC_API_KEY;
     if (!anthropicKey) return sendJSON(res, 503, { error: 'Anthropic API key not configured.' });
     const sess = getSession(req);
@@ -995,7 +995,11 @@ async function handleRequest(req, res) {
     const cur = user.balance ?? 0;
     if (cur < PROMPTS_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${PROMPTS_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
 
-    const userContent = [{ type: 'text', text: `Here is the ad concept and scene breakdown:\n\n${ideaText}\n\nGenerate the per-scene cinematic video prompts for Seedance 2.0. Use the per-scene output format (one self-contained document per scene with === SCENE N OF M === headers, shot timeline, effects inventory, density map, energy arc).` }];
+    const extraContext = [
+      refSheetsText ? `\n\nREFERENCE SHEET PROMPTS (entity IDs and visual descriptions — reference entities by SUBJECT ID / ENV ID in Shot 1):\n${refSheetsText}` : '',
+      startFramesText ? `\n\nSTARTING FRAME PROMPTS (the literal first frame of each scene, already generated as images — Shot 1 of each scene must match its starting frame exactly):\n${startFramesText}` : '',
+    ].join('');
+    const userContent = [{ type: 'text', text: `Here is the ad concept and scene breakdown:\n\n${ideaText}${extraContext}\n\nGenerate the per-scene cinematic video prompts for Seedance 2.0. Use the per-scene output format (one self-contained document per scene with === SCENE N OF M === headers, shot timeline, effects inventory, density map, energy arc).` }];
 
     try {
       const claudeRes = await claudeApiCall(anthropicKey, SKILL_SHOTS, [{ role: 'user', content: userContent }]);
@@ -1015,21 +1019,21 @@ async function handleRequest(req, res) {
   }
 
 
-  // ── Ads: Stage 3 — reference sheet prompts (ref-sheet-generator skill) ─────
+  // ── Ads: Stage 2 — reference sheet prompts (ref-sheet-generator skill) ─────
   if (url === '/api/gen/refsheets' && method === 'POST') {
-    const { ideaText, shotsText } = await readBody(req);
+    const { ideaText } = await readBody(req);
     const anthropicKey = ANTHROPIC_API_KEY;
     if (!anthropicKey) return sendJSON(res, 503, { error: 'Anthropic API key not configured.' });
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
-    if (!ideaText || !shotsText) return sendJSON(res, 400, { error: 'ideaText and shotsText required.' });
+    if (!ideaText) return sendJSON(res, 400, { error: 'ideaText required.' });
 
     const REFS_COST = 0.10;
     const db = loadDB(); const user = db.users[sess.userId];
     const cur = user.balance ?? 0;
     if (cur < REFS_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${REFS_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
 
-    const userMsg = `INPUT A — CONCEPT + SCENES (from ad-idea-generator):\n${ideaText}\n\nINPUT B — PER-SCENE CINEMATIC DOCUMENTS (from video-prompt-builder):\n${shotsText}\n\nGenerate the reference sheet prompts for all characters, the product, and all environments. Output ONLY the three labeled blocks (=== CHARACTER REFERENCE SHEETS ===, === PRODUCT REFERENCE SHEET ===, === ENVIRONMENT REFERENCE SHEETS ===) with no preamble.`;
+    const userMsg = `INPUT — CONCEPT + SCENES (from ad-idea-generator):\n${ideaText}\n\nGenerate the reference sheet prompts for all characters, the product, and all environments. Output ONLY the three labeled blocks (=== CHARACTER REFERENCE SHEETS ===, === PRODUCT REFERENCE SHEET ===, === ENVIRONMENT REFERENCE SHEETS ===) with no preamble.`;
 
     try {
       const claudeRes = await claudeApiCall(anthropicKey, SKILL_REFS, [{ role: 'user', content: userMsg }]);
@@ -1048,21 +1052,21 @@ async function handleRequest(req, res) {
     }
   }
 
-  // ── Ads: Stage 4 — starting frame prompts (starting-frame-generator skill) ──
+  // ── Ads: Stage 3 — starting frame prompts (starting-frame-generator skill) ──
   if (url === '/api/gen/startframes' && method === 'POST') {
-    const { ideaText, shotsText, refSheetsText } = await readBody(req);
+    const { ideaText, refSheetsText } = await readBody(req);
     const anthropicKey = ANTHROPIC_API_KEY;
     if (!anthropicKey) return sendJSON(res, 503, { error: 'Anthropic API key not configured.' });
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
-    if (!ideaText || !shotsText || !refSheetsText) return sendJSON(res, 400, { error: 'ideaText, shotsText, and refSheetsText required.' });
+    if (!ideaText || !refSheetsText) return sendJSON(res, 400, { error: 'ideaText and refSheetsText required.' });
 
     const FRAMES_COST = 0.05;
     const db = loadDB(); const user = db.users[sess.userId];
     const cur = user.balance ?? 0;
     if (cur < FRAMES_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${FRAMES_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
 
-    const userMsg = `INPUT A — CONCEPT + SCENES:\n${ideaText}\n\nINPUT B — PER-SCENE CINEMATIC DOCUMENTS:\n${shotsText}\n\nINPUT C — REFERENCE SHEET PROMPTS:\n${refSheetsText}\n\nGenerate the starting frame prompts for all scenes. Output ONLY the === STARTING FRAMES === block.`;
+    const userMsg = `INPUT A — CONCEPT + SCENES:\n${ideaText}\n\nINPUT B — REFERENCE SHEET PROMPTS:\n${refSheetsText}\n\nGenerate the starting frame prompts for all scenes. Output ONLY the === STARTING FRAMES === block.`;
 
     try {
       const claudeRes = await claudeApiCall(anthropicKey, SKILL_FRAMES, [{ role: 'user', content: userMsg }]);
@@ -1075,7 +1079,7 @@ async function handleRequest(req, res) {
       if (!startFrames.length) console.warn('[startframes] parseStartFramesOutput returned 0 frames. Raw start:', framesText.substring(0, 200));
       user.balance = Math.round((cur - FRAMES_COST) * 100) / 100;
       saveDB(db);
-      return sendJSON(res, 200, { startFrames, balance: user.balance });
+      return sendJSON(res, 200, { startFrames, startFramesText: framesText, balance: user.balance });
     } catch(e) {
       return sendJSON(res, 502, { error: 'Start frames failed: ' + e.message });
     }

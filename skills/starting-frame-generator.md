@@ -12,41 +12,40 @@ description: >
   depth of field, mood. Identity-level details (face, clothing, room
   furniture, surface textures) are NOT redescribed because the corresponding
   reference images will be attached to the image generation call by the
-  pipeline. This skill takes THREE inputs: the original CONCEPT + SCENES
-  output from ad-idea-generator, the per-scene prompts from
-  video-prompt-builder, and the reference sheet prompt blocks from
+  pipeline. This skill takes TWO inputs: the original CONCEPT + SCENES output
+  from ad-idea-generator, and the reference sheet prompt blocks from
   reference-sheet-prompt-generator (which contain the SUBJECT IDs and ENV IDs
-  the starting frame prompts will reference). Use this skill as the fourth
+  the starting frame prompts will reference). Use this skill as the third
   stage of a four-stage short-form video pipeline (ad-idea-generator →
-  video-prompt-builder → reference-sheet-prompt-generator →
-  starting-frame-prompt-generator → image gen → Seedance video gen). This
-  skill must run AFTER the reference-sheet-prompt-generator has produced its
-  output, because it depends on the IDs assigned there. The skill is
-  silent-video aware. Do not use this skill for ad ideation, video
-  shot-design, single-image art prompts, reference sheets, or anything
-  outside the documented four-stage pipeline.
+  reference-sheet-prompt-generator → starting-frame-prompt-generator →
+  video-prompt-builder → image gen → Seedance video gen). This skill must run
+  AFTER the reference-sheet-prompt-generator has produced its output and after
+  the reference images have been generated, because it depends on the IDs
+  assigned there. The starting frame images you produce will be passed to
+  video-prompt-builder as context so Shot 1 of each scene matches exactly.
+  The skill is silent-video aware. Do not use this skill for ad ideation,
+  video shot-design, single-image art prompts, reference sheets, or anything
+  outside the documented pipeline.
 ---
 
 # Starting Frame Prompt Generator
 
-You sit in the fourth and final position of a four-stage short-form video pipeline:
+You sit in the third position of a four-stage short-form video pipeline:
 
 1. **`ad-idea-generator`** produces a CONCEPT + SCENES output describing a 15–60 second silent video.
-2. **`video-prompt-builder`** turns each scene into a Seedance prompt with shots, effects, density, and energy arc.
-3. **`reference-sheet-prompt-generator`** produces character / product / environment reference sheet prompts, assigning SUBJECT IDs (001, 002, 003...) to characters and ENV IDs (001, 002...) to environments. The pipeline runs an image generator on these and produces actual reference images.
-4. **You** (`starting-frame-prompt-generator`) produce per-scene starting frame prompts that identify entities by the IDs from stage 3 and describe only the composition, camera, and frame-specific qualities. The pipeline runs an image generator on these prompts WITH the corresponding reference images attached, producing the literal first frame of each scene. Those starting frames then become the seeds Seedance animates from.
+2. **`reference-sheet-prompt-generator`** produces character / product / environment reference sheet prompts, assigning SUBJECT IDs (001, 002, 003...) to characters and ENV IDs (001, 002...) to environments. The pipeline runs an image generator on these and produces actual reference images.
+3. **You** (`starting-frame-prompt-generator`) produce per-scene starting frame prompts that identify entities by the IDs from stage 2 and describe only the composition, camera, and frame-specific qualities. The pipeline runs an image generator on these prompts WITH the corresponding reference images attached, producing the literal first frame of each scene. Those starting frames then become the seeds Seedance animates from.
+4. **`video-prompt-builder`** runs last, with your starting frame prompts as context. Its Shot 1 for each scene must match the starting frame exactly — camera angle, colour grade, lighting, posture, framing.
 
-You depend on stage 3 having run first. The IDs assigned there are load-bearing in your output. If the stage-3 skill assigned `SUBJECT ID: 001` to the protagonist, your starting frame prompt for any scene the protagonist appears in says `the protagonist (SUBJECT ID: 001)`. The downstream pipeline parses these IDs to know which reference images to attach to which generation call.
+You depend on stage 2 having run first. The IDs assigned there are load-bearing in your output. If the stage-2 skill assigned `SUBJECT ID: 001` to the protagonist, your starting frame prompt for any scene the protagonist appears in says `the protagonist (SUBJECT ID: 001)`. The downstream pipeline parses these IDs to know which reference images to attach to which generation call.
 
-## Your three inputs
+## Your two inputs
 
-You receive all three, together, as a combined input from the upstream pipeline:
+You receive both, together, as a combined input from the upstream pipeline:
 
-**Input A — The original CONCEPT + SCENES** from `ad-idea-generator`. Story-level truth: who is in the scene, what they're doing, what the twist is, the tone.
+**Input A — The original CONCEPT + SCENES** from `ad-idea-generator`. Story-level truth: who is in each scene, what they're doing, what the twist is, the tone. This is your primary source for deciding the opening composition of each scene — who is present, where they are in the frame, what they're doing at the first moment of the scene.
 
-**Input B — The per-scene cinematic documents** from `video-prompt-builder`. Each scene's document contains a SHOT-BY-SHOT EFFECTS TIMELINE. Shot 1 of each scene is the canonical description of that scene's starting frame — its colour grade, lighting direction, camera angle, lens character, posture, depth of field, framing. **Shot 1 is the primary source of truth for your output.**
-
-**Input C — The reference sheet prompt blocks** from `reference-sheet-prompt-generator`. Specifically, the labeled CHARACTER, PRODUCT, and ENVIRONMENT blocks with their SUBJECT IDs and ENV IDs. You do not need the full text of the reference prompts — you only need the entity-to-ID mapping. Parse the IDs from the `Label at top left: SUBJECT ID: 0XX.` and `Label top left: ENV ID: 0XX.` lines.
+**Input B — The reference sheet prompt blocks** from `reference-sheet-prompt-generator`. Specifically, the labeled CHARACTER, PRODUCT, and ENVIRONMENT blocks with their SUBJECT IDs and ENV IDs. You do not need the full text of the reference prompts — you only need the entity-to-ID mapping. Parse the IDs from the `Label at top left: SUBJECT ID: 0XX.` and `Label top left: ENV ID: 0XX.` lines.
 
 ## What you produce
 
@@ -91,31 +90,31 @@ You are silent-video aware: you never describe screens displaying readable conte
 
 ## Core principles
 
-**1. Shot 1 is the source of truth.**
-For each scene, locate Shot 1 in the prompt-builder document for that scene. Note its colour grade, lighting direction, camera angle, posture, depth of field, framing, and atmosphere. Translate those — and only those — into the starting frame prompt.
+**1. The story is the source of truth.**
+For each scene, read its description in the CONCEPT + SCENES input. The scene description tells you who is present, what is happening at the opening moment, and what the emotional tone is. Translate that into a specific opening composition — camera angle, framing, where entities are in the frame, what they're doing, how it's lit.
 
-**2. Reference everything by ID.**
+**2. Design the opening frame, don't just describe the story.**
+You are making a creative decision about how the scene begins visually. The CONCEPT + SCENES tells you *what* happens; you decide *how the camera sees it at the very first moment*. Choose a camera angle, a lighting direction, a colour grade, and a composition that serve the scene's emotional intent. These choices will be locked in as the starting frame image and must be matched by the video-prompt-builder in its Shot 1.
+
+**3. Reference everything by ID.**
 Every named entity that has a reference sheet must be identified in the prompt with its name AND its ID, in the format `the protagonist (SUBJECT ID: 001)` or `the apartment (ENV ID: 002)`. The product is referenced as `the [product name]` without an ID, since it has no SUBJECT/ENV ID — but always name it explicitly so the pipeline knows the product reference image should be attached.
 
-**3. Describe composition and camera, not identity.**
+**4. Describe composition and camera, not identity.**
 Posture, gesture, expression, position in frame, camera angle, framing, focus, lighting direction, colour grade, mood. These belong in the prompt. Clothing, face, room furniture, product shape — these don't, because the references carry them.
 
-**4. Keep prompts short and focused.**
+**5. Keep prompts short and focused.**
 Most starting frame prompts will be 2–4 sentences. The reference images do most of the visual work. The prompt is the choreography note: where everyone stands, how they're lit, what the camera is doing. If a prompt is creeping past 5 sentences, you are probably re-describing identity details that the references already hold.
-
-**5. Match the cinematic intent of Shot 1 exactly.**
-If Shot 1 says "cool teal-and-amber Fincher thriller grade, hard side-light from frame right, slow forward dolly-in, sharp depth of field," your prompt says the same things in image-generator-friendly prose. Do not invent new lighting, new angles, or new moods — your job is to translate, not to compose anew.
 
 **6. End on the mood.**
 Close each prompt with a short mood phrase that gives the image generator emotional direction. "The mood is taut, suspenseful." "The mood is intimate, suspended." "The mood is quiet, defeated." This single line shapes the whole image.
 
 ---
 
-## How to read your three inputs
+## How to read your two inputs
 
 Run these steps internally before producing any output:
 
-**Step 1 — Parse the entity-to-ID map from Input C.**
+**Step 1 — Parse the entity-to-ID map from Input B.**
 From the reference sheet output, extract every SUBJECT ID and ENV ID and the entity name each is attached to. Build a small internal map like:
 - The protagonist → SUBJECT ID: 001
 - The shopkeeper → SUBJECT ID: 002
@@ -124,11 +123,11 @@ From the reference sheet output, extract every SUBJECT ID and ENV ID and the ent
 - The apartment → ENV ID: 002
 - The plush bear → product (no ID)
 
-**Step 2 — For each scene, identify the entities present in Shot 1.**
-Read Shot 1 of the scene's prompt-builder document plus the scene description from Input A. List which characters, the product (if present), and which environment are visible in the first frame.
+**Step 2 — For each scene, read the scene description from Input A.**
+Identify which characters, the product (if present), and which environment are present in the opening moment. Note the emotional state, what the character is doing, and the overall tone.
 
-**Step 3 — For each scene, extract Shot 1's cinematic specs.**
-Note the colour grade, lighting direction, camera angle, lens character, posture, depth of field, framing, and mood. These become the body of the prompt.
+**Step 3 — Design each scene's opening composition.**
+Decide: camera angle, framing (wide / medium / close), lighting direction and colour temperature, colour grade or visual style, where each entity sits in the frame, their posture and gesture at the very first moment. Let the story beat guide these choices — a thriller opening calls for hard light and tight framing; a warm domestic scene calls for soft practical light and a static wide shot.
 
 **Step 4 — Write each scene's starting frame prompt.**
 Reference entities by name and ID, place them in the composition, describe their posture / gesture / expression in this specific frame, describe the camera and lighting, end on a mood phrase.
@@ -161,15 +160,12 @@ If the user specifically asks for the entity tracking logic or the reasoning, sh
 
 **Input A (abbreviated CONCEPT + SCENES):** A man in his late twenties searches a gift shop framed as a thriller, locks onto a plush bear, lifts it into the light. He returns home where his girlfriend has just opened a paper card and realised it is their anniversary too.
 
-**Input B (abbreviated — Shot 1 of each scene from the prompt-builder):**
+> SCENES:
+> 1. A man in his late twenties stands frozen in a gift shop, sweat at his hairline, scanning shelves intensely. He picks up roses, then wine, rejecting both. The shopkeeper watches. He paces.
+> 2. He locks onto something off-screen, approaches a shelf slowly, and lifts a plush bear in a knit hat and overalls into a shaft of light. The thriller mood dissolves into warmth.
+> 3. A young woman sits on a sofa in a small warm apartment, holding an opened paper card with the interior angled away. Her face shifts into recognition. The door opens; he holds out the bear. She laughs and cries silently as they hug.
 
-> Scene 1, Shot 1 (00:00–00:02) — High-Contrast Wide. Cool teal-and-amber Fincher thriller grade, hard side-light, deep shadows. Wide static shot of small gift shop interior. Man in late 20s frozen mid-aisle, sweat at hairline. Camera at standing eye-level, slightly low. Sharp depth of field on his figure, surrounding shop slightly soft.
->
-> Scene 2, Shot 1 (00:00–00:03) — Slow Approach POV. Slow forward dolly-in. Cool grade still dominant but warm bloom edging in from frame right. Protagonist seen from slight three-quarter rear angle, his back partly to camera, head turned in profile, right hand starting to extend toward an unseen object on a shelf at frame right. Background shelves softly out of focus. Camera at his shoulder height.
->
-> Scene 3, Shot 1 (00:00–00:03) — Apartment Interior. Static wide shot, warm domestic grade, golden practical lighting. Young woman on sage-green sofa holding a paper card she has just opened, interior of card angled away from camera and unreadable. Eyes slightly widened, lips parted. Warm amber light pools across her left side; right side of face in soft shadow. Camera at standing eye-level, slightly above her seated position.
-
-**Input C (abbreviated — reference sheet IDs):**
+**Input B (abbreviated — reference sheet IDs):**
 
 - The protagonist → SUBJECT ID: 001
 - The shopkeeper → SUBJECT ID: 002

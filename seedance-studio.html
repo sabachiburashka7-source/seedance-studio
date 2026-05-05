@@ -1269,35 +1269,21 @@ async function createAd() {
       (() => { const m = ideaText.match(/CONCEPT\s*\n+([\s\S]*?)\n+SCENES/); const prose = m ? m[1] : ideaText; return prose.split(/[.,]/)[0].trim().substring(0, 40) || ('Ad — ' + new Date().toLocaleDateString()); })();
     adLogUpdate(s1, `Stage 1 done: "${adTitle}" — ${sceneCount} scene(s)`, 'done');
 
-    // ── Step 2: Video prompts (video-prompt-builder) ───────────────────
-    const s2 = adLog('Stage 2: Claude writing cinematic shot prompts…', 'run');
-    const r2 = await fetch('/api/gen/shots', {
+    // ── Step 2: Reference sheet prompts (ref-sheet-generator) ──────────
+    const s2 = adLog('Stage 2: Claude generating reference sheet prompts…', 'run');
+    const r2 = await fetch('/api/gen/refsheets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
       body: JSON.stringify({ ideaText })
     });
     const j2 = await r2.json();
-    if (!r2.ok) throw new Error(j2.error || 'Video prompts failed');
+    if (!r2.ok) throw new Error(j2.error || 'Ref sheets failed');
     if (j2.balance !== undefined) { userBalance = j2.balance; updateCreditsDisplay(); }
-    const scenes = j2.scenes || [];
-    const shotsText = j2.shotsText || '';
-    adLogUpdate(s2, `Stage 2 done: ${scenes.length} scene prompt(s) ready`, 'done');
+    const entities = j2.entities || [];
+    const refSheetsText = j2.refSheetsText || '';
+    adLogUpdate(s2, `Stage 2 done: ${entities.length} entity reference sheet(s)`, 'done');
 
-    // ── Step 3: Reference sheet prompts (ref-sheet-generator) ──────────
-    const s3 = adLog('Stage 3: Claude generating reference sheet prompts…', 'run');
-    const r3 = await fetch('/api/gen/refsheets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-      body: JSON.stringify({ ideaText, shotsText })
-    });
-    const j3 = await r3.json();
-    if (!r3.ok) throw new Error(j3.error || 'Ref sheets failed');
-    if (j3.balance !== undefined) { userBalance = j3.balance; updateCreditsDisplay(); }
-    const entities = j3.entities || [];
-    const refSheetsText = j3.refSheetsText || '';
-    adLogUpdate(s3, `Stage 3 done: ${entities.length} entity reference sheet(s)`, 'done');
-
-    // ── Step 3.5: Generate reference images ──────────────────────────────
+    // ── Step 2.5: Generate reference images ──────────────────────────────
     // refMap keys: 'SUBJECT_001', 'ENV_001', 'product'
     const refMap = {};
     adLog(`Generating ${entities.length} reference image(s)…`, 'info');
@@ -1333,26 +1319,27 @@ async function createAd() {
       if (ei < entities.length - 1) await new Promise(r => setTimeout(r, 3000));
     }
 
-    // ── Step 4: Starting frame prompts (starting-frame-generator) ───────
-    const s4 = adLog('Stage 4: Claude generating starting frame prompts…', 'run');
-    const r4 = await fetch('/api/gen/startframes', {
+    // ── Step 3: Starting frame prompts (starting-frame-generator) ───────
+    const s3 = adLog('Stage 3: Claude generating starting frame prompts…', 'run');
+    const r3 = await fetch('/api/gen/startframes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-      body: JSON.stringify({ ideaText, shotsText, refSheetsText })
+      body: JSON.stringify({ ideaText, refSheetsText })
     });
-    const j4 = await r4.json();
-    if (!r4.ok) throw new Error(j4.error || 'Start frames failed');
-    if (j4.balance !== undefined) { userBalance = j4.balance; updateCreditsDisplay(); }
-    const startFrames = j4.startFrames || [];
-    adLogUpdate(s4, `Stage 4 done: ${startFrames.length} starting frame prompt(s)`, 'done');
+    const j3 = await r3.json();
+    if (!r3.ok) throw new Error(j3.error || 'Start frames failed');
+    if (j3.balance !== undefined) { userBalance = j3.balance; updateCreditsDisplay(); }
+    const startFrames = j3.startFrames || [];
+    const startFramesText = j3.startFramesText || '';
+    adLogUpdate(s3, `Stage 3 done: ${startFrames.length} starting frame prompt(s)`, 'done');
 
-    // ── Step 4.5: Generate starting frame images ─────────────────────────
+    // ── Step 3.5: Generate starting frame images ─────────────────────────
     const sceneStartImages = [];
     adLog(`Generating ${startFrames.length} starting frame image(s)…`, 'info');
-    for (let i = 0; i < scenes.length; i++) {
-      const sf = startFrames.find(f => f.scene === i + 1);
+    for (let i = 0; i < startFrames.length; i++) {
+      const sf = startFrames[i];
       if (!sf || !sf.prompt) { sceneStartImages.push(null); continue; }
-      const sSf = adLog(`Starting frame ${i+1}/${scenes.length}: scene ${i+1}…`, 'run');
+      const sSf = adLog(`Starting frame ${i+1}/${startFrames.length}: scene ${i+1}…`, 'run');
       try {
         // Attach reference images resized to 1024px (full-res ref sheets are 3-8MB each — must shrink before sending)
         const sfInputs = [];
@@ -1384,8 +1371,21 @@ async function createAd() {
         sceneStartImages.push(null);
         adLogUpdate(sSf, `Scene ${i+1} starting frame failed: ${e.message} — will use T2V`, 'warn');
       }
-      if (i < scenes.length - 1) await new Promise(r => setTimeout(r, 3000));
+      if (i < startFrames.length - 1) await new Promise(r => setTimeout(r, 3000));
     }
+
+    // ── Step 4: Video prompts (video-prompt-builder) ───────────────────
+    const s4 = adLog('Stage 4: Claude writing cinematic shot prompts…', 'run');
+    const r4 = await fetch('/api/gen/shots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+      body: JSON.stringify({ ideaText, refSheetsText, startFramesText })
+    });
+    const j4 = await r4.json();
+    if (!r4.ok) throw new Error(j4.error || 'Video prompts failed');
+    if (j4.balance !== undefined) { userBalance = j4.balance; updateCreditsDisplay(); }
+    const scenes = j4.scenes || [];
+    adLogUpdate(s4, `Stage 4 done: ${scenes.length} scene prompt(s) ready`, 'done');
 
     // ── Step 5: Video generation (sequential, each scene uses prev as ref) ──
     let prevVideoUrl = null;
