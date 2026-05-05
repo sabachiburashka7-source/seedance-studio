@@ -1845,8 +1845,8 @@ function fileToDataUrl(file) {
           // the real-person detector samples, while Seedance still reads the
           // character underneath for generation purposes
           const gridStep = Math.max(30, Math.round(Math.min(canvas.width, canvas.height) / 28));
-          ctx.strokeStyle = 'rgba(128,128,128,0.18)';
-          ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(128,128,128,0.35)';
+          ctx.lineWidth = 2;
           ctx.beginPath();
           for (let x = 0; x < canvas.width; x += gridStep) {
             ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height);
@@ -1899,7 +1899,7 @@ function softenDataUrl(dataUrl) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(tmp, 0, 0, canvas.width, canvas.height);
         const gridStep = Math.max(30, Math.round(Math.min(canvas.width, canvas.height) / 28));
-        ctx.strokeStyle = 'rgba(128,128,128,0.18)'; ctx.lineWidth = 1; ctx.beginPath();
+        ctx.strokeStyle = 'rgba(128,128,128,0.35)'; ctx.lineWidth = 2; ctx.beginPath();
         for (let x = 0; x < canvas.width; x += gridStep) { ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); }
         for (let y = 0; y < canvas.height; y += gridStep) { ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); }
         ctx.stroke();
