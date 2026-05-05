@@ -28,11 +28,14 @@ const RESEND_KEY       = process.env.RESEND_API_KEY       || '';
 const BREVO_KEY        = process.env.BREVO_API_KEY        || '';
 const BREVO_SENDER     = process.env.BREVO_SENDER_EMAIL   || '';
 const APP_URL          = process.env.APP_URL              || 'http://localhost:3000';
-const STRIPE_KEY       = process.env.STRIPE_SECRET_KEY    || '';
-const STRIPE_WSEC      = process.env.STRIPE_WEBHOOK_SECRET || '';
 const FAL_KEY          = process.env.FAL_API_KEY          || '';
 const BYTEPLUS_API_KEY = process.env.BYTEPLUS_API_KEY     || '';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY   || '';
+
+// Email verification fires whenever any email provider is configured.
+// (Was previously gated on RESEND_KEY only — silently disabled verification
+// once we switched to Brevo as the primary provider.)
+const EMAIL_ENABLED    = !!(BREVO_KEY || RESEND_KEY);
 
 const PROMO_CODES = {
   'SEED10A': 10, 'SEED10B': 10, 'SEED10C': 10, 'SEED10D': 10,
@@ -277,28 +280,6 @@ function claudeApiCall(apiKey, system, messages, maxTokens = 8192, timeoutMs = 2
   });
 }
 
-// ── Claude JSON parser (strips markdown fences, escapes literal newlines in strings) ─
-function sanitizeJsonNewlines(s) {
-  // Escape literal \r and \n that appear inside JSON string values
-  return s.replace(/"(?:[^"\\]|\\.|\n|\r)*"/g, m =>
-    m.replace(/\r\n/g, '\\n').replace(/\r/g, '\\n').replace(/\n/g, '\\n')
-  );
-}
-function safeParseClaudeJSON(text) {
-  const t = (text || '').trim();
-  // 1. Direct parse
-  try { return JSON.parse(t); } catch {}
-  // 2. Strip markdown code fences (\r\n-aware)
-  const stripped = t.replace(/^```[a-z]*\r?\n?/i, '').replace(/\r?\n?```\s*$/i, '').trim();
-  try { return JSON.parse(stripped); } catch {}
-  // 3. Sanitize literal newlines inside string values, then try again
-  try { return JSON.parse(sanitizeJsonNewlines(stripped)); } catch {}
-  // 4. Extract first {...} block and sanitize
-  const s = t.indexOf('{'), e = t.lastIndexOf('}');
-  if (s !== -1 && e > s) { try { return JSON.parse(sanitizeJsonNewlines(t.slice(s, e + 1))); } catch {} }
-  return null;
-}
-
 // ── Ad pipeline skill prompts ──────────────────────────────────────────────
 const SKILL_BRIEF   = fs.readFileSync(path.join(__dirname, 'skills/ad-idea-generator.md'), 'utf8').replace(/^---[\s\S]*?---\s*/m, '').trim();
 const SKILL_SHOTS   = fs.readFileSync(path.join(__dirname, 'skills/video-prompt-builder.md'), 'utf8').replace(/^---[\s\S]*?---\s*/m, '').trim();
@@ -378,42 +359,6 @@ function falRequest(method, falPath, body) {
     if (bodyBuf) r.write(bodyBuf);
     r.end();
   });
-}
-
-// ── Stripe helpers ────────────────────────────────────────────────────────────
-function stripeRequest(method, path, formPairs) {
-  return new Promise((resolve, reject) => {
-    const body = Buffer.from(formPairs.map(([k,v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&'));
-    const opts = {
-      hostname: 'api.stripe.com', port: 443, path, method,
-      headers: {
-        'Authorization':  'Basic ' + Buffer.from(STRIPE_KEY + ':').toString('base64'),
-        'Content-Type':   'application/x-www-form-urlencoded',
-        'Content-Length': body.length,
-        'Stripe-Version': '2023-10-16',
-      }
-    };
-    const req = https.request(opts, res => {
-      const ch = []; res.on('data', c => ch.push(c));
-      res.on('end', () => {
-        try { resolve({ status: res.statusCode, body: JSON.parse(Buffer.concat(ch).toString()) }); }
-        catch(e) { reject(e); }
-      });
-    });
-    req.on('error', reject);
-    req.write(body); req.end();
-  });
-}
-
-function verifyStripeSignature(rawBody, sigHeader) {
-  if (!STRIPE_WSEC) return false;
-  const parts = {};
-  sigHeader.split(',').forEach(p => { const [k,v] = p.split('='); if (!parts[k]) parts[k] = v; });
-  const { t, v1 } = parts;
-  if (!t || !v1) return false;
-  if (Math.abs(Date.now() / 1000 - parseInt(t)) > 300) return false;
-  const expected = crypto.createHmac('sha256', STRIPE_WSEC).update(t + '.' + rawBody).digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v1));
 }
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
@@ -551,7 +496,7 @@ async function handleRequest(req, res) {
     if (db.emailIndex[key])    return sendJSON(res, 409, { error: 'This email is already registered. Try signing in.' });
     const userId = makeId();
     const salt   = crypto.randomBytes(16).toString('hex');
-    const needsVerify = !!RESEND_KEY;
+    const needsVerify = EMAIL_ENABLED;
     db.users[userId]   = { email: key, hash: hashPass(password, salt), salt, createdAt: Date.now(), verified: !needsVerify, balance: 0 };
     db.emailIndex[key] = userId;
     db.library[userId] = [];
@@ -622,7 +567,7 @@ async function handleRequest(req, res) {
     const key = (email || '').toLowerCase().trim();
     const userId = db.emailIndex[key];
     // Always return ok to not leak whether email exists
-    if (userId && RESEND_KEY) {
+    if (userId && EMAIL_ENABLED) {
       if (!db.resetCodes) db.resetCodes = {};
       const code = makeCode();
       db.resetCodes[key] = { code, expires: Date.now() + 15 * 60 * 1000 };
@@ -671,7 +616,7 @@ async function handleRequest(req, res) {
     const user   = db.users[userId];
     if (hashPass(password, user.salt) !== user.hash)
                              return sendJSON(res, 401, { error: 'Invalid email or password' });
-    if (RESEND_KEY && !user.verified) return sendJSON(res, 403, { error: 'Please verify your email first.', needsVerify: true, email: key });
+    if (EMAIL_ENABLED && !user.verified) return sendJSON(res, 403, { error: 'Please verify your email first.', needsVerify: true, email: key });
     const token = makeToken();
     db.sessions[token] = { userId, createdAt: Date.now() };
     saveDB(db);
@@ -813,72 +758,6 @@ async function handleRequest(req, res) {
         .catch(e => sendJSON(res, 500, { error: e.message }));
     });
     return;
-  }
-
-  // ── Stripe: create checkout session ──────────────────────────────────────
-  if (url === '/api/stripe/create-checkout' && method === 'POST') {
-    const sess = getSession(req);
-    if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
-    if (!STRIPE_KEY) return sendJSON(res, 503, { error: 'Payments not configured' });
-    const { packageId } = await readBody(req);
-    const pkg = CREDIT_PACKAGES[packageId];
-    if (!pkg) return sendJSON(res, 400, { error: 'Invalid package' });
-    try {
-      const result = await stripeRequest('POST', '/v1/checkout/sessions', [
-        ['mode',                                                       'payment'],
-        ['success_url',                                                APP_URL + '/?payment=success'],
-        ['cancel_url',                                                 APP_URL + '/'],
-        ['metadata[userId]',                                           sess.userId],
-        ['metadata[credits]',                                          String(pkg.credits)],
-        ['line_items[0][quantity]',                                    '1'],
-        ['line_items[0][price_data][currency]',                        'usd'],
-        ['line_items[0][price_data][unit_amount]',                     String(pkg.usdCents)],
-        ['line_items[0][price_data][product_data][name]',              pkg.name],
-        ['line_items[0][price_data][product_data][description]',       'Lepton credits for AI video & image generation'],
-      ]);
-      if (result.status !== 200) {
-        console.error('[stripe] create-checkout error', result.body?.error?.message);
-        return sendJSON(res, 400, { error: result.body?.error?.message || 'Stripe error' });
-      }
-      console.log('[stripe] checkout session created for user', sess.userId, 'pkg', packageId);
-      return sendJSON(res, 200, { url: result.body.url });
-    } catch(e) {
-      console.error('[stripe] checkout error:', e.message);
-      return sendJSON(res, 500, { error: 'Payment error: ' + e.message });
-    }
-  }
-
-  // ── Stripe: webhook ───────────────────────────────────────────────────────
-  if (url === '/api/stripe/webhook' && method === 'POST') {
-    const rawBody = await new Promise(resolve => {
-      const chunks = []; req.on('data', c => chunks.push(c)); req.on('end', () => resolve(Buffer.concat(chunks)));
-    });
-    const sig = req.headers['stripe-signature'] || '';
-    if (!STRIPE_WSEC) return sendJSON(res, 503, { error: 'Webhook secret not configured' });
-    if (!verifyStripeSignature(rawBody, sig)) {
-      console.warn('[stripe] webhook signature mismatch');
-      return sendJSON(res, 400, { error: 'Invalid signature' });
-    }
-    let event;
-    try { event = JSON.parse(rawBody.toString()); }
-    catch { return sendJSON(res, 400, { error: 'Invalid JSON' }); }
-
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data?.object;
-      const userId  = session?.metadata?.userId;
-      const credits = parseInt(session?.metadata?.credits || '0');
-      if (userId && credits > 0) {
-        const db   = loadDB();
-        const user = db.users[userId];
-        if (user) {
-          const added = Math.round(credits * 0.033 * 100) / 100;
-          user.balance = Math.round(((user.balance ?? 0) + added) * 100) / 100;
-          saveDB(db);
-          console.log('[stripe] +$' + added + ' → user ' + userId + ' (total: $' + user.balance + ')');
-        }
-      }
-    }
-    return sendJSON(res, 200, { received: true });
   }
 
   // ── Balance ───────────────────────────────────────────────────────────
