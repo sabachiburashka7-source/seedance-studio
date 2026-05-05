@@ -67,24 +67,37 @@ One starting frame prompt per scene, in scene order. Nothing else.
 
 ## What goes into a starting frame prompt
 
-The prompt describes only what the image generator needs to compose the specific frame, given that the reference images are already attached. Cover these things:
+Each prompt has a fixed four-part structure:
 
-- **Which entities are in the frame**, named with their IDs (e.g. `the protagonist (SUBJECT ID: 001)`, `the apartment (ENV ID: 002)`, `the plush bear`).
-- **Where each entity is** in the composition — foreground / midground / background, left / right / centre.
-- **What each entity's body is doing** — posture, gesture, position. This is frame-specific and not in the references.
-- **Facial expression and emotion** — describe the character's visible emotional state precisely: what their eyes, brow, and mouth are doing, and the underlying feeling it conveys (e.g. "eyes wide, lips parted in quiet shock", "jaw tight, brow furrowed with focused dread", "a faint involuntary smile pulling at the corners of her mouth"). This is one of the highest-leverage inputs for realism — never omit it for any scene containing a character.
-- **Product scale and apparent size** — every time the product appears, anchor its size relative to a nearby element (a hand, a table, the character's body). Use the same size anchor across all scenes: if in Scene 1 the product fits in one palm, describe it that way in every subsequent scene too. Inconsistent sizing is the single most common realism failure in multi-scene pipelines — enforce it explicitly.
-- **Camera angle and framing** — eye-level / low / high, wide / medium / close, static / handheld, what's in focus, depth of field.
-- **Lighting direction and quality** — where the light comes from, how it falls on the entities and the scene, the colour temperature.
+**Part 1 — Reference extraction opener (1 sentence)**
+Start every prompt with a sentence that explicitly tells the image generator what to take from each attached reference image. Name each entity and the reference it comes from. Example: `Based on the protagonist's appearance from the attached character reference (SUBJECT ID: 001) and the gift shop's layout from the attached environment reference (ENV ID: 001).` This is the instruction that locks identity to the reference rather than letting the model invent it from the prompt text.
+
+**Part 2 — Subject + action + environment backbone (1 sentence)**
+Write one clear natural-language sentence: `[subject] [action] [in/at environment]`, naming every entity in the frame with its ID. This is the compositional spine of the prompt. Example: `The protagonist (SUBJECT ID: 001) stands frozen mid-aisle inside the gift shop (ENV ID: 001), facing slightly away from camera, head bowed.`
+
+**Part 3 — Composition, camera, lighting, emotion, product scale (3–5 sentences)**
+Expand on the backbone with the frame-specific details the references don't carry:
+
+- **Where each entity sits** in the composition — foreground / midground / background, left / right / centre.
+- **Camera angle and framing** — eye-level / low / high, wide / medium / close, static / handheld, depth of field.
+- **Lighting direction and quality** — where the light comes from, how it falls, colour temperature.
 - **Colour grade or visual style** of this specific frame (e.g. cool teal-and-amber thriller grade, warm domestic golden-hour grade).
-- **Mood** — one short phrase capturing the felt tone of the moment.
+- **Facial expression and emotion** — one dedicated sentence per character: what the eyes, brow, and mouth are doing, and the underlying feeling (e.g. "brow furrowed, jaw tight, eyes scanning with the look of a man running out of time"). Never omit this for any scene with a character — it is one of the highest-leverage lines for realism.
+- **Product scale and apparent size** — every time the product appears, anchor its size relative to a nearby element (e.g. "fits in one hand, roughly the size of a large mug"). Use the same anchor in every scene. Inconsistent sizing is the most common cross-scene realism failure.
+
+Keep Part 3 to 5 sentences maximum. If it is growing longer, you are re-describing identity details the references already carry — trim those first.
+
+**Part 4 — Style line + mood (2 sentences)**
+End every prompt with these two lines in order:
+1. `Photorealistic, cinematic photographic style, sharp focus.` — the quality directive that pulls Seedream toward realism and away from illustration.
+2. `The mood is [X].` — one short phrase giving emotional direction to the whole frame.
 
 Do NOT describe:
-- The protagonist's clothing, face, hair, build, ethnicity, age — all of that is in the SUBJECT ID's reference sheet.
-- The room's walls, furniture pieces, decoration, materials — all of that is in the ENV ID's reference sheet.
+- The protagonist's clothing, face structure, hair, build, ethnicity, age — all of that is in the SUBJECT ID's reference.
+- The room's walls, furniture pieces, decoration, surface materials — all of that is in the ENV ID's reference.
 - The product's shape, colour, parts, accessories — all of that is in the product reference image.
 
-If the prompt is shorter than the corresponding entry in the previous version of this pipeline, that is correct. The reference images are doing identity work; your prompt only has to do composition, camera, emotion, and product-scale work.
+The reference opener and the style+mood closer are not optional and do not count toward the 5-sentence Part 3 limit.
 
 You are silent-video aware: you never describe screens displaying readable content, on-screen text, or readable digital interfaces in any starting frame. If a screen appears in the frame as a story element, its display must be described as off, blurred, glare-obscured, or angled out of view.
 
@@ -101,20 +114,26 @@ You are making a creative decision about how the scene begins visually. The CONC
 **3. Reference everything by ID.**
 Every named entity that has a reference sheet must be identified in the prompt with its name AND its ID, in the format `the protagonist (SUBJECT ID: 001)` or `the apartment (ENV ID: 002)`. The product is referenced as `the [product name]` without an ID, since it has no SUBJECT/ENV ID — but always name it explicitly so the pipeline knows the product reference image should be attached.
 
-**4. Describe composition, camera, emotion, and product scale — not identity.**
-Posture, gesture, facial expression, emotional state, position in frame, camera angle, framing, focus, lighting direction, colour grade, mood, and explicit product size relative to nearby objects. These belong in the prompt. Clothing, face structure, room furniture, product shape — these don't, because the references carry them.
+**4. Every prompt follows the four-part structure.**
+Part 1 (reference opener) → Part 2 (subject + action + environment backbone) → Part 3 (composition, camera, lighting, emotion, product scale — max 5 sentences) → Part 4 (style line + mood). Every prompt. No exceptions. The opener and closer are not optional add-ons — they are structurally required for Seedream to lock identity to the references and to produce photorealistic output.
 
-**5. Lock the product's apparent size across all scenes.**
-The first time the product appears, state its scale relative to a body part or nearby object (e.g. "fits in one hand, roughly the size of a large mug"). Repeat that same size anchor in every scene the product appears in. Never let the product's described scale drift between scenes — this is the most common cause of cross-scene inconsistency.
+**5. The opener explicitly names what each reference provides.**
+Do not write a generic opener. Name each entity and the reference it comes from: `Based on the protagonist's appearance from the attached character reference (SUBJECT ID: 001) and the gift shop's layout from the attached environment reference (ENV ID: 001).` If multiple characters are in the scene, list all of them. If the product is present, add `and the [product name] from the attached product reference.` This is the signal that prevents Seedream from inventing identity details from the prompt text instead of reading them from the images.
 
-**6. Always describe facial expression and emotion for every character.**
-For every character present in a frame, write a specific facial expression line: what the eyes, brow, and mouth are doing, and the emotion underneath. Vague directions like "looks happy" or "appears worried" are not enough — be precise. "Eyes slightly narrowed, a small involuntary smile, held back." "Brow creased, jaw set, trying to look calm." This is one of the highest-leverage lines in the prompt for both realism and emotional impact.
+**6. The style line is always `Photorealistic, cinematic photographic style, sharp focus.`**
+Write it verbatim as the first line of Part 4, before the mood phrase. Do not paraphrase it, drop it, or merge it into another sentence. It is the quality directive that pulls Seedream toward realism.
 
-**7. Keep prompts focused.**
-Most starting frame prompts will be 3–5 sentences. If a prompt is getting long, check whether you are re-describing identity details the references already hold, not whether you are adding too much emotion or scale detail — those are never wasteful.
+**7. Lock the product's apparent size across all scenes.**
+The first time the product appears, state its scale relative to a body part or nearby object (e.g. "fits in one hand, roughly the size of a large mug"). Repeat that same anchor in every scene the product appears in. Never let the described scale drift.
 
-**8. End on the mood.**
-Close each prompt with a short mood phrase that gives the image generator emotional direction. "The mood is taut, suspenseful." "The mood is intimate, suspended." "The mood is quiet, defeated." This single line shapes the whole image.
+**8. Always describe facial expression and emotion for every character.**
+One dedicated sentence per character: eyes, brow, mouth, and the underlying feeling. Vague directions ("looks happy", "appears worried") are not enough. Be precise: "Eyes slightly narrowed, a small involuntary smile pulled back, not yet released." This is one of the highest-leverage lines for realism and emotional impact.
+
+**9. Keep Part 3 to 5 sentences maximum.**
+If it is growing longer, you are re-describing identity details the references already carry. Trim those first — never trim the emotion or product-scale sentences.
+
+**10. End on the mood.**
+The last line is always a short mood phrase: "The mood is taut, suspenseful." "The mood is intimate, suspended." "The mood is quiet, defeated." One line. It shapes the emotional register of the whole image.
 
 ---
 
@@ -139,8 +158,12 @@ Decide: camera angle, framing (wide / medium / close), lighting direction and co
 
 Also decide: (a) each character's specific facial expression and the emotion beneath it; (b) if the product appears, its scale relative to a nearby anchor object — and confirm that anchor matches every prior scene the product appeared in.
 
-**Step 4 — Write each scene's starting frame prompt.**
-Reference entities by name and ID, place them in the composition, describe posture and gesture, then write a dedicated facial-expression line for each character present (specific: eyes, brow, mouth, underlying emotion). If the product is present, state its size explicitly with a consistent anchor. Describe the camera and lighting, end on a mood phrase.
+**Step 4 — Write each scene's starting frame prompt using the four-part structure.**
+
+- **Part 1 (opener):** One sentence naming every entity in the scene and the reference each comes from: `Based on the protagonist's appearance from the attached character reference (SUBJECT ID: 001) and the gift shop's layout from the attached environment reference (ENV ID: 001).`
+- **Part 2 (backbone):** One sentence — `[subject] [action] [in/at environment]` — naming every entity with its ID, describing posture, and anchoring them spatially.
+- **Part 3 (details, max 5 sentences):** Camera angle and framing. Lighting direction and colour grade. Facial expression per character (eyes, brow, mouth, underlying emotion). Product scale with consistent anchor if product is present.
+- **Part 4 (closer):** `Photorealistic, cinematic photographic style, sharp focus.` Then: `The mood is [X].`
 
 ---
 
@@ -190,22 +213,40 @@ If the user specifically asks for the entity tracking logic or the reasoning, sh
 === STARTING FRAMES ===
 
 SCENE 1:
-A wide static frame inside the gift shop (ENV ID: 001), lit in a cool teal-and-amber Fincher thriller grade with hard side-light from frame right casting deep shadows into frame left. The protagonist (SUBJECT ID: 001) stands frozen mid-aisle in the middle distance of frame, facing slightly away from camera, head bowed slightly. Faint sweat shines at his hairline. Camera at standing eye-level, slightly low, framing him small in the centre with shelves rising tall on either side and the back wall receding into shadow. Sharp depth of field on him; the surrounding shop slightly soft. The mood is taut, suspenseful, deliberately at odds with the cosy retail subject matter.
+Based on the protagonist's appearance from the attached character reference (SUBJECT ID: 001) and the gift shop's layout from the attached environment reference (ENV ID: 001).
+The protagonist (SUBJECT ID: 001) stands frozen mid-aisle inside the gift shop (ENV ID: 001), facing slightly away from camera, head bowed, hands at his sides.
+Wide static frame, camera at standing eye-level slightly low, framing him small in the centre with shelves rising tall on either side and the back wall receding into shadow; sharp focus on him, surrounding shop slightly soft.
+Hard side-light from frame right in a cool teal-and-amber thriller grade casts deep shadows across the aisle.
+Brow furrowed, jaw tight, eyes fixed downward — the look of a man running out of time, sweat faint at his hairline.
+Photorealistic, cinematic photographic style, sharp focus.
+The mood is taut, suspenseful.
 
 SCENE 2:
-A static medium frame inside the gift shop (ENV ID: 001), lit in the same cool teal-and-amber thriller grade as Scene 1 but with a faint warm bloom edging in from the right side of frame. The protagonist (SUBJECT ID: 001) is in the foreground, seen from a slight three-quarter rear angle, his back partly to camera, head turned in profile, his right hand starting to extend forward toward an unseen object on a shelf at the right edge of frame. His expression is intent, eyes fixed off-screen right. The cool light catches his shoulder; the warm bloom highlights the edge of his sleeve. Background shelves softly out of focus, emphasising the slow forward dolly-in. Camera at his shoulder height. The composition draws the eye along the line of his arm toward the off-screen right. The mood is the suspended breath before a discovery.
+Based on the protagonist's appearance from the attached character reference (SUBJECT ID: 001) and the gift shop's layout from the attached environment reference (ENV ID: 001).
+The protagonist (SUBJECT ID: 001) reaches slowly toward a shelf at the right edge of frame inside the gift shop (ENV ID: 001), his body in three-quarter rear angle, head turned in profile, right arm extending forward.
+Static medium frame, camera at shoulder height, background shelves soft and out of focus, the composition drawing the eye along the line of his extended arm toward the off-screen right.
+Same cool teal-and-amber thriller grade as Scene 1, but a faint warm bloom enters from the right edge of frame — the colour grade beginning its turn toward warmth.
+Eyes fixed off-screen right, jaw unclenched slightly, the rigid tension of Scene 1 releasing into focused intent.
+Photorealistic, cinematic photographic style, sharp focus.
+The mood is the suspended breath before a discovery.
 
 SCENE 3:
-A static wide frame inside the apartment (ENV ID: 002), lit in a warm domestic colour grade with golden practical lighting. The girlfriend (SUBJECT ID: 003) sits on the sage-green sofa, her body angled slightly forward, her bare feet tucked under her. Her hands hold a small handmade paper card she has just opened — the interior of the card is angled away from camera and out of focus, unreadable. Her expression is caught at the very moment of recognition: eyes slightly widened, lips parted, a stillness in her posture. Warm amber light from a floor lamp pools across her left side; the right side of her face is in soft shadow. The composition frames her in a medium-wide static shot, the sofa and warm-toned wall behind her slightly out of focus. Camera at standing eye-level, slightly above her seated position, looking gently down. The mood is intimate, suspended, the held breath of a personal realisation.
+Based on the girlfriend's appearance from the attached character reference (SUBJECT ID: 003) and the apartment's layout from the attached environment reference (ENV ID: 002).
+The girlfriend (SUBJECT ID: 003) sits on the sofa inside the apartment (ENV ID: 002), her body angled slightly forward, hands holding a small handmade paper card she has just opened — the card's interior angled away from camera, unreadable.
+Medium-wide static frame, camera at standing eye-level looking gently down at her seated position; the sofa and wall behind her slightly out of focus.
+Warm amber light from a floor lamp pools across her left side; her right side falls into soft shadow; warm domestic golden-hour colour grade.
+Eyes slightly widened, lips parted, a stillness in her whole posture — the precise moment of recognition before any reaction has formed.
+Photorealistic, cinematic photographic style, sharp focus.
+The mood is intimate, suspended, the held breath of a personal realisation.
 ```
 
 That's the bar. Note how:
 
-- Every named entity is referenced by name AND ID where it has one — `the protagonist (SUBJECT ID: 001)`, `the gift shop (ENV ID: 001)`, `the apartment (ENV ID: 002)`. The downstream pipeline uses these IDs to attach the corresponding reference images to the generation call.
-- The product would be named as `the plush bear` if it appeared in a starting frame, with no ID — but in this example it does not appear in any Shot 1, so it is absent from these prompts.
-- No clothing, face, hair, room furniture, or surface texture is described. All of that is in the reference images.
-- Each prompt is 4–6 sentences, focused on composition, camera, posture, lighting, and mood.
-- Each prompt closes with a one-line mood phrase.
-- Shot 1 specs (colour grade, camera angle, lighting direction, depth of field) are matched faithfully.
+- **Part 1 (opener)** names every entity and the reference each comes from. This tells Seedream to lock the protagonist's appearance to the reference image rather than inventing it from prompt text.
+- **Part 2 (backbone)** is one clean subject + action + environment sentence with all IDs present.
+- **Part 3 (details)** covers camera, lighting/colour grade, and a precise facial-expression sentence — max 5 sentences, no identity re-description.
+- **Part 4 (closer)** ends with `Photorealistic, cinematic photographic style, sharp focus.` then the mood phrase, always in that order.
+- No clothing, face structure, hair, room furniture, or surface texture is described — all of that is in the reference images.
+- The plush bear would appear as `the plush bear` with no ID, plus a product-scale sentence, if it appeared in any opening frame.
 
 That is what the skill is for.
