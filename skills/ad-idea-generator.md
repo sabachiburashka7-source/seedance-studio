@@ -80,6 +80,8 @@ Run all six steps internally. Output only Step 6.
 
 ### Step 1 — Read the product like a detective
 
+**Before anything else, identify the product.** The image may be a styled product shot containing props, surfaces, or background objects (a desk, a coffee cup, a notebook, a kitchen counter, etc.). These are staging — they are not the product. Find the object being sold, name it explicitly, and set everything else aside. Your analysis below applies only to the product itself.
+
 Look at the image (and any provided text) and gather evidence. Don't describe neutrally; hunt for clues:
 
 - **Category and conventions.** What category is this? What do ads in this category usually look like? You will likely subvert these.
