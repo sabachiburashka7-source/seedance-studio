@@ -1227,7 +1227,7 @@ async function createAd() {
   };
 
   // Helper: retry an image generation call with exponential backoff
-  async function genImage(prompt, ratio, inputImages, label) {
+  async function genImage(prompt, ratio, inputImages, label, opts = {}) {
     let attempt = 0;
     while (true) {
       attempt++;
@@ -1235,7 +1235,7 @@ async function createAd() {
         const ir = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-          body: JSON.stringify({ prompt, ratio, quality: 'high', images: inputImages })
+          body: JSON.stringify({ prompt, ratio, quality: 'high', images: inputImages, outputFormat: opts.outputFormat })
         });
         const ij = await safeJson(ir);
         if (ir.ok) {
@@ -1382,7 +1382,7 @@ async function createAd() {
           const p = splitDataUrl(resized); if (p) sfInputs.push(p);
         }
         if (sfInputs.length) adLog(`  → ${sfInputs.length} ref image(s) attached (resized to 1024px)`, 'info');
-        const url = await genImage(sf.prompt, '9:16', sfInputs, `Scene ${i+1} start`);
+        const url = await genImage(sf.prompt, '9:16', sfInputs, `Scene ${i+1} start`, { outputFormat: 'png' });
         sceneStartImages.push(url);
         lib.unshift({ id: 'start-' + Date.now() + '-' + i, prompt: sf.prompt, url,
           ratio: '9:16', model: 'seedream-5-0-lite', ts: Date.now(), done: Date.now(),
