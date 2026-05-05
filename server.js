@@ -850,11 +850,12 @@ async function handleRequest(req, res) {
       watermark: false
     };
     if (useRef) {
-      // Single image: use 'image' field; multiple: use 'image_urls' array
+      // Always use 'image' field: string for single ref, array for multiple refs
       if (refImagesList.length === 1) {
         payload.image = `data:${refImagesList[0].mime};base64,${refImagesList[0].base64}`;
       } else {
-        payload.image_urls = refImagesList.map(img => `data:${img.mime};base64,${img.base64}`);
+        payload.image = refImagesList.map(img => `data:${img.mime};base64,${img.base64}`);
+        payload.sequential_image_generation = 'disabled';
       }
     }
     const reqBody = Buffer.from(JSON.stringify(payload));
