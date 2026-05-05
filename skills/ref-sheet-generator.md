@@ -69,6 +69,9 @@ Each reference sheet is a single image containing multiple panels — full-body 
 **3. Reference sheets follow the studio format precisely.**
 The format has specific conventions: panel layout description, ID labels at top corners, color palette swatches, annotations pointing to features, white or appropriate background, explicit photorealism marker, and (for environments) an explicit anti-illustration disclaimer. These conventions are not optional — they are how the image generator knows to produce a clean composite reference rather than a stylized illustration.
 
+**3a. All character sheets are generated in one batch call. All environment sheets are generated in one batch call.**
+The pipeline groups your character prompts into a single Seedream batch API call (one image per character sheet) and does the same for environment prompts. The product is always a separate call. This means: (a) style markers must be identical across every character prompt so Seedream maintains visual consistency within the batch — do not vary the photorealism language; (b) each prompt must be fully self-contained and describe the entity completely without referencing other entities; (c) the batch wrapper adds framing ("Generate N character reference sheets, one image per sheet"), so individual prompts should not repeat that framing — just describe the entity. Prompts that are concise and precise outperform long keyword-stacked prompts in Seedream 5.0.
+
 **4. The product reference is one literal line.**
 For the product, output exactly: `generate this product reference sheet for consistency`. Nothing more. The pipeline attaches the actual product photo to the image-generation call, so the generator works from the real object rather than a description.
 

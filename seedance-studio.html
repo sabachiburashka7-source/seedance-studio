@@ -1304,40 +1304,93 @@ async function createAd() {
     adLogUpdate(s2, `Stage 2 done: ${entities.length} entity reference sheet(s)`, 'done');
     if (textOnly) adLogTextBlock('Reference sheet prompts:', refSheetsText);
 
-    // ── Step 2.5: Generate reference images ──────────────────────────────
+    // ── Step 2.5: Generate reference images (batch per type) ─────────────
     // refMap keys: 'SUBJECT_001', 'ENV_001', 'product'
     const refMap = {};
-    if (!textOnly) adLog(`Generating ${entities.length} reference image(s)…`, 'info');
-    for (let ei = 0; !textOnly && ei < entities.length; ei++) {
-      const entity = entities[ei];
-      const key = entity.type === 'character' ? 'SUBJECT_' + entity.subjectId :
-                  entity.type === 'environment' ? 'ENV_' + entity.envId : 'product';
-      const label = entity.name || key;
-      const sRef = adLog(`Ref image ${ei+1}/${entities.length}: ${label}…`, 'run');
-      try {
-        const inputImages = [];
-        if (entity.type === 'product' && adImages.length) {
+    if (!textOnly) {
+      const charEntities    = entities.filter(e => e.type === 'character');
+      const envEntities     = entities.filter(e => e.type === 'environment');
+      const productEntity   = entities.find(e => e.type === 'product');
+      const batchCallCount  = [charEntities.length, envEntities.length, productEntity ? 1 : 0].filter(Boolean).length;
+      adLog(`Generating ${entities.length} reference image(s) in ${batchCallCount} batch call(s)…`, 'info');
+
+      // Helper: one fetch call, returns urls[] (batch) or url (single)
+      const refImageCall = async (prompt, ratio, inputImages, count) => {
+        const ir = await fetch('/api/generate-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+          body: JSON.stringify({ prompt, ratio, quality: 'high', images: inputImages, batchCount: count })
+        });
+        const ij = await safeJson(ir);
+        if (!ir.ok) throw new Error((ij && ij.error) || `HTTP ${ir.status}`);
+        if (ij.balance !== undefined) { userBalance = ij.balance; updateCreditsDisplay(); }
+        return ij.urls || (ij.url ? [ij.url] : []);
+      };
+
+      // Characters — one batch call at 1:1
+      if (charEntities.length) {
+        const sChars = adLog(`Generating ${charEntities.length} character ref sheet(s)…`, 'run');
+        try {
+          const batchPrompt = charEntities.length === 1
+            ? charEntities[0].prompt
+            : `Generate ${charEntities.length} character reference sheets, one image per sheet, consistent photorealistic studio style across all sheets:\n\n` +
+              charEntities.map((e, i) => `Sheet ${i + 1}: ${e.prompt}`).join('\n\n');
+          const urls = await refImageCall(batchPrompt, '1:1', [], charEntities.length);
+          charEntities.forEach((e, i) => {
+            if (!urls[i]) return;
+            const key = 'SUBJECT_' + e.subjectId;
+            refMap[key] = urls[i];
+            lib.unshift({ id: 'ref-' + Date.now() + '-c' + i, prompt: e.prompt, url: urls[i],
+              ratio: '1:1', model: 'seedream-5-0-lite', ts: Date.now(), done: Date.now(),
+              type: 'image', folder: adTitle, label: e.name || key });
+          });
+          saveLib(); renderLib();
+          adLogUpdate(sChars, `✓ ${charEntities.length} character sheet(s)`, 'done');
+        } catch(e) { adLogUpdate(sChars, `Character sheets failed: ${e.message}`, 'warn'); }
+      }
+
+      // Environments — one batch call at 16:9
+      if (envEntities.length) {
+        const sEnvs = adLog(`Generating ${envEntities.length} environment ref sheet(s)…`, 'run');
+        try {
+          const batchPrompt = envEntities.length === 1
+            ? envEntities[0].prompt
+            : `Generate ${envEntities.length} environment reference sheets, one image per sheet, consistent photorealistic style across all sheets:\n\n` +
+              envEntities.map((e, i) => `Sheet ${i + 1}: ${e.prompt}`).join('\n\n');
+          const urls = await refImageCall(batchPrompt, '16:9', [], envEntities.length);
+          envEntities.forEach((e, i) => {
+            if (!urls[i]) return;
+            const key = 'ENV_' + e.envId;
+            refMap[key] = urls[i];
+            lib.unshift({ id: 'ref-' + Date.now() + '-e' + i, prompt: e.prompt, url: urls[i],
+              ratio: '16:9', model: 'seedream-5-0-lite', ts: Date.now(), done: Date.now(),
+              type: 'image', folder: adTitle, label: e.name || key });
+          });
+          saveLib(); renderLib();
+          adLogUpdate(sEnvs, `✓ ${envEntities.length} environment sheet(s)`, 'done');
+        } catch(e) { adLogUpdate(sEnvs, `Environment sheets failed: ${e.message}`, 'warn'); }
+      }
+
+      // Product — separate call with user photos attached
+      if (productEntity) {
+        const sProduct = adLog(`Generating product reference…`, 'run');
+        try {
+          const inputImages = [];
           for (const ai of adImages) {
-            try {
-              const resized = await resizeForClaude(ai.file, 1024);
-              const p = splitDataUrl(resized);
-              if (p) inputImages.push(p);
-            } catch (_) {}
+            try { const resized = await resizeForClaude(ai.file, 1024); const p = splitDataUrl(resized); if (p) inputImages.push(p); } catch (_) {}
           }
           if (inputImages.length) adLog(`  → ${inputImages.length} product photo(s) attached`, 'info');
-        }
-        const ratio = entity.type === 'environment' ? '16:9' : '1:1';
-        const url = await genImage(entity.prompt, ratio, inputImages, label);
-        refMap[key] = url;
-        lib.unshift({ id: 'ref-' + Date.now() + '-' + ei, prompt: entity.prompt, url,
-          ratio, model: 'seedream-5-0-lite', ts: Date.now(), done: Date.now(),
-          type: 'image', folder: adTitle, label });
-        saveLib(); renderLib();
-        adLogUpdate(sRef, `✓ ${label}`, 'done');
-      } catch(e) {
-        adLogUpdate(sRef, `${label} skipped: ${e.message}`, 'warn');
+          const urls = await refImageCall(productEntity.prompt, '1:1', inputImages, 1);
+          if (urls[0]) {
+            refMap['product'] = urls[0];
+            lib.unshift({ id: 'ref-' + Date.now() + '-product', prompt: productEntity.prompt, url: urls[0],
+              ratio: '1:1', model: 'seedream-5-0-lite', ts: Date.now(), done: Date.now(),
+              type: 'image', folder: adTitle, label: productEntity.name || 'product' });
+            saveLib(); renderLib();
+          }
+          adLogUpdate(sProduct, `✓ Product reference`, 'done');
+        } catch(e) { adLogUpdate(sProduct, `Product reference failed: ${e.message}`, 'warn'); }
       }
-      if (ei < entities.length - 1) await new Promise(r => setTimeout(r, 3000));
     }
 
     // ── Step 3: Starting frame prompts (starting-frame-generator) ───────

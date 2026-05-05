@@ -817,7 +817,7 @@ async function handleRequest(req, res) {
 
   // ── Seedream image generation (BytePlus Ark) ─────────────────────────────
   if (url === '/api/generate-image' && method === 'POST') {
-    const { prompt, ratio, quality, imageBase64, imageMime, images, outputFormat } = await readBody(req); // must read body before any early return
+    const { prompt, ratio, quality, imageBase64, imageMime, images, outputFormat, batchCount } = await readBody(req); // must read body before any early return
     // Normalize to a list of {base64, mime}: legacy single-image fields still supported
     const refImagesList = Array.isArray(images) && images.length
       ? images.filter(i => i && i.base64).map(i => ({ base64: i.base64, mime: i.mime || 'image/jpeg' }))
@@ -826,10 +826,12 @@ async function handleRequest(req, res) {
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to generate images.' });
     const imgCost = quality === 'low' ? 0.02 : 0.08;
+    const imgCount = (batchCount && batchCount > 1) ? Math.min(Math.floor(batchCount), 14) : 1;
+    const totalCost = Math.round(imgCost * imgCount * 100) / 100;
     {
       const db  = loadDB();
       const cur = db.users[sess.userId].balance ?? 0;
-      if (cur < imgCost) return sendJSON(res, 402, { error: `Insufficient balance. Need $${imgCost.toFixed(2)}, have $${cur.toFixed(2)}.`, balance: cur });
+      if (cur < totalCost) return sendJSON(res, 402, { error: `Insufficient balance. Need $${totalCost.toFixed(2)}, have $${cur.toFixed(2)}.`, balance: cur });
     }
     if (!prompt) return sendJSON(res, 400, { error: 'Prompt required' });
 
@@ -849,13 +851,17 @@ async function handleRequest(req, res) {
       output_format: outputFormat === 'png' ? 'png' : 'jpeg',
       watermark: false
     };
+    if (imgCount > 1) {
+      payload.sequential_image_generation = 'auto';
+      payload.sequential_image_generation_options = { max_images: imgCount };
+    }
     if (useRef) {
       // Always use 'image' field: string for single ref, array for multiple refs
       if (refImagesList.length === 1) {
         payload.image = `data:${refImagesList[0].mime};base64,${refImagesList[0].base64}`;
       } else {
         payload.image = refImagesList.map(img => `data:${img.mime};base64,${img.base64}`);
-        payload.sequential_image_generation = 'disabled';
+        if (imgCount === 1) payload.sequential_image_generation = 'disabled';
       }
     }
     const reqBody = Buffer.from(JSON.stringify(payload));
@@ -904,27 +910,48 @@ async function handleRequest(req, res) {
           return sendJSON(res, result.status >= 400 && result.status < 600 ? result.status : 500, { error: errMsg });
         }
 
-        // API returns a URL; fetch it and convert to base64 data URL
-        const imgUrl = result.body.data?.[0]?.url || result.body.data?.[0]?.b64_json && `data:image/jpeg;base64,${result.body.data[0].b64_json}`;
-        if (!imgUrl) return sendJSON(res, 500, { error: 'No image data returned by Seedream' });
-
-        let dataUrl = imgUrl;
-        if (imgUrl.startsWith('http')) {
+        // Fetch a raw image URL and convert to base64 data URL
+        const fetchDataUrl = async (imgUrl) => {
+          if (!imgUrl) return null;
+          if (!imgUrl.startsWith('http')) return imgUrl;
           try {
             const imgBuf = await new Promise((resolve, reject) => {
               https.get(imgUrl, r => { const c = []; r.on('data', d => c.push(d)); r.on('end', () => resolve(Buffer.concat(c))); r.on('error', reject); }).on('error', reject);
             });
-            dataUrl = `data:image/jpeg;base64,${imgBuf.toString('base64')}`;
+            const mime = outputFormat === 'png' ? 'image/png' : 'image/jpeg';
+            return `data:${mime};base64,${imgBuf.toString('base64')}`;
           } catch (fe) {
-            console.warn('[seedream-image] could not fetch image URL, storing URL directly:', fe.message);
-            dataUrl = imgUrl;
+            console.warn('[seedream-image] could not fetch image URL:', fe.message);
+            return imgUrl;
           }
+        };
+
+        const items = result.body.data || [];
+        if (!items.length) return sendJSON(res, 500, { error: 'No image data returned by Seedream' });
+
+        if (imgCount > 1) {
+          // Batch mode — return all generated images
+          const dataUrls = (await Promise.all(items.map(item => {
+            const u = item.url || (item.b64_json && `data:image/jpeg;base64,${item.b64_json}`);
+            return fetchDataUrl(u);
+          }))).filter(Boolean);
+          console.log('[seedream-image] batch done,', dataUrls.length, 'images');
+          const actualCost = Math.round(imgCost * dataUrls.length * 100) / 100;
+          const db2 = loadDB();
+          const usr2 = db2.users[sess.userId];
+          usr2.balance = Math.round(((usr2.balance ?? 0) - actualCost) * 100) / 100;
+          saveDB(db2);
+          return sendJSON(res, 200, { urls: dataUrls, balance: usr2.balance });
         }
+
+        // Single image mode
+        const imgUrl = items[0].url || (items[0].b64_json && `data:image/jpeg;base64,${items[0].b64_json}`);
+        const dataUrl = await fetchDataUrl(imgUrl);
+        if (!dataUrl) return sendJSON(res, 500, { error: 'No image data returned by Seedream' });
         console.log('[seedream-image] done, dataUrl length:', dataUrl.length);
         const db2  = loadDB();
         const usr2 = db2.users[sess.userId];
-        const cur2 = usr2.balance ?? 0;
-        usr2.balance = Math.round((cur2 - imgCost) * 100) / 100;
+        usr2.balance = Math.round(((usr2.balance ?? 0) - imgCost) * 100) / 100;
         saveDB(db2);
         return sendJSON(res, 200, { url: dataUrl, balance: usr2.balance });
       } catch(e) {
