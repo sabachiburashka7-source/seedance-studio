@@ -701,6 +701,7 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
 .ad-step.err  { color: var(--red); }
 .ad-step.info { color: var(--text3); }
 .ad-step .spin { width: 12px; height: 12px; border: 2px solid var(--border2); border-top-color: var(--accent2); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; margin-top: 2px; }
+.ad-text-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin: 2px 0 4px 20px; font-family: monospace; font-size: 11px; line-height: 1.5; white-space: pre-wrap; max-height: 220px; overflow-y: auto; color: var(--text2); }
 
 /* ─── LIBRARY FOLDERS ────────────────────────────────────────────── */
 .lib-folder-header {
@@ -994,6 +995,9 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
           </div>
         </div>
 
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text3);margin-bottom:8px;cursor:pointer">
+          <input type="checkbox" id="ad-text-only"> Text only — skip image &amp; video generation (for testing)
+        </label>
         <button class="btn-gen" id="ad-gen-btn" onclick="createAd()">Create Ad</button>
       </div>
     </div>
@@ -1183,6 +1187,20 @@ function adLogUpdate(step, msg, type) {
   step.innerHTML = `<span class="ad-step-icon">${icon}</span><span>${msg}</span>`;
 }
 
+function adLogTextBlock(label, text) {
+  const inner = document.getElementById('ad-log-inner');
+  document.getElementById('ad-log').classList.add('show');
+  const lbl = document.createElement('div');
+  lbl.className = 'ad-step info';
+  lbl.innerHTML = `<span class="ad-step-icon">·</span><span>${label}</span>`;
+  const pre = document.createElement('pre');
+  pre.className = 'ad-text-block';
+  pre.textContent = text;
+  inner.appendChild(lbl);
+  inner.appendChild(pre);
+  inner.scrollTop = inner.scrollHeight;
+}
+
 function adLogClear() {
   document.getElementById('ad-log-inner').innerHTML = '';
   document.getElementById('ad-log').classList.remove('show');
@@ -1192,8 +1210,9 @@ async function createAd() {
   if (!adImages.length) return toast('Upload at least one product image', 'err');
   if (!authToken)      return toast('Sign in to use Ads', 'err');
 
+  const textOnly = document.getElementById('ad-text-only').checked;
   const btn = document.getElementById('ad-gen-btn');
-  btn.disabled = true; btn.textContent = 'Creating...';
+  btn.disabled = true; btn.textContent = textOnly ? 'Running (text only)...' : 'Creating...';
   adLogClear();
 
   const model       = 'dreamina-seedance-2-0-260128';
@@ -1268,6 +1287,7 @@ async function createAd() {
     const adTitle = description ? description.replace(/\s+/g, ' ').trim().substring(0, 40) :
       (() => { const m = ideaText.match(/CONCEPT\s*\n+([\s\S]*?)\n+SCENES/); const prose = m ? m[1] : ideaText; return prose.split(/[.,]/)[0].trim().substring(0, 40) || ('Ad — ' + new Date().toLocaleDateString()); })();
     adLogUpdate(s1, `Stage 1 done: "${adTitle}" — ${sceneCount} scene(s)`, 'done');
+    if (textOnly) adLogTextBlock('Concept output:', ideaText);
 
     // ── Step 2: Reference sheet prompts (ref-sheet-generator) ──────────
     const s2 = adLog('Stage 2: Claude generating reference sheet prompts…', 'run');
@@ -1282,12 +1302,13 @@ async function createAd() {
     const entities = j2.entities || [];
     const refSheetsText = j2.refSheetsText || '';
     adLogUpdate(s2, `Stage 2 done: ${entities.length} entity reference sheet(s)`, 'done');
+    if (textOnly) adLogTextBlock('Reference sheet prompts:', refSheetsText);
 
     // ── Step 2.5: Generate reference images ──────────────────────────────
     // refMap keys: 'SUBJECT_001', 'ENV_001', 'product'
     const refMap = {};
-    adLog(`Generating ${entities.length} reference image(s)…`, 'info');
-    for (let ei = 0; ei < entities.length; ei++) {
+    if (!textOnly) adLog(`Generating ${entities.length} reference image(s)…`, 'info');
+    for (let ei = 0; !textOnly && ei < entities.length; ei++) {
       const entity = entities[ei];
       const key = entity.type === 'character' ? 'SUBJECT_' + entity.subjectId :
                   entity.type === 'environment' ? 'ENV_' + entity.envId : 'product';
@@ -1332,11 +1353,12 @@ async function createAd() {
     const startFrames = j3.startFrames || [];
     const startFramesText = j3.startFramesText || '';
     adLogUpdate(s3, `Stage 3 done: ${startFrames.length} starting frame prompt(s)`, 'done');
+    if (textOnly) adLogTextBlock('Starting frame prompts:', startFramesText);
 
     // ── Step 3.5: Generate starting frame images ─────────────────────────
     const sceneStartImages = [];
-    adLog(`Generating ${startFrames.length} starting frame image(s)…`, 'info');
-    for (let i = 0; i < startFrames.length; i++) {
+    if (!textOnly) adLog(`Generating ${startFrames.length} starting frame image(s)…`, 'info');
+    for (let i = 0; !textOnly && i < startFrames.length; i++) {
       const sf = startFrames[i];
       if (!sf || !sf.prompt) { sceneStartImages.push(null); continue; }
       const sSf = adLog(`Starting frame ${i+1}/${startFrames.length}: scene ${i+1}…`, 'run');
@@ -1386,6 +1408,12 @@ async function createAd() {
     if (j4.balance !== undefined) { userBalance = j4.balance; updateCreditsDisplay(); }
     const scenes = j4.scenes || [];
     adLogUpdate(s4, `Stage 4 done: ${scenes.length} scene prompt(s) ready`, 'done');
+    if (textOnly) {
+      adLogTextBlock('Video shot prompts:', j4.shotsText || '');
+      adLog('Text-only mode: image and video generation skipped.', 'info');
+      adLog('All 4 Claude stages complete.', 'done');
+      return;
+    }
 
     // ── Step 5: Video generation (sequential, each scene uses prev as ref) ──
     let prevVideoUrl = null;
