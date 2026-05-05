@@ -88,6 +88,8 @@ Look at the image (and any provided text) and gather evidence. Don't describe ne
 - **Audience signals.** Who actually buys this? Look at packaging, price cues, scale, finish, branding tone.
 - **Mechanism.** What does it actually do? What's the real before-and-after?
 - **What it secretly competes with.** A premium tea doesn't compete with other teas — it competes with the 4pm cigarette, the second coffee, the doom-scroll. Find this.
+- **Who buys vs. who receives.** These are often different people. Who is actually purchasing this, and who is it for? What does the act of choosing this specific product say about the buyer? What does the recipient feel when they receive it?
+- **The emotional transaction.** For gift products especially: what is the real exchange happening? Not "product → function" but "buyer chooses this → recipient feels ___." The product is often a proxy for a feeling — attentiveness, taste, the proof that someone knows you specifically. Name that feeling explicitly.
 - **What it's *not*.** What's the closest neighbor that this isn't?
 - **The visual world it lives in.** Where does this object actually exist in real life? What kitchen? What hand? What time of day? What mess? The honest visual context, not the catalog one.
 
