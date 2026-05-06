@@ -851,13 +851,14 @@ async function handleRequest(req, res) {
     const useRef = refImagesList.length > 0;
     console.log('[seedream-image]', useRef ? `with ${refImagesList.length} ref(s):` : 'generating:', size, quality, prompt.substring(0, 80));
 
+    const modelId = reqModel || 'seedream-5-0-260128';
     const payload = {
-      model: reqModel || 'seedream-5-0-260128',
+      model: modelId,
       prompt,
       size,
-      output_format: outputFormat === 'png' ? 'png' : 'jpeg',
       watermark: false
     };
+    if (!modelId.includes('4-5')) payload.output_format = outputFormat === 'png' ? 'png' : 'jpeg';
     if (imgCount > 1) {
       payload.sequential_image_generation = 'auto';
       payload.sequential_image_generation_options = { max_images: imgCount };
