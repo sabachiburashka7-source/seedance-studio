@@ -1472,7 +1472,7 @@ async function createAd() {
         let taskId, jV;
         for (let attempt = 1; attempt <= 6; attempt++) {
           const rV = await fetch('/proxy/api/v3/contents/generations/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-          jV = await rV.json();
+          jV = await safeJson(rV);
           taskId = jV.id || jV.task_id;
           if (taskId) break;
           const errMsg = jV.error?.message || JSON.stringify(jV).substring(0, 200);
