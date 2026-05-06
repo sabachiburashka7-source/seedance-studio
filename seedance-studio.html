@@ -1235,7 +1235,7 @@ async function createAd() {
         const ir = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-          body: JSON.stringify({ prompt, ratio, quality: 'high', images: inputImages, outputFormat: opts.outputFormat })
+          body: JSON.stringify({ prompt, ratio, quality: 'high', images: inputImages, outputFormat: opts.outputFormat, model: opts.model })
         });
         const ij = await safeJson(ir);
         if (ir.ok) {
@@ -1323,7 +1323,8 @@ async function createAd() {
           if (inputImages.length) adLog(`  → ${inputImages.length} product photo(s) attached`, 'info');
         }
         const ratio = entity.type === 'environment' ? '16:9' : '1:1';
-        const url = await genImage(entity.prompt, ratio, inputImages, label);
+        const imgOpts = entity.type === 'product' ? { model: 'seedream-4-5-251128' } : {};
+        const url = await genImage(entity.prompt, ratio, inputImages, label, imgOpts);
         refMap[key] = url;
         lib.unshift({ id: 'ref-' + Date.now() + '-' + ei, prompt: entity.prompt, url,
           ratio, model: 'seedream-5-0-lite', ts: Date.now(), done: Date.now(),

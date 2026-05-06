@@ -817,7 +817,7 @@ async function handleRequest(req, res) {
 
   // ── Seedream image generation (BytePlus Ark) ─────────────────────────────
   if (url === '/api/generate-image' && method === 'POST') {
-    const { prompt, ratio, quality, imageBase64, imageMime, images, outputFormat, batchCount } = await readBody(req); // must read body before any early return
+    const { prompt, ratio, quality, imageBase64, imageMime, images, outputFormat, batchCount, model: reqModel } = await readBody(req); // must read body before any early return
     // Normalize to a list of {base64, mime}: legacy single-image fields still supported
     const refImagesList = Array.isArray(images) && images.length
       ? images.filter(i => i && i.base64).map(i => ({ base64: i.base64, mime: i.mime || 'image/jpeg' }))
@@ -852,7 +852,7 @@ async function handleRequest(req, res) {
     console.log('[seedream-image]', useRef ? `with ${refImagesList.length} ref(s):` : 'generating:', size, quality, prompt.substring(0, 80));
 
     const payload = {
-      model: 'seedream-5-0-260128',
+      model: reqModel || 'seedream-5-0-260128',
       prompt,
       size,
       output_format: outputFormat === 'png' ? 'png' : 'jpeg',
