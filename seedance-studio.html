@@ -1322,6 +1322,16 @@ async function createAd() {
           }
           if (inputImages.length) adLog(`  → ${inputImages.length} product photo(s) attached`, 'info');
         }
+        // Attach any previously generated ref images whose key appears in this prompt
+        const promptLower = entity.prompt.toLowerCase();
+        const prevAttached = [];
+        for (const [refKey, refUrl] of Object.entries(refMap)) {
+          if (!refUrl) continue;
+          if (promptLower.includes(refKey.toLowerCase())) {
+            try { const resized = await resizeDataUrl(refUrl, 1024); const p = splitDataUrl(resized); if (p) { inputImages.push(p); prevAttached.push(refKey); } } catch (_) {}
+          }
+        }
+        if (prevAttached.length) adLog(`  → ${prevAttached.length} prev ref(s) attached: ${prevAttached.join(', ')}`, 'info');
         const ratio = entity.type === 'environment' ? '16:9' : '1:1';
         const imgOpts = entity.type === 'product' ? { model: 'seedream-4-5-251128' } : {};
         const url = await genImage(entity.prompt, ratio, inputImages, label, imgOpts);
@@ -1361,20 +1371,31 @@ async function createAd() {
       const sSf = adLog(`Starting frame ${i+1}/${startFrames.length}: scene ${i+1}…`, 'run');
       try {
         const sfInputs = [];
+        const sfAttachedKeys = new Set();
         for (const sid of (sf.subjectIds || [])) {
-          if (refMap['SUBJECT_' + sid]) {
-            try { const resized = await resizeDataUrl(refMap['SUBJECT_' + sid], 1024); const p = splitDataUrl(resized); if (p) sfInputs.push(p); } catch (_) {}
+          const k = 'SUBJECT_' + sid;
+          if (refMap[k]) {
+            try { const resized = await resizeDataUrl(refMap[k], 1024); const p = splitDataUrl(resized); if (p) { sfInputs.push(p); sfAttachedKeys.add(k); } } catch (_) {}
           }
         }
         for (const eid of (sf.envIds || [])) {
-          if (refMap['ENV_' + eid]) {
-            try { const resized = await resizeDataUrl(refMap['ENV_' + eid], 1024); const p = splitDataUrl(resized); if (p) sfInputs.push(p); } catch (_) {}
+          const k = 'ENV_' + eid;
+          if (refMap[k]) {
+            try { const resized = await resizeDataUrl(refMap[k], 1024); const p = splitDataUrl(resized); if (p) { sfInputs.push(p); sfAttachedKeys.add(k); } } catch (_) {}
           }
         }
         if (refMap['product'] && /product/i.test(sf.prompt)) {
-          try { const resized = await resizeDataUrl(refMap['product'], 1024); const p = splitDataUrl(resized); if (p) sfInputs.push(p); } catch (_) {}
+          try { const resized = await resizeDataUrl(refMap['product'], 1024); const p = splitDataUrl(resized); if (p) { sfInputs.push(p); sfAttachedKeys.add('product'); } } catch (_) {}
         }
-        if (sfInputs.length) adLog(`  → ${sfInputs.length} ref image(s) attached (resized to 1024px)`, 'info');
+        // Fallback: attach any other refs mentioned by key in the prompt text
+        const sfPromptLower = sf.prompt.toLowerCase();
+        for (const [refKey, refUrl] of Object.entries(refMap)) {
+          if (!refUrl || sfAttachedKeys.has(refKey)) continue;
+          if (sfPromptLower.includes(refKey.toLowerCase())) {
+            try { const resized = await resizeDataUrl(refUrl, 1024); const p = splitDataUrl(resized); if (p) { sfInputs.push(p); sfAttachedKeys.add(refKey); } } catch (_) {}
+          }
+        }
+        if (sfInputs.length) adLog(`  → ${sfInputs.length} ref image(s) attached: ${[...sfAttachedKeys].join(', ')}`, 'info');
         const url = await genImage(sf.prompt, '9:16', sfInputs, `Scene ${i+1} start`, { outputFormat: 'png' });
         sceneStartImages.push(url);
         lib.unshift({ id: 'start-' + Date.now() + '-' + i, prompt: sf.prompt, url,
