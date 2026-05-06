@@ -69,9 +69,6 @@ Each reference sheet is a single image containing multiple panels — full-body 
 **3. Reference sheets follow the studio format precisely.**
 The format has specific conventions: panel layout description, ID labels at top corners, color palette swatches, annotations pointing to features, white or appropriate background, explicit photorealism marker, and (for environments) an explicit anti-illustration disclaimer. These conventions are not optional — they are how the image generator knows to produce a clean composite reference rather than a stylized illustration.
 
-**3a. Each entity's images are generated as a multi-view batch.**
-The pipeline makes one Seedream batch API call per entity (except the product). The batch generates N views of that same entity in one call — front, side, close-up, expression study for characters; wide, medium, close-up for environments. All views are visually consistent because they come from the same generation call. The `VIEWS: N` field in each entity block tells the pipeline how many images to request. Character blocks always use `VIEWS: 4`. Environment blocks always use `VIEWS: 3`. The product block has no `VIEWS` field — it is always a single-image call with the user's product photo attached.
-
 **4. The product reference is one literal line.**
 For the product, output exactly: `generate this product reference sheet for consistency`. Nothing more. The pipeline attaches the actual product photo to the image-generation call, so the generator works from the real object rather than a description.
 
@@ -93,54 +90,45 @@ The downstream `starting-frame-prompt-generator` reads your output and uses the 
 
 ### Character reference sheet format
 
-Each character block produces a **batch of 4 images** — all showing the same character, from different angles and expressions, generated in one API call for visual consistency. The `VIEWS: 4` line tells the pipeline how many images to request.
+Each character reference sheet follows this template. Adapt the panel layout and details to the character, but keep all the marked elements present.
 
 ```
 CHARACTER: [character name or role description]
-VIEWS: 4
 
-Generate 4 reference images of [character name], maintaining identical appearance across all 4 images. [Nationality / ethnicity if relevant to story], [gender], [age range], [build / body type]. [Hair color, length, texture]. [Eye color]. [Facial hair if any]. [Skin tone]. [Distinctive facial features]. Clothing: [every garment, fabric, color, fit, condition — name each piece]. Photorealistic, shot on Canon R5, professional studio lighting. Clean white background. Label top left: SUBJECT ID: 0XX.
-
-Image 1: Full body front view, neutral upright posture, arms at sides, looking directly at camera.
-Image 2: Full body side profile (from the left), same neutral posture, full clothing visible.
-Image 3: Close-up portrait, three-quarter angle, neutral composed expression, sharp focus on face and features.
-Image 4: Close-up portrait, [expression tied to the story — specific and observable, e.g., "stressed searching expression, brow furrowed, jaw tight, eyes scanning" or "quiet realisation, eyes widened, lips slightly parted"].
+Character reference sheet, professional studio format. [Nationality / ethnicity if relevant to story], [gender], [age range], [build / body type]. [Hair color, length, texture]. [Eye color]. [Facial hair if any]. [Skin tone]. [Distinctive facial features, expression baseline]. Full body front view on left side, full body side profile on right side. Multiple face close-ups in bottom half — front view, 3/4 angle view, and [expression study relevant to the story]. Color palette swatches shown on side. Clothing: [every garment, fabric, color, fit, condition]. Posture [posture description tied to character's role in the story]. Expression [expression description — specific, observable, not abstract]. Annotations pointing to hair style, eye color, fabric material, [any other distinctive features]. Clean white background. Photorealistic, shot on Canon R5, professional lighting. Label at top left: SUBJECT ID: 0XX. Label at top right: [SHORT NAME OR ROLE LABEL IN ALL CAPS]. Small color swatches showing: [3-5 colors that define the character — clothing tones, skin tone, hair].
 ```
 
-Required elements every character block must contain:
-- `VIEWS: 4` on its own line immediately after the CHARACTER: header
-- Opening line: `Generate 4 reference images of [character name], maintaining identical appearance across all 4 images.`
-- Complete physical description (nationality, gender, age, build, hair, eyes, skin, distinctive features)
-- Complete clothing description (every garment, fabric, colour, fit, condition)
-- `Photorealistic, shot on Canon R5, professional studio lighting. Clean white background.`
-- ID label: `Label top left: SUBJECT ID: 0XX.`
-- Four numbered Image lines, in order: full front, full side, face 3/4, story-specific expression
+Required elements every character sheet must contain:
+- Panel layout describing where each view sits in the composite image
+- At least three face views (front, 3/4, plus one expression study tied to the story)
+- Specific clothing description (every garment named with fabric and colour)
+- Specific posture and expression notes
+- Color palette swatches mentioned on the side
+- Annotation lines mentioned, pointing to specific features
+- Clean white background
+- `Photorealistic, shot on Canon R5, professional lighting`
+- ID labels in the exact format: `Label at top left: SUBJECT ID: 0XX.` and `Label at top right: [LABEL].`
+- Small color swatches list (3-5 colors)
 
 ### Environment reference sheet format
 
-Each environment block produces a **batch of 3 images** — all showing the same space from different distances. The `VIEWS: 3` line tells the pipeline how many images to request.
-
 ```
 ENVIRONMENT: [environment name and state]
-VIEWS: 3
 
-Generate 3 reference images of [environment name], maintaining identical environmental details across all 3 images. [Specific location with cultural / regional context]. [Architectural specifics: walls, flooring, ceiling]. [Window / lighting source and quality of light]. [Furniture and key objects — specific, named]. [Clutter / state / lived-in quality]. [Overall mood]. [Color tone]. Real interior photography, not illustrated, not drawn, not rendered. Photorealistic, shot on Canon R5, natural lighting. Label top left: ENV ID: 0XX. Hyper-realistic, no illustration, no cartoon, no 3D render.
-
-Image 1: Wide angle view showing the full space — all walls, floor, ceiling, and major furniture visible.
-Image 2: Medium shot focused on [the key area of the space most relevant to the story scenes that take place here].
-Image 3: Close-up detail shot of [a specific texture, object cluster, or story-relevant element that will appear in starting frames].
+Environment reference sheet, professional format. [Specific location with cultural / regional context], photorealistic photography style. Real interior photography, not illustrated, not drawn, not rendered. Shot on Canon R5, natural lighting. [Panel layout description — typically three panels]. [Architectural specifics: walls, flooring, ceiling]. [Window / lighting source description with quality of light]. [Furniture and key objects in the space — specific, named]. [Clutter / state / lived-in quality]. [Overall mood adjective phrase]. [Color tone description]. Color swatches bottom right. Annotation lines pointing to key elements. Photorealistic interior photography. Label top left: ENV ID: 0XX. Label top right: [SHORT LOCATION NAME] — [STATE OR MOOD DESCRIPTOR IN ALL CAPS]. Hyper-realistic, no illustration, no cartoon, no 3D render.
 ```
 
-Required elements every environment block must contain:
-- `VIEWS: 3` on its own line immediately after the ENVIRONMENT: header
-- Opening line: `Generate 3 reference images of [environment name], maintaining identical environmental details across all 3 images.`
-- Complete architectural description (walls, floor, ceiling, windows, lighting source)
-- Complete furniture and object description (specific, named)
-- Mood and color tone
-- `Real interior photography, not illustrated, not drawn, not rendered. Photorealistic, shot on Canon R5, natural lighting.`
-- ID label: `Label top left: ENV ID: 0XX.`
-- Anti-illustration: `Hyper-realistic, no illustration, no cartoon, no 3D render.`
-- Three numbered Image lines, in order: wide full-space, medium key-area, close-up story-detail
+Required elements every environment sheet must contain:
+- Multi-panel layout description (typically three panels: wide / medium / close-up)
+- Photorealism style declaration up front (`photorealistic photography style. Real interior photography, not illustrated, not drawn, not rendered.`)
+- `Shot on Canon R5, natural lighting`
+- Specific architectural detail (walls, floor, windows, lighting source)
+- Specific furniture and objects in the space
+- Mood and color tone descriptors
+- Color swatches mentioned (bottom right)
+- Annotation lines mentioned
+- ID labels in the exact format: `Label top left: ENV ID: 0XX.` and `Label top right: [LABEL] — [STATE].`
+- Closing anti-illustration disclaimer: `Hyper-realistic, no illustration, no cartoon, no 3D render.`
 
 ### Product reference sheet format
 
@@ -219,34 +207,16 @@ If the user specifically asks for the entity tracking logic or the reasoning, sh
 === CHARACTER REFERENCE SHEETS ===
 
 CHARACTER: The protagonist (late 20s, anniversary gift-buyer)
-VIEWS: 4
 
-Generate 4 reference images of the protagonist, maintaining identical appearance across all 4 images. Georgian man, late 20s, medium build, slightly tall and slim. Dark brown short hair, neatly cropped, slightly messy on top. Brown eyes, faint stubble beard along the jaw and chin. Light olive skin. Slightly thick eyebrows, calm symmetrical face. Clothing: dark navy wool single-breasted overcoat falling to mid-thigh, slim notch lapels, slightly wrinkled at the elbows; charcoal grey crew-neck wool sweater underneath; faded indigo straight-leg jeans; brown leather lace-up boots scuffed at the toes. Photorealistic, shot on Canon R5, professional studio lighting. Clean white background. Label top left: SUBJECT ID: 001.
-
-Image 1: Full body front view, neutral upright posture, arms at sides, looking directly at camera.
-Image 2: Full body side profile from the left, same neutral posture, full clothing visible.
-Image 3: Close-up portrait, three-quarter angle, neutral composed expression, sharp focus on face.
-Image 4: Close-up portrait, stressed searching expression — brow furrowed, jaw tight, eyes scanning as if looking for something he cannot find.
+Character reference sheet, professional studio format. Georgian man, late 20s, medium build, slightly tall and slim. Dark brown short hair, neatly cropped, slightly messy on top. Brown eyes, faint stubble beard along the jaw and chin. Light olive skin. Slightly thick eyebrows, calm symmetrical face, faint vertical line between the brows from worry. Full body front view on left side, full body side profile on right side. Multiple face close-ups in bottom half — front view, 3/4 angle view, and tense searching expression with eyes scanning. Color palette swatches shown on side. Clothing: dark navy wool single-breasted overcoat falling to mid-thigh, slim notch lapels, slightly wrinkled at the elbows; charcoal grey crew-neck wool sweater underneath; faded indigo straight-leg jeans; brown leather lace-up boots scuffed at the toes. Posture upright but slightly forward-leaning, shoulders carrying tension, arms slightly tense at sides. Expression strained, focused, lips pressed thin — the expression of a man under quiet pressure. Annotations pointing to hair style, eye color, overcoat fabric, stubble texture, scuffed boot toe. Clean white background. Photorealistic, shot on Canon R5, professional lighting. Label at top left: SUBJECT ID: 001. Label at top right: PROTAGONIST. Small color swatches showing: dark navy wool, charcoal grey, faded indigo, warm olive skin tone, dark brown.
 
 CHARACTER: The shopkeeper (mid-60s, watchful retail veteran)
-VIEWS: 4
 
-Generate 4 reference images of the shopkeeper, maintaining identical appearance across all 4 images. Georgian woman, mid-60s, medium build, soft and grounded. Silver-grey hair pulled back into a low loose bun, a few wisps loose at the temples. Hazel eyes, soft round face, gentle smile lines at the eyes and mouth. Pale skin lightly lined. Clothing: deep burgundy knit cardigan over a cream cotton blouse buttoned to the collar, thin gold chain at the neck, navy linen apron tied at the waist, knee-length charcoal wool skirt, opaque dark stockings, low-heeled black leather lace-up shoes. Photorealistic, shot on Canon R5, professional studio lighting. Clean white background. Label top left: SUBJECT ID: 002.
-
-Image 1: Full body front view, neutral upright posture, hands clasped lightly at hip height, looking at camera.
-Image 2: Full body side profile from the left, same posture, full clothing visible.
-Image 3: Close-up portrait, three-quarter angle, neutral composed expression.
-Image 4: Close-up portrait, gently watchful expression — eyes tracking off to the side, mouth in a faint neutral line, the look of someone quietly observing.
+Character reference sheet, professional studio format. Georgian woman, mid-60s, medium build, soft and grounded posture. Silver-grey hair pulled back into a low loose bun, a few wisps loose at the temples. Hazel eyes, soft round face, gentle smile lines at the eyes and mouth. Pale skin lightly lined. No facial hair. Full body front view on left side, full body side profile on right side. Multiple face close-ups in bottom half — front view, 3/4 angle view, and gentle watchful expression with eyes tracking off-camera. Color palette swatches shown on side. Clothing: deep burgundy knit cardigan over a cream cotton blouse buttoned to the collar, thin gold chain at the neck, navy linen apron tied at the waist, knee-length charcoal wool skirt, opaque dark stockings, low-heeled black leather lace-up shoes. Posture upright, weight grounded, hands clasped lightly at hip height. Expression gently watchful, neither stern nor warm. Annotations pointing to silver bun hairstyle, gold neck chain, apron fabric, cardigan knit pattern. Clean white background. Photorealistic, shot on Canon R5, professional lighting. Label at top left: SUBJECT ID: 002. Label at top right: SHOPKEEPER. Small color swatches showing: deep burgundy, cream, navy linen, charcoal grey, silver-grey hair.
 
 CHARACTER: The girlfriend (late 20s, the protagonist's partner)
-VIEWS: 4
 
-Generate 4 reference images of the girlfriend, maintaining identical appearance across all 4 images. Georgian woman, late 20s, slim build, slight and graceful. Long wavy dark brown hair falling past the shoulders, parted in the middle. Warm brown eyes, full lips, slightly heart-shaped face with high cheekbones, light olive skin. Clothing: oversized cream cable-knit pullover sweater falling to mid-thigh, sleeves slightly long over the hands; dark grey cotton leggings; barefoot. A delicate gold chain at the collarbone. Photorealistic, shot on Canon R5, professional studio lighting. Clean white background. Label top left: SUBJECT ID: 003.
-
-Image 1: Full body front view, relaxed posture, hands tucked partly into sweater sleeves, looking at camera.
-Image 2: Full body side profile from the left, same posture.
-Image 3: Close-up portrait, three-quarter angle, neutral open expression.
-Image 4: Close-up portrait, quiet realisation expression — eyes slightly widened, lips parted, a stillness before any reaction forms.
+Character reference sheet, professional studio format. Georgian woman, late 20s, slim build, slight and graceful. Long wavy dark brown hair falling past the shoulders, parted in the middle. Warm brown eyes, full lips, slightly heart-shaped face with high cheekbones, light olive skin. No facial hair. Full body front view on left side, full body side profile on right side. Multiple face close-ups in bottom half — front view, 3/4 angle view, and quiet realisation expression with eyes slightly widened and lips parted. Color palette swatches shown on side. Clothing: oversized cream cable-knit pullover sweater falling to mid-thigh with sleeves slightly long over the hands, dark grey cotton leggings, barefoot. A delicate gold chain at the collarbone. Posture relaxed, weight slightly on the left leg, hands tucked partly into the sweater sleeves. Expression open and slightly curious in baseline; the realisation study shows quiet recognition rather than shock. Annotations pointing to hair waves, sweater knit texture, gold chain, bare feet. Clean white background. Photorealistic, shot on Canon R5, professional lighting. Label at top left: SUBJECT ID: 003. Label at top right: GIRLFRIEND. Small color swatches showing: cream cable-knit, dark grey, warm olive skin tone, dark brown hair, gold.
 
 === PRODUCT REFERENCE SHEET ===
 
@@ -257,22 +227,12 @@ generate this product reference sheet for consistency
 === ENVIRONMENT REFERENCE SHEETS ===
 
 ENVIRONMENT: The gift shop (small Tbilisi-style independent retail interior)
-VIEWS: 3
 
-Generate 3 reference images of the gift shop, maintaining identical environmental details across all 3 images. Small Tbilisi-style independent gift shop interior. Cream-painted plaster walls with slight wear, warm honey-toned wooden shelves running floor to ceiling along three walls, pale grey wood-plank flooring slightly scuffed. One tall window at the front with thin gauze curtains, diffuse daylight mixed with warm overhead pendant bulbs. A wooden counter at the rear right with a small brass cash register and low stool. Shelves densely packed: paper-wrapped pillar candles, ceramic mugs in soft pastels, small framed botanical prints, woven baskets, glass vases of dried flowers, paper cards in standing displays, plush toys on upper shelves. A wooden stepladder leaning against one shelf. Trailing potted plant in a corner. Warm honey and amber colour tone throughout. Real interior photography, not illustrated, not drawn, not rendered. Photorealistic, shot on Canon R5, natural lighting. Label top left: ENV ID: 001. Hyper-realistic, no illustration, no cartoon, no 3D render.
-
-Image 1: Wide angle view showing the full shop — all three walls of shelves, the front window, the counter at the rear, and the floor from front to back.
-Image 2: Medium shot of the shelving and counter area, showing the density of goods on the shelves and the counter with the cash register.
-Image 3: Close-up detail shot of a cluster of plush toys on the upper shelf — the area the protagonist will reach toward in scene 2.
+Environment reference sheet, professional format. Small Tbilisi-style independent gift shop interior, photorealistic photography style. Real interior photography, not illustrated, not drawn, not rendered. Shot on Canon R5, natural lighting. Three panel layout: wide angle full room view top left, medium close shelving and counter shot top right, close-up of densely packed shelf goods bottom center. Cream-painted plaster walls with slight wear and uneven patches, warm honey-toned wooden shelves running floor to ceiling along three walls, pale grey wood-plank flooring slightly scuffed. One tall window at the front of the shop with thin gauze curtains, daylight bleeding through diffuse and soft, mixed with warm overhead pendant bulbs hanging on simple cords. A wooden counter at the rear right with a small brass cash register and a low stool. Shelves densely packed: paper-wrapped pillar candles, ceramic mugs in soft pastel colours, small framed botanical prints, woven baskets, glass vases of dried flowers, paper cards in standing displays, plush toys arranged in clusters on upper shelves. A wooden stepladder leaning against one shelf. A trailing potted plant in a corner. A small handwritten paper sign hanging from the ceiling, text blurred and unreadable, angled away from camera. Overall mood: cosy, slightly overstuffed, the lived-in feel of a small shop that has been in the same location for thirty years. Warm honey and amber color tone with cream highlights. Color swatches bottom right. Annotation lines pointing to honey-toned wood shelves, gauze curtain, paper card display, ceiling sign. Photorealistic interior photography. Label top left: ENV ID: 001. Label top right: GIFT SHOP — DAYTIME RETAIL STATE. Hyper-realistic, no illustration, no cartoon, no 3D render.
 
 ENVIRONMENT: The apartment (small Tbilisi-style apartment living room, evening)
-VIEWS: 3
 
-Generate 3 reference images of the apartment, maintaining identical environmental details across all 3 images. Small Tbilisi-style one-bedroom apartment living room, evening. Soft warm white painted concrete walls, pale honey-toned wood-plank flooring with a soft cream area rug centred under the sofa, low ceilings. One window on the left wall with thin curtains mostly drawn, cool blue evening light from outside mixed with warm amber light from a tall floor lamp beside the sofa. A sage-green velvet two-seater sofa against the far wall, cream throw blanket draped over one arm. Above the sofa, a single framed botanical print. A low wooden coffee table holding a stack of three books, a small ceramic mug, a single white candle. Behind the floor lamp, a wooden shelving unit with trailing plants and small books. Warm amber and honey tones throughout, cool blue from the window. Real interior photography, not illustrated, not drawn, not rendered. Photorealistic, shot on Canon R5, natural lighting. Label top left: ENV ID: 002. Hyper-realistic, no illustration, no cartoon, no 3D render.
-
-Image 1: Wide angle view showing the full living room — sofa, floor lamp, coffee table, window, and shelving unit all visible.
-Image 2: Medium shot of the sofa and the area in front of it, showing the sage-green sofa with the cream throw, the coffee table, and the warm lamp light.
-Image 3: Close-up detail shot of the coffee table — the stack of books, the ceramic mug, the white candle, in warm amber light.
+Environment reference sheet, professional format. Small Tbilisi-style one-bedroom apartment living room, photorealistic photography style. Real interior photography, not illustrated, not drawn, not rendered. Shot on Canon R5, natural lighting. Three panel layout: wide angle full living room view top left, medium sofa-and-side-table shot top right, close-up of coffee table detail with candle and books bottom center. Soft warm white painted concrete walls with very slight unevenness, pale honey-toned wood-plank flooring with a soft cream area rug centred under the sofa, low ceilings. One window on the left wall with thin curtains drawn most of the way, the cool blue evening light from outside diffuse and soft, mixed with warm practical lighting from a tall floor lamp with a warm amber bulb beside the sofa, and a kitchen pendant just out of frame casting an amber glow from the right. A sage-green velvet two-seater sofa against the far wall with a cream throw blanket draped over one arm. Above the sofa, a single framed botanical print. A low wooden coffee table to the right of the sofa holding a stack of three books, a small ceramic mug, a single white candle. To the left of the sofa, a tall floor lamp. Behind that, a wooden shelving unit holding a mix of trailing plants, framed photographs (faces angled or blurred, not identifiable), and small books. In the foreground, the edge of a small kitchen counter is visible with a wooden cutting board on it. Overall mood: intimate, lived-in, soft, the warmth of a small home at evening. Warm amber and honey tones throughout, balanced against the cool blue from the window. Color swatches bottom right. Annotation lines pointing to sage-green sofa, floor lamp, framed botanical print, coffee table candle, cream area rug. Photorealistic interior photography. Label top left: ENV ID: 002. Label top right: APARTMENT — EVENING DOMESTIC STATE. Hyper-realistic, no illustration, no cartoon, no 3D render.
 ```
 
 That's the bar. That is what the skill is for.
