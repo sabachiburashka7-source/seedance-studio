@@ -1239,6 +1239,7 @@ async function createAd() {
         });
         const ij = await safeJson(ir);
         if (ir.ok) {
+          if (ij.error) throw new Error(ij.error);
           if (ij.balance !== undefined) { userBalance = ij.balance; updateCreditsDisplay(); }
           return ij.url;
         }
@@ -1372,7 +1373,6 @@ async function createAd() {
         if (refMap['product']) {
           try { const resized = await resizeDataUrl(refMap['product'], 1024); const p = splitDataUrl(resized); if (p) sfInputs.push(p); } catch (_) {}
         }
-        if (sfInputs.length > 3) sfInputs.splice(3);
         if (sfInputs.length) adLog(`  → ${sfInputs.length} ref image(s) attached (resized to 1024px)`, 'info');
         const url = await genImage(sf.prompt, '9:16', sfInputs, `Scene ${i+1} start`, { outputFormat: 'png' });
         sceneStartImages.push(url);

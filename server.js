@@ -835,6 +835,13 @@ async function handleRequest(req, res) {
     }
     if (!prompt) return sendJSON(res, 400, { error: 'Prompt required' });
 
+    // Start streaming response immediately so Render's reverse proxy doesn't
+    // time out on long-running Seedream requests (e.g. 4 ref images take 60-90s).
+    // Periodic newline writes keep the connection alive; JSON.parse ignores them.
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    const keepAlive = setInterval(() => { try { res.write('\n'); } catch(_) {} }, 20000);
+    const endImg = obj => { clearInterval(keepAlive); res.end(JSON.stringify(obj)); };
+
     // Seedream 5.0: size must be WIDTHxHEIGHT, '2k', '3k', or '4k'
     // low = 2k output (~2048px), high = 3k output (~3072px)
     const SIZE_MAP_LOW  = { '1:1': '2048x2048', '16:9': '2688x1512', '9:16': '1512x2688', '4:3': '2560x1920', '3:4': '1920x2560', '21:9': '2688x1152' };
@@ -901,13 +908,13 @@ async function handleRequest(req, res) {
             continue;
           }
           const errMsg = result.body?.error?.message || 'Seedream rate limit exceeded — try again in a moment';
-          return sendJSON(res, 429, { error: errMsg });
+          return endImg({ error: errMsg });
         }
 
         if (result.status !== 200) {
           const errMsg = result.body?.error?.message || JSON.stringify(result.body).substring(0, 400);
           console.error('[seedream-image] error', result.status, errMsg);
-          return sendJSON(res, result.status >= 400 && result.status < 600 ? result.status : 500, { error: errMsg });
+          return endImg({ error: errMsg });
         }
 
         // Fetch a raw image URL and convert to base64 data URL
@@ -927,7 +934,7 @@ async function handleRequest(req, res) {
         };
 
         const items = result.body.data || [];
-        if (!items.length) return sendJSON(res, 500, { error: 'No image data returned by Seedream' });
+        if (!items.length) return endImg({ error: 'No image data returned by Seedream' });
 
         if (imgCount > 1) {
           // Batch mode — return all generated images
@@ -941,19 +948,19 @@ async function handleRequest(req, res) {
           const usr2 = db2.users[sess.userId];
           usr2.balance = Math.round(((usr2.balance ?? 0) - actualCost) * 100) / 100;
           saveDB(db2);
-          return sendJSON(res, 200, { urls: dataUrls, balance: usr2.balance });
+          return endImg({ urls: dataUrls, balance: usr2.balance });
         }
 
         // Single image mode
         const imgUrl = items[0].url || (items[0].b64_json && `data:image/jpeg;base64,${items[0].b64_json}`);
         const dataUrl = await fetchDataUrl(imgUrl);
-        if (!dataUrl) return sendJSON(res, 500, { error: 'No image data returned by Seedream' });
+        if (!dataUrl) return endImg({ error: 'No image data returned by Seedream' });
         console.log('[seedream-image] done, dataUrl length:', dataUrl.length);
         const db2  = loadDB();
         const usr2 = db2.users[sess.userId];
         usr2.balance = Math.round(((usr2.balance ?? 0) - imgCost) * 100) / 100;
         saveDB(db2);
-        return sendJSON(res, 200, { url: dataUrl, balance: usr2.balance });
+        return endImg({ url: dataUrl, balance: usr2.balance });
       } catch(e) {
         const isTimeout = e.message.includes('timed out');
         console.error(`[seedream-image] attempt ${attempt} error:`, e.message);
@@ -963,7 +970,7 @@ async function handleRequest(req, res) {
           await new Promise(r => setTimeout(r, waitSec * 1000));
           continue;
         }
-        return sendJSON(res, 502, { error: 'Seedream request failed: ' + e.message });
+        return endImg({ error: 'Seedream request failed: ' + e.message });
       }
     }
   }
