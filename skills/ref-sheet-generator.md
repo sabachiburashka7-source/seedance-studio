@@ -11,7 +11,7 @@ description: >
   annotation lines, photorealism markers ("Photorealistic, shot on Canon R5,
   professional lighting"), white background for characters, and explicit
   anti-illustration disclaimers for environments. The product entry is the
-  fixed one-liner "generate this product reference sheet for consistency"
+  fixed one-liner "generate this product multi angle reference sheet image highlighting details visually"
   because the downstream pipeline supplies the actual product photo to the
   image generator. This skill takes ONE input: the original CONCEPT + SCENES
   output from ad-idea-generator. Use this skill as the second stage of a
@@ -70,7 +70,7 @@ Each reference sheet is a single image containing multiple panels — full-body 
 The format has specific conventions: panel layout description, ID labels at top corners, color palette swatches, annotations pointing to features, white or appropriate background, explicit photorealism marker, and (for environments) an explicit anti-illustration disclaimer. These conventions are not optional — they are how the image generator knows to produce a clean composite reference rather than a stylized illustration.
 
 **4. The product reference is one literal line.**
-For the product, output exactly: `generate this product reference sheet for consistency`. Nothing more. The pipeline attaches the actual product photo to the image-generation call, so the generator works from the real object rather than a description.
+For the product, output exactly: `generate this product multi angle reference sheet image highlighting details visually`. Nothing more. The pipeline attaches the actual product photo to the image-generation call, so the generator works from the real object rather than a description.
 
 **5. ID numbering is strict and sequential.**
 Characters: `SUBJECT ID: 001`, `SUBJECT ID: 002`, `SUBJECT ID: 003`, in the order they first appear in the video.
@@ -151,7 +151,7 @@ Always exactly this, and nothing else:
 ```
 PRODUCT: [product name]
 
-generate this product reference sheet for consistency
+generate this product multi angle reference sheet image highlighting details visually
 ```
 
 The pipeline supplies the actual product photo to the image generator alongside this prompt. Do not describe the product. Do not write a panel layout. Do not write angles.
@@ -236,7 +236,7 @@ Character reference sheet, professional studio format. Georgian woman, late 20s,
 
 PRODUCT: The plush bear
 
-generate this product reference sheet for consistency
+generate this product multi angle reference sheet image highlighting details visually
 
 === ENVIRONMENT REFERENCE SHEETS ===
 

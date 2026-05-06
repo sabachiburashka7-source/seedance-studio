@@ -308,7 +308,7 @@ function parseRefSheetsOutput(text) {
   });
   const prodSec = (text.match(/===\s*PRODUCT REFERENCE SHEET\s*===([\s\S]*?)(?====\s*ENVIRONMENT)/) || [])[1] || '';
   const pnm = prodSec.match(/^PRODUCT:\s*(.+)/m);
-  if (pnm) entities.push({ type: 'product', name: pnm[1].trim(), subjectId: null, prompt: 'generate this product reference sheet for consistency' });
+  if (pnm) entities.push({ type: 'product', name: pnm[1].trim(), subjectId: null, prompt: 'generate this product multi angle reference sheet image highlighting details visually' });
   const envSec = (text.match(/===\s*ENVIRONMENT REFERENCE SHEETS\s*===([\s\S]*)$/) || [])[1] || '';
   envSec.split(/(?=^ENVIRONMENT:)/m).filter(b => b.trim().startsWith('ENVIRONMENT:')).forEach(block => {
     const nm = block.match(/^ENVIRONMENT:\s*(.+)/m);
