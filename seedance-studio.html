@@ -1394,7 +1394,7 @@ async function createAd() {
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
       body: JSON.stringify({ ideaText, refSheetsText, startFramesText })
     });
-    const j4 = await r4.json();
+    const j4 = await safeJson(r4);
     if (!r4.ok) throw new Error(j4.error || 'Video prompts failed');
     if (j4.balance !== undefined) { userBalance = j4.balance; updateCreditsDisplay(); }
     const scenes = j4.scenes || [];
