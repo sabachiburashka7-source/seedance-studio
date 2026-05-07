@@ -936,7 +936,7 @@ async function handleRequest(req, res) {
               catch(e) { reject(new Error(`OpenAI non-JSON response (HTTP ${resp.statusCode}): ${raw.substring(0, 200)}`)); }
             });
           });
-          r.setTimeout(120000, () => { r.destroy(); reject(new Error('OpenAI request timed out after 120s')); });
+          r.setTimeout(240000, () => { r.destroy(); reject(new Error('OpenAI request timed out after 240s')); });
           r.on('error', reject);
           r.write(gptBody); r.end();
         });
