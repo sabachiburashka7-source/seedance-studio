@@ -1536,9 +1536,20 @@ function pollAd(job) {
   });
 }
 
-function finishAd(job, url, err) {
+async function finishAd(job, url, err) {
   jobs = jobs.filter(j => j.id !== job.id);
   if (err) { toast('Scene failed: ' + friendlyErr(err), 'err'); renderLib(); return; }
+  if (url) {
+    try {
+      const r = await fetch('/api/store-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+        body: JSON.stringify({ video_url: url })
+      });
+      const j = await r.json();
+      if (j.url) url = j.url;
+    } catch(e) { console.warn('[store-video] failed:', e.message); }
+  }
   const item = { id: job.id, prompt: job.prompt, url, res: job.res, ratio: job.ratio,
     dur: job.dur, audio: false, model: job.model, ts: job.ts, done: Date.now(), folder: job.folder, upscaling: !!url };
   lib.unshift(item);
@@ -2064,9 +2075,20 @@ function friendlyErr(msg) {
 }
 
 
-function finish(job, url, err) {
+async function finish(job, url, err) {
   jobs = jobs.filter(j => j.id !== job.id);
   if (err) { toast(friendlyErr(err), 'err'); renderLib(); return; }
+  if (url) {
+    try {
+      const r = await fetch('/api/store-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+        body: JSON.stringify({ video_url: url })
+      });
+      const j = await r.json();
+      if (j.url) url = j.url;
+    } catch(e) { console.warn('[store-video] failed:', e.message); }
+  }
   const item = { id: job.id, prompt: job.prompt, url, res: job.res, ratio: job.ratio,
     dur: job.dur, audio: job.audio, model: job.model, ts: job.ts, done: Date.now(), upscaling: !!url };
   lib.unshift(item);

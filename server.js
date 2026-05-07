@@ -31,6 +31,12 @@ const APP_URL          = process.env.APP_URL              || 'http://localhost:3
 const FAL_KEY          = process.env.FAL_API_KEY          || '';
 const BYTEPLUS_API_KEY = process.env.BYTEPLUS_API_KEY     || '';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY   || '';
+const R2_ACCOUNT_ID      = process.env.R2_ACCOUNT_ID        || '';
+const R2_ACCESS_KEY_ID   = process.env.R2_ACCESS_KEY_ID     || '';
+const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || '';
+const R2_BUCKET_NAME     = process.env.R2_BUCKET_NAME       || '';
+const R2_PUBLIC_URL      = (process.env.R2_PUBLIC_URL       || '').replace(/\/$/, '');
+const R2_ENABLED         = !!(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET_NAME && R2_PUBLIC_URL);
 
 // Email verification fires whenever any email provider is configured.
 // (Was previously gated on RESEND_KEY only — silently disabled verification
@@ -43,6 +49,60 @@ const PROMO_CODES = {
   'SEED50A': 50, 'SEED50B': 50, 'SEED50C': 50,
   'SEED100A': 100, 'SEED100B': 100, 'SEED100C': 100,
 };
+
+// ── Cloudflare R2 upload (AWS SigV4, no SDK) ─────────────────────────────────
+function downloadBuffer(url) {
+  return new Promise((resolve, reject) => {
+    const mod = url.startsWith('https') ? https : http;
+    const req = mod.get(url, resp => {
+      if (resp.statusCode >= 300 && resp.statusCode < 400 && resp.headers.location)
+        return downloadBuffer(resp.headers.location).then(resolve).catch(reject);
+      const ch = [];
+      resp.on('data', c => ch.push(c));
+      resp.on('end', () => resolve(Buffer.concat(ch)));
+      resp.on('error', reject);
+    });
+    req.setTimeout(120000, () => { req.destroy(); reject(new Error('Download timed out')); });
+    req.on('error', reject);
+  });
+}
+
+async function uploadToR2(buffer, key, contentType) {
+  const host = `${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
+  const now  = new Date();
+  const pad  = n => String(n).padStart(2, '0');
+  const amzDate   = now.getUTCFullYear() + pad(now.getUTCMonth()+1) + pad(now.getUTCDate()) + 'T' + pad(now.getUTCHours()) + pad(now.getUTCMinutes()) + pad(now.getUTCSeconds()) + 'Z';
+  const dateStamp = amzDate.slice(0, 8);
+  const payloadHash = crypto.createHash('sha256').update(buffer).digest('hex');
+  const canonicalUri = `/${R2_BUCKET_NAME}/${key}`;
+  const canonicalHeaders = `content-type:${contentType}\nhost:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
+  const signedHeaders = 'content-type;host;x-amz-content-sha256;x-amz-date';
+  const canonicalRequest = ['PUT', canonicalUri, '', canonicalHeaders, signedHeaders, payloadHash].join('\n');
+  const credentialScope = `${dateStamp}/auto/s3/aws4_request`;
+  const stringToSign = ['AWS4-HMAC-SHA256', amzDate, credentialScope, crypto.createHash('sha256').update(canonicalRequest).digest('hex')].join('\n');
+  const hmac = (k, d) => crypto.createHmac('sha256', k).update(d).digest();
+  const signingKey = hmac(hmac(hmac(hmac('AWS4' + R2_SECRET_ACCESS_KEY, dateStamp), 'auto'), 's3'), 'aws4_request');
+  const signature  = crypto.createHmac('sha256', signingKey).update(stringToSign).digest('hex');
+  const authorization = `AWS4-HMAC-SHA256 Credential=${R2_ACCESS_KEY_ID}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  return new Promise((resolve, reject) => {
+    const opts = {
+      hostname: host, port: 443, path: canonicalUri, method: 'PUT',
+      headers: { 'Content-Type': contentType, 'Content-Length': buffer.length,
+        'x-amz-date': amzDate, 'x-amz-content-sha256': payloadHash, 'Authorization': authorization }
+    };
+    const r = https.request(opts, resp => {
+      const ch = [];
+      resp.on('data', c => ch.push(c));
+      resp.on('end', () => {
+        if (resp.statusCode >= 200 && resp.statusCode < 300) resolve(`${R2_PUBLIC_URL}/${key}`);
+        else reject(new Error(`R2 upload HTTP ${resp.statusCode}: ${Buffer.concat(ch).toString().substring(0, 200)}`));
+      });
+    });
+    r.setTimeout(120000, () => { r.destroy(); reject(new Error('R2 upload timed out')); });
+    r.on('error', reject);
+    r.write(buffer); r.end();
+  });
+}
 
 // ── In-memory DB cache ────────────────────────────────────────────────────────
 let dbCache = { users: {}, emailIndex: {}, sessions: {}, library: {}, verifyCodes: {}, resetCodes: {}, redeemedPromos: {} };
@@ -918,18 +978,23 @@ async function handleRequest(req, res) {
           return endImg({ error: errMsg });
         }
 
-        // Fetch a raw image URL and convert to base64 data URL
+        // Fetch image URL → upload to R2 (permanent) or fall back to base64
         const fetchDataUrl = async (imgUrl) => {
           if (!imgUrl) return null;
           if (!imgUrl.startsWith('http')) return imgUrl;
+          const mime = outputFormat === 'png' ? 'image/png' : 'image/jpeg';
           try {
-            const imgBuf = await new Promise((resolve, reject) => {
-              https.get(imgUrl, r => { const c = []; r.on('data', d => c.push(d)); r.on('end', () => resolve(Buffer.concat(c))); r.on('error', reject); }).on('error', reject);
-            });
-            const mime = outputFormat === 'png' ? 'image/png' : 'image/jpeg';
+            const imgBuf = await downloadBuffer(imgUrl);
+            if (R2_ENABLED) {
+              const ext = outputFormat === 'png' ? 'png' : 'jpg';
+              const key = `img/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+              const r2Url = await uploadToR2(imgBuf, key, mime);
+              console.log('[seedream-image] uploaded to R2:', key);
+              return r2Url;
+            }
             return `data:${mime};base64,${imgBuf.toString('base64')}`;
           } catch (fe) {
-            console.warn('[seedream-image] could not fetch image URL:', fe.message);
+            console.warn('[seedream-image] could not fetch/upload image URL:', fe.message);
             return imgUrl;
           }
         };
@@ -1186,6 +1251,17 @@ async function handleRequest(req, res) {
       const videoUrl = resultRes.body?.video?.url || resultRes.body?.output?.video?.url || '';
       if (videoUrl) {
         console.log('[fal] upscale complete, url:', videoUrl.substring(0, 80));
+        if (R2_ENABLED) {
+          try {
+            const buf = await downloadBuffer(videoUrl);
+            const key = `vid/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-upscaled.mp4`;
+            const r2Url = await uploadToR2(buf, key, 'video/mp4');
+            console.log('[fal] uploaded upscaled video to R2:', key);
+            return sendJSON(res, 200, { status: 'COMPLETED', url: r2Url });
+          } catch(re) {
+            console.warn('[fal] R2 upload failed, returning Fal URL:', re.message);
+          }
+        }
         return sendJSON(res, 200, { status: 'COMPLETED', url: videoUrl });
       }
       if (rawStatus === 'COMPLETED' || rawStatus === 'OK' || rawStatus === 'SUCCESS') {
@@ -1195,6 +1271,25 @@ async function handleRequest(req, res) {
     } catch(e) {
       console.error('[fal] status error:', e.message);
       return sendJSON(res, 502, { error: 'Status check failed: ' + e.message });
+    }
+  }
+
+  // ── Store video to R2 ────────────────────────────────────────────────────
+  if (url === '/api/store-video' && method === 'POST') {
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
+    const { video_url } = await readBody(req);
+    if (!video_url) return sendJSON(res, 400, { error: 'video_url required' });
+    if (!R2_ENABLED) return sendJSON(res, 200, { url: video_url });
+    try {
+      const buf = await downloadBuffer(video_url);
+      const key = `vid/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.mp4`;
+      const r2Url = await uploadToR2(buf, key, 'video/mp4');
+      console.log('[store-video] uploaded to R2:', key);
+      return sendJSON(res, 200, { url: r2Url });
+    } catch(e) {
+      console.error('[store-video] R2 upload failed:', e.message);
+      return sendJSON(res, 200, { url: video_url });
     }
   }
 
