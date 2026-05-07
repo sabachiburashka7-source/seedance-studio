@@ -929,18 +929,44 @@ async function handleRequest(req, res) {
         addField('size', gptSize);
         addField('quality', gptQuality);
         addField('n', '1');
+        addField('response_format', 'b64_json');
+        let validRefCount = 0;
         for (let idx = 0; idx < refImagesList.length; idx++) {
           const img = refImagesList[idx];
-          const ext = img.mime === 'image/png' ? 'png' : 'jpeg';
-          chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="image[]"; filename="ref${idx}.${ext}"\r\nContent-Type: ${img.mime || 'image/jpeg'}\r\n\r\n`));
+          // Guard: if base64 is actually an HTTP URL (fetchDataUrl fallback), skip it
+          if (!img.base64 || img.base64.startsWith('http') || img.base64.startsWith('data:')) {
+            console.warn('[gpt-image] skipping ref image with invalid base64 (looks like URL or empty)');
+            continue;
+          }
+          // Verify JPEG/PNG magic bytes to catch corrupted data early
+          const firstBytes = Buffer.from(img.base64.substring(0, 8), 'base64');
+          const isJpeg = firstBytes[0] === 0xFF && firstBytes[1] === 0xD8;
+          const isPng  = firstBytes[0] === 0x89 && firstBytes[1] === 0x50;
+          if (!isJpeg && !isPng) {
+            console.warn('[gpt-image] skipping ref image - not valid JPEG/PNG (first bytes:', firstBytes.slice(0,4).toString('hex'), ')');
+            continue;
+          }
+          const mime = isJpeg ? 'image/jpeg' : 'image/png';
+          const ext  = isJpeg ? 'jpeg' : 'png';
+          chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="image[]"; filename="ref${validRefCount}.${ext}"\r\nContent-Type: ${mime}\r\n\r\n`));
           chunks.push(Buffer.from(img.base64, 'base64'));
           chunks.push(Buffer.from('\r\n'));
+          validRefCount++;
         }
-        chunks.push(Buffer.from(`--${boundary}--\r\n`));
-        gptBody = Buffer.concat(chunks);
-        gptPath = '/v1/images/edits';
-        gptReqHeaders = { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': gptBody.length, 'Authorization': 'Bearer ' + OPENAI_API_KEY };
-        console.log('[gpt-image] editing with', refImagesList.length, 'ref(s):', gptSize, gptQuality, prompt.substring(0, 80));
+        if (validRefCount === 0) {
+          // All refs were invalid — fall back to text-only generation
+          console.warn('[gpt-image] all ref images were invalid, falling back to text-only generation');
+          gptBody = Buffer.from(JSON.stringify({ model: 'gpt-image-2', prompt, size: gptSize, quality: gptQuality, output_format: 'jpeg', n: 1 }));
+          gptPath = '/v1/images/generations';
+          gptReqHeaders = { 'Content-Type': 'application/json', 'Content-Length': gptBody.length, 'Authorization': 'Bearer ' + OPENAI_API_KEY };
+          console.log('[gpt-image] generating (text-only fallback):', gptSize, gptQuality, prompt.substring(0, 80));
+        } else {
+          chunks.push(Buffer.from(`--${boundary}--\r\n`));
+          gptBody = Buffer.concat(chunks);
+          gptPath = '/v1/images/edits';
+          gptReqHeaders = { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': gptBody.length, 'Authorization': 'Bearer ' + OPENAI_API_KEY };
+          console.log('[gpt-image] editing with', validRefCount, 'ref(s):', gptSize, gptQuality, prompt.substring(0, 80));
+        }
       } else {
         // Text-only: /v1/images/generations
         gptBody = Buffer.from(JSON.stringify({ model: 'gpt-image-2', prompt, size: gptSize, quality: gptQuality, output_format: 'jpeg', n: 1 }));

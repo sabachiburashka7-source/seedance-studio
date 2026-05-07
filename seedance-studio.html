@@ -1373,28 +1373,29 @@ async function createAd() {
       try {
         const sfInputs = [];
         const sfAttachedKeys = new Set();
+        const safeRefInput = async (url, key) => {
+          if (!url || !url.startsWith('data:')) return; // skip HTTP/empty URLs — would corrupt multipart
+          try {
+            const resized = await resizeDataUrl(url, 1024);
+            if (!resized || !resized.startsWith('data:')) return; // canvas fell back to non-data URL
+            const p = splitDataUrl(resized);
+            if (p && p.base64) { sfInputs.push(p); sfAttachedKeys.add(key); }
+          } catch (_) {}
+        };
         for (const sid of (sf.subjectIds || [])) {
           const k = 'SUBJECT_' + sid;
-          if (refMap[k]) {
-            try { const resized = await resizeDataUrl(refMap[k], 1024); const p = splitDataUrl(resized); if (p) { sfInputs.push(p); sfAttachedKeys.add(k); } } catch (_) {}
-          }
+          await safeRefInput(refMap[k], k);
         }
         for (const eid of (sf.envIds || [])) {
           const k = 'ENV_' + eid;
-          if (refMap[k]) {
-            try { const resized = await resizeDataUrl(refMap[k], 1024); const p = splitDataUrl(resized); if (p) { sfInputs.push(p); sfAttachedKeys.add(k); } } catch (_) {}
-          }
+          await safeRefInput(refMap[k], k);
         }
-        if (refMap['product'] && /product/i.test(sf.prompt)) {
-          try { const resized = await resizeDataUrl(refMap['product'], 1024); const p = splitDataUrl(resized); if (p) { sfInputs.push(p); sfAttachedKeys.add('product'); } } catch (_) {}
-        }
+        if (/product/i.test(sf.prompt)) await safeRefInput(refMap['product'], 'product');
         // Fallback: attach any other refs mentioned by key in the prompt text
         const sfPromptLower = sf.prompt.toLowerCase();
         for (const [refKey, refUrl] of Object.entries(refMap)) {
-          if (!refUrl || sfAttachedKeys.has(refKey)) continue;
-          if (sfPromptLower.includes(refKey.toLowerCase())) {
-            try { const resized = await resizeDataUrl(refUrl, 1024); const p = splitDataUrl(resized); if (p) { sfInputs.push(p); sfAttachedKeys.add(refKey); } } catch (_) {}
-          }
+          if (sfAttachedKeys.has(refKey)) continue;
+          if (sfPromptLower.includes(refKey.toLowerCase())) await safeRefInput(refUrl, refKey);
         }
         if (sfInputs.length) adLog(`  → ${sfInputs.length} ref image(s) attached: ${[...sfAttachedKeys].join(', ')}`, 'info');
         const url = await genImage(sf.prompt, '9:16', sfInputs, `Scene ${i+1} start`, { model: 'gpt-image-2', quality: 'low' });
