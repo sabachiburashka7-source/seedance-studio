@@ -879,10 +879,28 @@ async function handleRequest(req, res) {
   // ── Seedream image generation (BytePlus Ark) ─────────────────────────────
   if (url === '/api/generate-image' && method === 'POST') {
     const { prompt, ratio, quality, imageBase64, imageMime, images, outputFormat, batchCount, model: reqModel } = await readBody(req); // must read body before any early return
-    // Normalize to a list of {base64, mime}: legacy single-image fields still supported
-    const refImagesList = Array.isArray(images) && images.length
-      ? images.filter(i => i && i.base64).map(i => ({ base64: i.base64, mime: i.mime || 'image/jpeg' }))
-      : (imageBase64 ? [{ base64: imageBase64, mime: imageMime || 'image/jpeg' }] : []);
+    // Normalize to a list of {base64, mime}: legacy single-image fields still supported.
+    // Items may also arrive as { url } (R2/HTTPS) — we fetch and base64-encode server-side
+    // so client doesn't have to worry about CORS on R2 URLs.
+    let refImagesList = Array.isArray(images) && images.length
+      ? images.filter(i => i && (i.base64 || i.url)).map(i => ({ base64: i.base64 || null, mime: i.mime || 'image/jpeg', url: i.url || null }))
+      : (imageBase64 ? [{ base64: imageBase64, mime: imageMime || 'image/jpeg', url: null }] : []);
+    for (const img of refImagesList) {
+      if (!img.base64 && img.url) {
+        try {
+          const buf = await downloadBuffer(img.url);
+          img.base64 = buf.toString('base64');
+          if (!img.mime || img.mime === 'image/jpeg') {
+            const lower = img.url.toLowerCase();
+            if (lower.includes('.png')) img.mime = 'image/png';
+            else if (lower.includes('.webp')) img.mime = 'image/webp';
+          }
+        } catch (e) {
+          console.warn('[generate-image] failed to fetch ref URL:', img.url, e.message);
+        }
+      }
+    }
+    refImagesList = refImagesList.filter(i => i.base64);
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to generate images.' });
 

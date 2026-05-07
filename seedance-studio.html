@@ -1585,9 +1585,18 @@ async function createAd() {
         const prevAttached = [];
         for (const [refKey, refUrl] of Object.entries(refMap)) {
           if (!refUrl) continue;
-          if (promptLower.includes(refKey.toLowerCase())) {
-            try { const resized = await resizeDataUrl(refUrl, 1024); const p = splitDataUrl(resized); if (p) { inputImages.push(p); prevAttached.push(refKey); } } catch (_) {}
-          }
+          if (!promptLower.includes(refKey.toLowerCase())) continue;
+          try {
+            if (refUrl.startsWith('data:')) {
+              const resized = await resizeDataUrl(refUrl, 1024);
+              if (resized && resized.startsWith('data:')) {
+                const p = splitDataUrl(resized);
+                if (p) { inputImages.push(p); prevAttached.push(refKey); }
+              }
+            } else if (/^https?:\/\//i.test(refUrl)) {
+              inputImages.push({ url: refUrl }); prevAttached.push(refKey);
+            }
+          } catch (_) {}
         }
         if (prevAttached.length) adLog(`  → ${prevAttached.length} prev ref(s) attached: ${prevAttached.join(', ')}`, 'info');
         const ratio = entity.type === 'environment' ? '16:9' : '1:1';
@@ -1635,13 +1644,20 @@ async function createAd() {
         const sfInputs = [];
         const sfAttachedKeys = new Set();
         const safeRefInput = async (url, key) => {
-          if (!url || !url.startsWith('data:')) return; // skip HTTP/empty URLs — would corrupt multipart
-          try {
-            const resized = await resizeDataUrl(url, 1024);
-            if (!resized || !resized.startsWith('data:')) return; // canvas fell back to non-data URL
-            const p = splitDataUrl(resized);
-            if (p && p.base64) { sfInputs.push(p); sfAttachedKeys.add(key); }
-          } catch (_) {}
+          if (!url) return;
+          if (url.startsWith('data:')) {
+            // Local data URL: resize + split before sending (saves upload bandwidth)
+            try {
+              const resized = await resizeDataUrl(url, 1024);
+              if (!resized || !resized.startsWith('data:')) return;
+              const p = splitDataUrl(resized);
+              if (p && p.base64) { sfInputs.push(p); sfAttachedKeys.add(key); }
+            } catch (_) {}
+          } else if (/^https?:\/\//i.test(url)) {
+            // HTTPS ref URL (R2): pass through; server fetches and base64-encodes
+            sfInputs.push({ url });
+            sfAttachedKeys.add(key);
+          }
         };
         for (const sid of (sf.subjectIds || [])) {
           const k = 'SUBJECT_' + sid;
