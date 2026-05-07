@@ -917,103 +917,70 @@ async function handleRequest(req, res) {
       const gptSize    = GPT_SIZE_MAP[ratio] || '1024x1024';
       const gptQuality = quality === 'low' ? 'low' : 'high';
 
-      let gptBody, gptPath, gptReqHeaders;
-      if (refImagesList.length > 0) {
-        // Use /v1/images/edits (multipart) so ref images are actually applied
-        const boundary = '----FormBoundary' + crypto.randomBytes(8).toString('hex');
-        const chunks = [];
-        const addField = (name, value) =>
-          chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
-        addField('model', 'gpt-image-2');
-        addField('prompt', prompt);
-        addField('size', gptSize);
-        addField('quality', gptQuality);
-        addField('n', '1');
-        addField('response_format', 'b64_json');
-        let validRefCount = 0;
-        for (let idx = 0; idx < refImagesList.length; idx++) {
-          const img = refImagesList[idx];
-          // Guard: if base64 is actually an HTTP URL (fetchDataUrl fallback), skip it
-          if (!img.base64 || img.base64.startsWith('http') || img.base64.startsWith('data:')) {
-            console.warn('[gpt-image] skipping ref image with invalid base64 (looks like URL or empty)');
-            continue;
-          }
-          // Verify JPEG/PNG magic bytes to catch corrupted data early
-          const firstBytes = Buffer.from(img.base64.substring(0, 8), 'base64');
-          const isJpeg = firstBytes[0] === 0xFF && firstBytes[1] === 0xD8;
-          const isPng  = firstBytes[0] === 0x89 && firstBytes[1] === 0x50;
-          if (!isJpeg && !isPng) {
-            console.warn('[gpt-image] skipping ref image - not valid JPEG/PNG (first bytes:', firstBytes.slice(0,4).toString('hex'), ')');
-            continue;
-          }
-          const mime = isJpeg ? 'image/jpeg' : 'image/png';
-          const ext  = isJpeg ? 'jpeg' : 'png';
-          chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="image[]"; filename="ref${validRefCount}.${ext}"\r\nContent-Type: ${mime}\r\n\r\n`));
-          chunks.push(Buffer.from(img.base64, 'base64'));
-          chunks.push(Buffer.from('\r\n'));
-          validRefCount++;
-        }
-        if (validRefCount === 0) {
-          // All refs were invalid — fall back to text-only generation
-          console.warn('[gpt-image] all ref images were invalid, falling back to text-only generation');
-          gptBody = Buffer.from(JSON.stringify({ model: 'gpt-image-2', prompt, size: gptSize, quality: gptQuality, output_format: 'jpeg', n: 1 }));
-          gptPath = '/v1/images/generations';
-          gptReqHeaders = { 'Content-Type': 'application/json', 'Content-Length': gptBody.length, 'Authorization': 'Bearer ' + OPENAI_API_KEY };
-          console.log('[gpt-image] generating (text-only fallback):', gptSize, gptQuality, prompt.substring(0, 80));
-        } else {
-          chunks.push(Buffer.from(`--${boundary}--\r\n`));
-          gptBody = Buffer.concat(chunks);
-          gptPath = '/v1/images/edits';
-          gptReqHeaders = { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': gptBody.length, 'Authorization': 'Bearer ' + OPENAI_API_KEY };
-          console.log('[gpt-image] editing with', validRefCount, 'ref(s):', gptSize, gptQuality, prompt.substring(0, 80));
-        }
-      } else {
-        // Text-only: /v1/images/generations
-        gptBody = Buffer.from(JSON.stringify({ model: 'gpt-image-2', prompt, size: gptSize, quality: gptQuality, output_format: 'jpeg', n: 1 }));
-        gptPath = '/v1/images/generations';
-        gptReqHeaders = { 'Content-Type': 'application/json', 'Content-Length': gptBody.length, 'Authorization': 'Bearer ' + OPENAI_API_KEY };
-        console.log('[gpt-image] generating:', gptSize, gptQuality, prompt.substring(0, 80));
-      }
-
       try {
-        const gptResult = await new Promise((resolve, reject) => {
-          const opts = {
-            hostname: 'api.openai.com', port: 443,
-            path: gptPath, method: 'POST',
-            headers: gptReqHeaders
-          };
-          const r = https.request(opts, resp => {
-            const ch = [];
-            resp.on('data', c => ch.push(c));
-            resp.on('end', () => {
-              const raw = Buffer.concat(ch).toString();
-              if (!raw) { reject(new Error(`OpenAI returned empty body (HTTP ${resp.statusCode})`)); return; }
-              try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
-              catch(e) { reject(new Error(`OpenAI non-JSON response (HTTP ${resp.statusCode}): ${raw.substring(0, 200)}`)); }
-            });
-          });
-          r.setTimeout(240000, () => { r.destroy(); reject(new Error('OpenAI request timed out after 240s')); });
-          r.on('error', reject);
-          r.write(gptBody); r.end();
-        });
+        let gptResp;
 
-        if (gptResult.status !== 200) {
-          const errMsg = gptResult.body?.error?.message || JSON.stringify(gptResult.body).substring(0, 400);
-          console.error('[gpt-image] error', gptResult.status, errMsg);
+        if (refImagesList.length > 0) {
+          // Use /v1/images/edits with native FormData — avoids manual multipart bugs
+          const form = new FormData();
+          form.append('model', 'gpt-image-2');
+          form.append('prompt', prompt);
+          form.append('size', gptSize);
+          form.append('quality', gptQuality);
+          form.append('n', '1');
+          let addedRefs = 0;
+          for (let idx = 0; idx < refImagesList.length; idx++) {
+            const img = refImagesList[idx];
+            if (!img.base64) continue;
+            const imgBuf = Buffer.from(img.base64, 'base64');
+            const mime   = img.mime || 'image/jpeg';
+            const ext    = mime === 'image/png' ? 'png' : 'jpeg';
+            form.append('image[]', new Blob([imgBuf], { type: mime }), `ref${idx}.${ext}`);
+            addedRefs++;
+          }
+          console.log('[gpt-image] editing with', addedRefs, 'ref(s):', gptSize, gptQuality, prompt.substring(0, 80));
+          gptResp = await fetch('https://api.openai.com/v1/images/edits', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + OPENAI_API_KEY },
+            body: form,
+            signal: AbortSignal.timeout(240000)
+          });
+        } else {
+          // Text-only: /v1/images/generations
+          console.log('[gpt-image] generating:', gptSize, gptQuality, prompt.substring(0, 80));
+          gptResp = await fetch('https://api.openai.com/v1/images/generations', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + OPENAI_API_KEY, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'gpt-image-2', prompt, size: gptSize, quality: gptQuality, output_format: 'jpeg', n: 1 }),
+            signal: AbortSignal.timeout(240000)
+          });
+        }
+
+        const gptJson = await gptResp.json();
+        if (!gptResp.ok) {
+          const errMsg = gptJson?.error?.message || JSON.stringify(gptJson).substring(0, 400);
+          console.error('[gpt-image] error', gptResp.status, errMsg);
           return endImg({ error: errMsg });
         }
 
-        const b64 = gptResult.body?.data?.[0]?.b64_json;
-        if (!b64) return endImg({ error: 'No image data returned by OpenAI' });
+        // Handle both b64_json and url response formats
+        const item   = gptJson?.data?.[0];
+        const b64    = item?.b64_json;
+        const imgUrl = item?.url;
+        if (!b64 && !imgUrl) return endImg({ error: 'No image data returned by OpenAI' });
 
         let finalUrl;
-        if (R2_ENABLED) {
+        if (b64) {
           const imgBuf = Buffer.from(b64, 'base64');
-          const key = `img/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.jpg`;
-          finalUrl = await uploadToR2(imgBuf, key, 'image/jpeg');
-          console.log('[gpt-image] uploaded to R2:', key);
+          if (R2_ENABLED) {
+            const key = `img/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.jpg`;
+            finalUrl = await uploadToR2(imgBuf, key, 'image/jpeg');
+            console.log('[gpt-image] uploaded to R2:', key);
+          } else {
+            finalUrl = `data:image/jpeg;base64,${b64}`;
+          }
         } else {
-          finalUrl = `data:image/jpeg;base64,${b64}`;
+          finalUrl = R2_ENABLED ? await uploadToR2(await downloadBuffer(imgUrl), `img/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.jpg`, 'image/jpeg') : imgUrl;
         }
 
         const db2 = loadDB();
