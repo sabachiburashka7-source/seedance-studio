@@ -1236,7 +1236,7 @@ async function createAd() {
         const ir = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-          body: JSON.stringify({ prompt, ratio, quality: 'high', images: inputImages, outputFormat: opts.outputFormat, model: opts.model })
+          body: JSON.stringify({ prompt, ratio, quality: opts.quality || 'high', images: inputImages, outputFormat: opts.outputFormat, model: opts.model })
         });
         const ij = await safeJson(ir);
         if (ir.ok) {
@@ -1397,7 +1397,7 @@ async function createAd() {
           }
         }
         if (sfInputs.length) adLog(`  → ${sfInputs.length} ref image(s) attached: ${[...sfAttachedKeys].join(', ')}`, 'info');
-        const url = await genImage(sf.prompt, '9:16', sfInputs, `Scene ${i+1} start`, { model: 'gpt-image-2' });
+        const url = await genImage(sf.prompt, '9:16', sfInputs, `Scene ${i+1} start`, { model: 'gpt-image-2', quality: 'low' });
         sceneStartImages.push(url);
         lib.unshift({ id: 'start-' + Date.now() + '-' + i, prompt: sf.prompt, url,
           ratio: '9:16', model: 'gpt-image-2', ts: Date.now(), done: Date.now(),
