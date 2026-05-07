@@ -802,7 +802,8 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         <div class="setting-group">
           <span class="setting-label">Model</span>
           <div class="btn-group" id="img-model-group">
-            <button class="bg-btn active" data-value="seedream-5-0-lite" onclick="onBtnGroup(this,'img-model-group')">Seedream 5.0 Lite</button>
+            <button class="bg-btn active" data-value="seedream-5-0-lite" onclick="onBtnGroup(this,'img-model-group');calcImgCost()">Seedream 5.0</button>
+            <button class="bg-btn" data-value="gpt-image-2" onclick="onBtnGroup(this,'img-model-group');calcImgCost()">GPT Image 2</button>
           </div>
         </div>
 
@@ -1665,8 +1666,11 @@ function calcCost() {
   document.getElementById('cost-mode').textContent = `Standard · ${mode} · ${rateLabel}/M tokens`;
 }
 function calcImgCost() {
-  const q   = getBtnGroupValue('img-quality-group') || 'high';
-  const usd = q === 'low' ? 0.02 : 0.08;
+  const q = getBtnGroupValue('img-quality-group') || 'high';
+  const m = getBtnGroupValue('img-model-group')   || 'seedream-5-0-lite';
+  const usd = m === 'gpt-image-2'
+    ? (q === 'low' ? 0.02 : 0.19)
+    : (q === 'low' ? 0.02 : 0.08);
   document.getElementById('img-cost-val').textContent  = '$' + usd.toFixed(2);
   document.getElementById('img-cost-mode').textContent = q === 'low' ? 'Low quality' : 'High quality';
 }
@@ -2215,13 +2219,14 @@ async function doGenerateImage() {
 
   const ratio   = getBtnGroupValue('img-ratio-group')   || '1:1';
   const quality = getBtnGroupValue('img-quality-group') || 'high';
+  const model   = getBtnGroupValue('img-model-group')   || 'seedream-5-0-lite';
 
   const btn = document.getElementById('img-gen-btn');
   btn.disabled = true; btn.textContent = 'Generating...';
-  showImgProg('Sending to Seedream...');
+  showImgProg(model === 'gpt-image-2' ? 'Sending to GPT Image 2...' : 'Sending to Seedream...');
 
   try {
-    const body = { prompt: pt, ratio, quality };
+    const body = { prompt: pt, ratio, quality, model };
     if (imgRefBase64) { body.imageBase64 = imgRefBase64; body.imageMime = imgRefMime; }
     const r = await fetch('/api/generate-image', {
       method: 'POST',
@@ -2233,7 +2238,7 @@ async function doGenerateImage() {
     if (j.balance !== undefined) { userBalance = j.balance; updateCreditsDisplay(); }
 
     const jobId = 'img-' + Date.now();
-    lib.unshift({ id: jobId, prompt: pt, url: j.url, ratio, model: 'seedream-5-0-lite', ts: Date.now(), done: Date.now(), type: 'image' });
+    lib.unshift({ id: jobId, prompt: pt, url: j.url, ratio, model, ts: Date.now(), done: Date.now(), type: 'image' });
     saveLib(); renderLib(); badge();
     toast('Image ready! Check your Library.', 'ok');
   } catch(e) {
@@ -2607,7 +2612,7 @@ function badge() {
 function makeLibCard(item, i) {
   const isImg = item.type === 'image';
   const cls   = (item.ratio==='9:16'||item.ratio==='3:4') ? 'v916' : item.ratio==='1:1' ? 'v11' : '';
-  const mod   = item.model?.includes('fast') ? 'Fast' : item.model?.includes('seedream') ? 'Seedream' : 'Standard';
+  const mod   = item.model?.includes('fast') ? 'Fast' : item.model === 'gpt-image-2' ? 'GPT Image 2' : item.model?.includes('seedream') ? 'Seedream' : 'Standard';
   const date  = new Date(item.ts).toLocaleDateString();
   const card  = document.createElement('div'); card.className = 'vid-card';
   const safeUrl = (item.url || '').replace(/"/g, '&quot;');

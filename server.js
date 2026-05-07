@@ -31,6 +31,7 @@ const APP_URL          = process.env.APP_URL              || 'http://localhost:3
 const FAL_KEY          = process.env.FAL_API_KEY          || '';
 const BYTEPLUS_API_KEY = process.env.BYTEPLUS_API_KEY     || '';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY   || '';
+const OPENAI_API_KEY    = process.env.OPENAI_API_KEY       || '';
 const R2_ACCOUNT_ID      = process.env.R2_ACCOUNT_ID        || '';
 const R2_ACCESS_KEY_ID   = process.env.R2_ACCESS_KEY_ID     || '';
 const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || '';
@@ -882,11 +883,19 @@ async function handleRequest(req, res) {
     const refImagesList = Array.isArray(images) && images.length
       ? images.filter(i => i && i.base64).map(i => ({ base64: i.base64, mime: i.mime || 'image/jpeg' }))
       : (imageBase64 ? [{ base64: imageBase64, mime: imageMime || 'image/jpeg' }] : []);
-    if (!BYTEPLUS_API_KEY) return sendJSON(res, 503, { error: 'Image generation not configured on server (BYTEPLUS_API_KEY missing).' });
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to generate images.' });
-    const imgCost = quality === 'low' ? 0.02 : 0.08;
-    const imgCount = (batchCount && batchCount > 1) ? Math.min(Math.floor(batchCount), 14) : 1;
+
+    const isGpt = reqModel === 'gpt-image-2';
+    if (isGpt) {
+      if (!OPENAI_API_KEY) return sendJSON(res, 503, { error: 'OpenAI API key not configured on server (OPENAI_API_KEY missing).' });
+    } else {
+      if (!BYTEPLUS_API_KEY) return sendJSON(res, 503, { error: 'Image generation not configured on server (BYTEPLUS_API_KEY missing).' });
+    }
+
+    // Cost varies by model
+    const imgCost  = isGpt ? (quality === 'low' ? 0.02 : 0.19) : (quality === 'low' ? 0.02 : 0.08);
+    const imgCount = (!isGpt && batchCount && batchCount > 1) ? Math.min(Math.floor(batchCount), 14) : 1;
     const totalCost = Math.round(imgCost * imgCount * 100) / 100;
     {
       const db  = loadDB();
@@ -901,6 +910,66 @@ async function handleRequest(req, res) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     const keepAlive = setInterval(() => { try { res.write('\n'); } catch(_) {} }, 20000);
     const endImg = obj => { clearInterval(keepAlive); res.end(JSON.stringify(obj)); };
+
+    // ── GPT Image 2 branch ──────────────────────────────────────────────────
+    if (isGpt) {
+      const GPT_SIZE_MAP = { '1:1': '1024x1024', '16:9': '1536x1024', '9:16': '1024x1536', '4:3': '1536x1024', '3:4': '1024x1536', '21:9': '1536x1024' };
+      const gptSize    = GPT_SIZE_MAP[ratio] || '1024x1024';
+      const gptQuality = quality === 'low' ? 'low' : 'high';
+      const gptPayload = { model: 'gpt-image-2', prompt, size: gptSize, quality: gptQuality, output_format: 'jpeg', n: 1 };
+      const gptBody    = Buffer.from(JSON.stringify(gptPayload));
+      console.log('[gpt-image] generating:', gptSize, gptQuality, prompt.substring(0, 80));
+      try {
+        const gptResult = await new Promise((resolve, reject) => {
+          const opts = {
+            hostname: 'api.openai.com', port: 443,
+            path: '/v1/images/generations', method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': gptBody.length, 'Authorization': 'Bearer ' + OPENAI_API_KEY }
+          };
+          const r = https.request(opts, resp => {
+            const ch = [];
+            resp.on('data', c => ch.push(c));
+            resp.on('end', () => {
+              const raw = Buffer.concat(ch).toString();
+              if (!raw) { reject(new Error(`OpenAI returned empty body (HTTP ${resp.statusCode})`)); return; }
+              try { resolve({ status: resp.statusCode, body: JSON.parse(raw) }); }
+              catch(e) { reject(new Error(`OpenAI non-JSON response (HTTP ${resp.statusCode}): ${raw.substring(0, 200)}`)); }
+            });
+          });
+          r.setTimeout(120000, () => { r.destroy(); reject(new Error('OpenAI request timed out after 120s')); });
+          r.on('error', reject);
+          r.write(gptBody); r.end();
+        });
+
+        if (gptResult.status !== 200) {
+          const errMsg = gptResult.body?.error?.message || JSON.stringify(gptResult.body).substring(0, 400);
+          console.error('[gpt-image] error', gptResult.status, errMsg);
+          return endImg({ error: errMsg });
+        }
+
+        const b64 = gptResult.body?.data?.[0]?.b64_json;
+        if (!b64) return endImg({ error: 'No image data returned by OpenAI' });
+
+        let finalUrl;
+        if (R2_ENABLED) {
+          const imgBuf = Buffer.from(b64, 'base64');
+          const key = `img/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.jpg`;
+          finalUrl = await uploadToR2(imgBuf, key, 'image/jpeg');
+          console.log('[gpt-image] uploaded to R2:', key);
+        } else {
+          finalUrl = `data:image/jpeg;base64,${b64}`;
+        }
+
+        const db2 = loadDB();
+        const usr2 = db2.users[sess.userId];
+        usr2.balance = Math.round(((usr2.balance ?? 0) - imgCost) * 100) / 100;
+        saveDB(db2);
+        return endImg({ url: finalUrl, balance: usr2.balance });
+      } catch(e) {
+        console.error('[gpt-image] error:', e.message);
+        return endImg({ error: 'GPT Image 2 request failed: ' + e.message });
+      }
+    }
 
     // Seedream 5.0: size must be WIDTHxHEIGHT, '2k', '3k', or '4k'
     // low = 2k output (~2048px), high = 3k output (~3072px)
