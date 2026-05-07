@@ -283,6 +283,22 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 .btn-gen:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(124,110,247,0.55); }
 .btn-gen:active:not(:disabled) { transform: translateY(0); }
 .btn-gen:disabled { opacity: 0.4; cursor: not-allowed; animation: none; }
+.btn-stop {
+  width: 100%; padding: 12px; margin-top: 8px;
+  background: #b52a2a; border: none; border-radius: var(--radius-sm);
+  color: #fff; font-size: 14px; font-weight: 700;
+  font-family: 'Manrope', sans-serif; cursor: pointer; transition: background 0.2s;
+}
+.btn-stop:hover:not(:disabled) { background: #d63031; }
+.btn-stop:disabled { opacity: 0.5; cursor: not-allowed; }
+.ad-resume-banner {
+  background: rgba(255,190,0,0.1); border: 1px solid rgba(255,190,0,0.35);
+  border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 10px;
+  font-size: 12.5px; color: var(--text2); display: none; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.ad-resume-banner .btn-rb { padding: 5px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.ad-resume-banner .btn-rb-yes { background: var(--accent); color: #fff; }
+.ad-resume-banner .btn-rb-no { background: var(--bg3); color: var(--text3); }
 
 /* ─── PROGRESS ────────────────────────────────────────────────────── */
 .prog-panel { display: none; margin-top: 0; }
@@ -978,6 +994,13 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         <textarea id="ad-description" rows="4" placeholder="Describe your product, target audience, key selling points, desired mood or tone...&#10;&#10;Example: Luxury perfume for confident women 25-40. Notes of jasmine and oud. Sleek black bottle. Mood: mysterious, sensual, powerful."></textarea>
       </div>
 
+      <!-- Resume banner (shown when checkpoint exists) -->
+      <div class="ad-resume-banner" id="ad-resume-banner">
+        <span>⚡ Pipeline paused — resume where you left off?</span>
+        <button class="btn-rb btn-rb-yes" onclick="resumeAdPipeline()">Resume</button>
+        <button class="btn-rb btn-rb-no" onclick="dismissAdResume()">Dismiss</button>
+      </div>
+
       <!-- Step log -->
       <div class="ad-log" id="ad-log">
         <div class="ad-log-inner" id="ad-log-inner"></div>
@@ -1000,6 +1023,7 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
           <input type="checkbox" id="ad-text-only"> Text only — skip image &amp; video generation (for testing)
         </label>
         <button class="btn-gen" id="ad-gen-btn" onclick="createAd()">Create Ad</button>
+        <button class="btn-stop" id="ad-stop-btn" onclick="stopAd()" style="display:none">■ Stop Pipeline</button>
       </div>
     </div>
 
@@ -1133,6 +1157,226 @@ let userBalance = null;
 // ══ ADS ════════════════════════════════════════════════════════════════
 
 let adImages = []; // [{file, dataUrl}]
+let adStopped = false;
+
+// ── Ad pipeline checkpoint (survives page refresh) ────────────────────
+const AD_CP_KEY = 'ad_checkpoint';
+function saveAdCheckpoint(patch) {
+  try {
+    const cur = JSON.parse(localStorage.getItem(AD_CP_KEY) || '{}');
+    localStorage.setItem(AD_CP_KEY, JSON.stringify({ ...cur, ...patch, ts: Date.now() }));
+  } catch(e) { console.warn('[ad-cp] save failed:', e.message); }
+}
+function loadAdCheckpoint() {
+  try { return JSON.parse(localStorage.getItem(AD_CP_KEY)); } catch { return null; }
+}
+function clearAdCheckpoint() { localStorage.removeItem(AD_CP_KEY); }
+
+async function resizeDataUrlSmall(dataUrl, maxPx = 320) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      resolve(c.toDataURL('image/jpeg', 0.7));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+function stopAd() {
+  adStopped = true;
+  const sb = document.getElementById('ad-stop-btn');
+  sb.disabled = true; sb.textContent = 'Stopping…';
+}
+
+function dismissAdResume() {
+  clearAdCheckpoint();
+  document.getElementById('ad-resume-banner').style.display = 'none';
+  adImages = adImages.filter(img => img.file);
+  renderAdImages();
+}
+
+// Called after lib loads — shows resume banner if a checkpoint exists
+async function checkAdCheckpoint() {
+  const cp = loadAdCheckpoint();
+  if (!cp || !cp.adTitle || !cp.stage) return;
+  // Restore ad images thumbnails for display
+  if (cp.adThumbnails && cp.adThumbnails.length) {
+    adImages = cp.adThumbnails.map(t => ({ file: null, dataUrl: t }));
+    renderAdImages();
+  }
+  if (cp.description) document.getElementById('ad-description').value = cp.description;
+  const banner = document.getElementById('ad-resume-banner');
+  banner.style.display = 'flex';
+}
+
+async function resumeAdPipeline() {
+  const cp = loadAdCheckpoint();
+  if (!cp || !cp.adTitle) return;
+  document.getElementById('ad-resume-banner').style.display = 'none';
+
+  const btn = document.getElementById('ad-gen-btn');
+  const stopBtn = document.getElementById('ad-stop-btn');
+  adStopped = false;
+  btn.disabled = true; btn.textContent = 'Resuming…';
+  stopBtn.style.display = ''; stopBtn.disabled = false; stopBtn.textContent = '■ Stop Pipeline';
+
+  adLogClear();
+  adLog(`Resuming: "${cp.adTitle}" (stage ${cp.stage} completed)`, 'info');
+
+  // Reconstruct refMap from lib items saved in this folder
+  const refMap = {};
+  (cp.entities || []).forEach(entity => {
+    const key = entity.type === 'character' ? 'SUBJECT_' + entity.subjectId
+              : entity.type === 'environment' ? 'ENV_' + entity.envId : 'product';
+    const label = entity.name || key;
+    const li = lib.find(i => i.folder === cp.adTitle && i.label === label && i.type === 'image');
+    if (li && li.url) { refMap[key] = li.url; adLog(`  ↳ Restored ref: ${label}`, 'info'); }
+  });
+
+  // Reconstruct sceneStartImages from lib
+  const sceneStartImages = (cp.startFrames || []).map((sf, i) => {
+    const li = lib.find(item => item.folder === cp.adTitle && item.label === `Scene ${i+1} start` && item.type === 'image');
+    return li?.url || null;
+  });
+
+  // Map completed video scenes from lib (items with sceneIndex)
+  const completedSceneUrls = {};
+  lib.forEach(item => {
+    if (item.folder === cp.adTitle && item.sceneIndex !== undefined && item.type !== 'image') {
+      completedSceneUrls[item.sceneIndex] = item.url || null;
+    }
+  });
+
+  const model = 'dreamina-seedance-2-0-260128';
+  const vidRes = '480p';
+  const adTitle = cp.adTitle;
+  const { ideaText, refSheetsText } = cp;
+  let { startFrames, startFramesText, scenes } = cp;
+
+  try {
+    // Re-run any missing Claude stages
+    if (cp.stage < 3) {
+      if (!ideaText || !refSheetsText) { adLog('Stage 1/2 data missing — start a new pipeline', 'err'); return; }
+      const s3 = adLog('Stage 3: Generating starting frame prompts…', 'run');
+      const r3 = await fetch('/api/gen/startframes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+        body: JSON.stringify({ ideaText, refSheetsText })
+      });
+      const j3 = await r3.json();
+      if (!r3.ok) throw new Error(j3.error || 'Start frames failed');
+      startFrames = j3.startFrames || []; startFramesText = j3.startFramesText || '';
+      saveAdCheckpoint({ stage: 3, startFrames, startFramesText });
+      adLogUpdate(s3, `Stage 3 done: ${startFrames.length} frame prompt(s)`, 'done');
+    }
+    if (cp.stage < 4) {
+      const s4 = adLog('Stage 4: Writing cinematic shot prompts…', 'run');
+      const r4 = await fetch('/api/gen/shots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+        body: JSON.stringify({ ideaText, refSheetsText, startFramesText })
+      });
+      const j4 = await safeJson(r4);
+      if (!r4.ok) throw new Error(j4.error || 'Video prompts failed');
+      scenes = j4.scenes || [];
+      saveAdCheckpoint({ stage: 4, scenes });
+      adLogUpdate(s4, `Stage 4 done: ${scenes.length} scene prompt(s)`, 'done');
+    }
+
+    if (!scenes || !scenes.length) { adLog('No scenes in checkpoint — start a new pipeline', 'err'); return; }
+
+    // Resume video generation
+    let prevVideoUrl = null;
+    const submittedJobIds = cp.submittedSceneJobIds || {};
+
+    for (let i = 0; i < scenes.length; i++) {
+      if (adStopped) break;
+
+      const scene = scenes[i];
+      const ratio = '9:16';
+      const dur = Math.max(5, Math.min(15, scene.duration || 15));
+      const prompt = (scene.prompt || `Scene ${i+1}`).replace(/\b(logo|trademark|brand name|registered mark)\b/gi, 'emblem');
+      const sV = adLog(`Scene ${i+1}/${scenes.length}: "${scene.name || ('Scene '+(i+1))}"…`, 'run');
+
+      // Already completed?
+      if (completedSceneUrls[i] !== undefined) {
+        if (completedSceneUrls[i]) prevVideoUrl = completedSceneUrls[i];
+        adLogUpdate(sV, `Scene ${i+1} already done ✓`, 'done');
+        continue;
+      }
+
+      try {
+        let taskId = submittedJobIds[i];
+        if (!taskId) {
+          const [w, h] = (() => { const m={'9:16':'480x864','16:9':'864x480','1:1':'640x640','4:3':'640x480','3:4':'480x640','21:9':'864x368'}; return ((m[ratio])||'480x864').split('x').map(Number); })();
+          const costUsd = Math.round(dur * w * h * 24 / 1024 * 7.0e-6 * 1.3 * 100) / 100;
+          const dcr = await fetch('/api/deduct', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken }, body: JSON.stringify({ amount: costUsd }) });
+          const dj = await dcr.json();
+          if (!dcr.ok) throw new Error(dj.error || 'Insufficient balance');
+          userBalance = dj.balance; updateCreditsDisplay();
+
+          const content = [];
+          const startImg = sceneStartImages[i];
+          let hint = startImg ? 'Open the scene exactly matching reference image 1. Use remaining reference images for character, product, and environment fidelity. '
+                   : Object.keys(refMap).length > 0 ? 'Use the reference images for character, product, and environment fidelity. ' : '';
+          if (prevVideoUrl) hint += 'Use the reference video for visual continuity from the previous scene. ';
+          content.push({ type: 'text', text: hint + prompt });
+          if (startImg) { const s = await softenDataUrl(startImg); content.push({ type: 'image_url', image_url: { url: s }, role: 'reference_image' }); }
+          for (const url of Object.values(refMap)) {
+            if (url) { const s = await softenDataUrl(url); content.push({ type: 'image_url', image_url: { url: s }, role: 'reference_image' }); }
+          }
+          if (prevVideoUrl) content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
+
+          const payload = buildPayload(model, content, false, ratio, dur, false, vidRes);
+          let jV;
+          for (let attempt = 1; attempt <= 6; attempt++) {
+            const rV = await fetch('/proxy/api/v3/contents/generations/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            jV = await safeJson(rV);
+            taskId = jV.id || jV.task_id;
+            if (taskId) break;
+            const errMsg = jV.error?.message || JSON.stringify(jV).substring(0, 200);
+            if (!/high demand|try again later|temporar/i.test(errMsg) || attempt === 6) throw new Error(errMsg);
+            adLogUpdate(sV, `Scene ${i+1} — model busy, retrying in ${attempt * 60}s…`, 'warn');
+            await new Promise(r => setTimeout(r, attempt * 60000));
+          }
+          if (!taskId) throw new Error(jV?.error?.message || 'No task ID returned');
+          saveAdCheckpoint({ submittedSceneJobIds: { ...submittedJobIds, [i]: taskId } });
+        }
+
+        const job = { id: taskId, prompt, model, res: vidRes, ratio, dur, audio: false, ts: Date.now(), status: 'running', folder: adTitle, sceneIndex: i, label: `Scene ${i+1} video` };
+        jobs.push(job);
+        adLogUpdate(sV, `Scene ${i+1} generating…`, 'run');
+        prevVideoUrl = await pollAd(job);
+        adLogUpdate(sV, prevVideoUrl ? `Scene ${i+1} "${scene.name || ''}" ✓` : `Scene ${i+1} failed`, prevVideoUrl ? 'done' : 'err');
+        saveAdCheckpoint({ nextSceneIndex: i + 1 });
+      } catch(e) {
+        adLogUpdate(sV, `Scene ${i+1} failed: ${e.message}`, 'err');
+        throw e;
+      }
+    }
+
+    if (!adStopped) {
+      clearAdCheckpoint();
+      adLog(`All ${scenes.length} scene(s) done! See "${adTitle}" in your Library.`, 'done');
+      goPage('library', document.querySelector('.tab[data-page="library"]'));
+      renderLib();
+      toast(`Pipeline complete! ${scenes.length} scene(s) done.`, 'ok', 7000);
+    } else {
+      adLog('Pipeline stopped. You can resume it after refreshing.', 'warn');
+    }
+  } catch(e) {
+    adLog('Error: ' + e.message, 'err');
+    toast(e.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create Ad';
+    stopBtn.style.display = 'none'; stopBtn.disabled = false; stopBtn.textContent = '■ Stop Pipeline';
+  }
+}
 
 function addAdImages(input) {
   const files = Array.from(input.files || []);
@@ -1208,12 +1452,19 @@ function adLogClear() {
 }
 
 async function createAd() {
+  // Drop any checkpoint thumbnails (no file object) — user is starting fresh
+  adImages = adImages.filter(img => img.file);
+  renderAdImages();
   if (!adImages.length) return toast('Upload at least one product image', 'err');
   if (!authToken)      return toast('Sign in to use Ads', 'err');
 
   const textOnly = document.getElementById('ad-text-only').checked;
   const btn = document.getElementById('ad-gen-btn');
+  const stopBtn = document.getElementById('ad-stop-btn');
+  adStopped = false;
   btn.disabled = true; btn.textContent = textOnly ? 'Running (text only)...' : 'Creating...';
+  stopBtn.style.display = ''; stopBtn.disabled = false; stopBtn.textContent = '■ Stop Pipeline';
+  clearAdCheckpoint();
   adLogClear();
 
   const model       = 'dreamina-seedance-2-0-260128';
@@ -1290,6 +1541,10 @@ async function createAd() {
       (() => { const m = ideaText.match(/CONCEPT\s*\n+([\s\S]*?)\n+SCENES/); const prose = m ? m[1] : ideaText; return prose.split(/[.,]/)[0].trim().substring(0, 40) || ('Ad — ' + new Date().toLocaleDateString()); })();
     adLogUpdate(s1, `Stage 1 done: "${adTitle}" — ${sceneCount} scene(s)`, 'done');
     if (textOnly) adLogTextBlock('Concept output:', ideaText);
+    // Checkpoint: save ad thumbnails + stage 1 outputs
+    const adThumbnails = await Promise.all(adImages.map(img => resizeDataUrlSmall(img.dataUrl)));
+    saveAdCheckpoint({ stage: 1, description, adTitle, adThumbnails, ideaText });
+    if (adStopped) { adLog('Pipeline stopped.', 'warn'); return; }
 
     // ── Step 2: Reference sheet prompts (ref-sheet-generator) ──────────
     const s2 = adLog('Stage 2: Claude generating reference sheet prompts…', 'run');
@@ -1305,6 +1560,8 @@ async function createAd() {
     const refSheetsText = j2.refSheetsText || '';
     adLogUpdate(s2, `Stage 2 done: ${entities.length} entity reference sheet(s)`, 'done');
     if (textOnly) adLogTextBlock('Reference sheet prompts:', refSheetsText);
+    saveAdCheckpoint({ stage: 2, entities, refSheetsText });
+    if (adStopped) { adLog('Pipeline stopped.', 'warn'); return; }
 
     // ── Step 2.5: Generate reference images ─────────────────────────────────
     const refMap = {};
@@ -1346,7 +1603,9 @@ async function createAd() {
         adLogUpdate(sRef, `${label} skipped: ${e.message}`, 'warn');
       }
       if (ei < entities.length - 1) await new Promise(r => setTimeout(r, 3000));
+      if (adStopped) break;
     }
+    if (adStopped) { adLog('Pipeline stopped.', 'warn'); return; }
 
     // ── Step 3: Starting frame prompts (starting-frame-generator) ───────
     const s3 = adLog('Stage 3: Claude generating starting frame prompts…', 'run');
@@ -1362,6 +1621,8 @@ async function createAd() {
     const startFramesText = j3.startFramesText || '';
     adLogUpdate(s3, `Stage 3 done: ${startFrames.length} starting frame prompt(s)`, 'done');
     if (textOnly) adLogTextBlock('Starting frame prompts:', startFramesText);
+    saveAdCheckpoint({ stage: 3, startFrames, startFramesText });
+    if (adStopped) { adLog('Pipeline stopped.', 'warn'); return; }
 
     // ── Step 3.5: Generate starting frame images ─────────────────────────
     const sceneStartImages = [];
@@ -1410,7 +1671,9 @@ async function createAd() {
         adLogUpdate(sSf, `Scene ${i+1} starting frame failed: ${e.message} — will use T2V`, 'warn');
       }
       if (i < startFrames.length - 1) await new Promise(r => setTimeout(r, 3000));
+      if (adStopped) break;
     }
+    if (adStopped) { adLog('Pipeline stopped.', 'warn'); return; }
 
     // ── Step 4: Video prompts (video-prompt-builder) ───────────────────
     const s4 = adLog('Stage 4: Claude writing cinematic shot prompts…', 'run');
@@ -1428,12 +1691,16 @@ async function createAd() {
       adLogTextBlock('Video shot prompts:', j4.shotsText || '');
       adLog('Text-only mode: image and video generation skipped.', 'info');
       adLog('All 4 Claude stages complete.', 'done');
+      clearAdCheckpoint();
       return;
     }
+    saveAdCheckpoint({ stage: 4, scenes, nextSceneIndex: 0, submittedSceneJobIds: {} });
+    if (adStopped) { adLog('Pipeline stopped.', 'warn'); return; }
 
     // ── Step 5: Video generation (sequential, each scene uses prev as ref) ──
     let prevVideoUrl = null;
     for (let i = 0; i < scenes.length; i++) {
+      if (adStopped) break;
       const scene = scenes[i];
       const ratio = '9:16';
       const dur   = Math.max(5, Math.min(15, scene.duration || 15));
@@ -1485,27 +1752,42 @@ async function createAd() {
         }
         if (!taskId) throw new Error(jV?.error?.message || 'No task ID returned');
 
-        const job = { id: taskId, prompt, model, res: vidRes, ratio, dur, audio: false, ts: Date.now(), status: 'running', folder: adTitle };
+        // Checkpoint the submitted task ID so it can be re-polled on resume
+        const cp = loadAdCheckpoint() || {};
+        saveAdCheckpoint({ submittedSceneJobIds: { ...(cp.submittedSceneJobIds || {}), [i]: taskId }, nextSceneIndex: i });
+
+        const job = { id: taskId, prompt, model, res: vidRes, ratio, dur, audio: false, ts: Date.now(), status: 'running', folder: adTitle, sceneIndex: i, label: `Scene ${i+1} video` };
         jobs.push(job);
         adLogUpdate(sV, `Scene ${i+1} generating${prevVideoUrl ? ' (visual continuity from prev scene)' : ''}…`, 'run');
         prevVideoUrl = await pollAd(job);
         adLogUpdate(sV, prevVideoUrl ? `Scene ${i+1} "${scene.name || ''}" ✓` : `Scene ${i+1} failed`, prevVideoUrl ? 'done' : 'err');
+        saveAdCheckpoint({ nextSceneIndex: i + 1 });
       } catch(e) {
         adLogUpdate(sV, `Scene ${i+1} failed: ${e.message}`, 'err');
         throw e;
       }
     }
 
-    adLog(`All ${scenes.length} scene(s) done! See "${adTitle}" in your Library.`, 'done');
-    goPage('library', document.querySelector('.tab[data-page="library"]'));
-    renderLib();
-    toast(`Ad pipeline complete! ${scenes.length} scene(s) generating.`, 'ok', 7000);
+    if (adStopped) {
+      adLog('Pipeline stopped. Refresh and click Resume to continue.', 'warn');
+    } else {
+      clearAdCheckpoint();
+      adLog(`All ${scenes.length} scene(s) done! See "${adTitle}" in your Library.`, 'done');
+      goPage('library', document.querySelector('.tab[data-page="library"]'));
+      renderLib();
+      toast(`Ad pipeline complete! ${scenes.length} scene(s) generating.`, 'ok', 7000);
+    }
 
   } catch(e) {
     adLog('Error: ' + e.message, 'err');
     toast(e.message, 'err');
   } finally {
     btn.disabled = false; btn.textContent = 'Create Ad';
+    stopBtn.style.display = 'none'; stopBtn.disabled = false; stopBtn.textContent = '■ Stop Pipeline';
+    // Show resume banner if pipeline was stopped mid-way
+    if (adStopped && loadAdCheckpoint()?.stage) {
+      document.getElementById('ad-resume-banner').style.display = 'flex';
+    }
   }
 }
 
@@ -1553,7 +1835,9 @@ async function finishAd(job, url, err) {
     } catch(e) { console.warn('[store-video] failed:', e.message); }
   }
   const item = { id: job.id, prompt: job.prompt, url, res: job.res, ratio: job.ratio,
-    dur: job.dur, audio: false, model: job.model, ts: job.ts, done: Date.now(), folder: job.folder, upscaling: !!url };
+    dur: job.dur, audio: false, model: job.model, ts: job.ts, done: Date.now(), folder: job.folder, upscaling: !!url,
+    ...(job.label !== undefined && { label: job.label }),
+    ...(job.sceneIndex !== undefined && { sceneIndex: job.sceneIndex }) };
   lib.unshift(item);
   saveLib(); renderLib(); badge();
   toast('Scene ready! Upscaling…', 'ok');
@@ -2293,6 +2577,7 @@ async function initAuth() {
       currentUser = await r.json();
       if (currentUser.balance !== undefined) { userBalance = currentUser.balance; updateCreditsDisplay(); }
       await loadLib(currentUser.userId);
+      checkAdCheckpoint();
       hideWakeupBanner();
       hideAuthModal();
       return;
@@ -2516,6 +2801,7 @@ async function onLoggedIn(j) {
   currentUser = { email: j.email, userId: j.userId };
   if (j.balance !== undefined) { userBalance = j.balance; updateCreditsDisplay(); }
   await loadLib(j.userId);
+  checkAdCheckpoint();
   hideAuthModal();
   showScreen('main');
 }
