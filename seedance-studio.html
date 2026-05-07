@@ -1667,7 +1667,21 @@ async function createAd() {
           const k = 'ENV_' + eid;
           await safeRefInput(refMap[k], k);
         }
-        if (/product/i.test(sf.prompt)) await safeRefInput(refMap['product'], 'product');
+        // Product detection: the skill names the product directly (e.g. "the plush bear")
+        // rather than writing the literal word "product", so we check (1) the server's
+        // hasProduct flag, (2) the literal word, and (3) the actual product entity name.
+        let productMentioned = sf.hasProduct === true || /\bproduct\b/i.test(sf.prompt);
+        if (!productMentioned) {
+          const productEntity = entities.find(e => e.type === 'product');
+          if (productEntity && productEntity.name) {
+            const cleanName = productEntity.name.replace(/^the\s+/i, '').trim();
+            if (cleanName) {
+              const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              productMentioned = new RegExp(`\\b${escRe(cleanName)}\\b`, 'i').test(sf.prompt);
+            }
+          }
+        }
+        if (productMentioned) await safeRefInput(refMap['product'], 'product');
         // Fallback: attach any other refs mentioned by key in the prompt text
         const sfPromptLower = sf.prompt.toLowerCase();
         for (const [refKey, refUrl] of Object.entries(refMap)) {

@@ -379,17 +379,25 @@ function parseRefSheetsOutput(text) {
   return entities;
 }
 
-function parseStartFramesOutput(text) {
+function parseStartFramesOutput(text, productName) {
   const frames = [];
   const section = (text.match(/===\s*STARTING FRAMES\s*===([\s\S]*)/) || [])[1] || text;
+  // Build a product-mention regex from the actual product name, since the
+  // skill instructs Claude to name the product directly (e.g. "the plush bear")
+  // rather than write the literal word "product".
+  const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const cleanName = (productName || '').replace(/^the\s+/i, '').trim();
+  const productRe = cleanName ? new RegExp(`\\b${escRe(cleanName)}\\b`, 'i') : null;
   section.split(/\n(?=SCENE\s+\d+:\s*\n)/).forEach(block => {
     const m = block.match(/^SCENE\s+(\d+):\s*\n([\s\S]+)/);
     if (!m) return;
     const prompt = m[2].trim();
+    const hasProduct = /\bproduct\b/i.test(prompt) || (productRe ? productRe.test(prompt) : false);
     frames.push({
       scene: parseInt(m[1]), prompt,
       subjectIds: [...prompt.matchAll(/SUBJECT ID:\s*(\d{3})/g)].map(x => x[1]),
-      envIds:     [...prompt.matchAll(/ENV ID:\s*(\d{3})/g)].map(x => x[1])
+      envIds:     [...prompt.matchAll(/ENV ID:\s*(\d{3})/g)].map(x => x[1]),
+      hasProduct
     });
   });
   return frames;
@@ -1285,7 +1293,12 @@ async function handleRequest(req, res) {
         return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
       }
       const framesText = claudeRes.body?.content?.[0]?.text || '';
-      const startFrames = parseStartFramesOutput(framesText);
+      // Pull the product name out of the refsheets so we can detect product mentions
+      // even when the skill (correctly) names the product directly instead of using
+      // the literal word "product".
+      const prodMatch = (refSheetsText || '').match(/===\s*PRODUCT REFERENCE SHEET\s*===[\s\S]*?^PRODUCT:\s*([^\n]+)/m);
+      const productName = prodMatch ? prodMatch[1].trim() : '';
+      const startFrames = parseStartFramesOutput(framesText, productName);
       if (!startFrames.length) console.warn('[startframes] parseStartFramesOutput returned 0 frames. Raw start:', framesText.substring(0, 200));
       user.balance = Math.round((cur - FRAMES_COST) * 100) / 100;
       saveDB(db);
