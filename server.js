@@ -916,15 +916,45 @@ async function handleRequest(req, res) {
       const GPT_SIZE_MAP = { '1:1': '1024x1024', '16:9': '1536x1024', '9:16': '1024x1536', '4:3': '1536x1024', '3:4': '1024x1536', '21:9': '1536x1024' };
       const gptSize    = GPT_SIZE_MAP[ratio] || '1024x1024';
       const gptQuality = quality === 'low' ? 'low' : 'high';
-      const gptPayload = { model: 'gpt-image-2', prompt, size: gptSize, quality: gptQuality, output_format: 'jpeg', n: 1 };
-      const gptBody    = Buffer.from(JSON.stringify(gptPayload));
-      console.log('[gpt-image] generating:', gptSize, gptQuality, prompt.substring(0, 80));
+
+      let gptBody, gptPath, gptReqHeaders;
+      if (refImagesList.length > 0) {
+        // Use /v1/images/edits (multipart) so ref images are actually applied
+        const boundary = '----FormBoundary' + crypto.randomBytes(8).toString('hex');
+        const chunks = [];
+        const addField = (name, value) =>
+          chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
+        addField('model', 'gpt-image-2');
+        addField('prompt', prompt);
+        addField('size', gptSize);
+        addField('quality', gptQuality);
+        addField('n', '1');
+        for (let idx = 0; idx < refImagesList.length; idx++) {
+          const img = refImagesList[idx];
+          const ext = img.mime === 'image/png' ? 'png' : 'jpeg';
+          chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="image[]"; filename="ref${idx}.${ext}"\r\nContent-Type: ${img.mime || 'image/jpeg'}\r\n\r\n`));
+          chunks.push(Buffer.from(img.base64, 'base64'));
+          chunks.push(Buffer.from('\r\n'));
+        }
+        chunks.push(Buffer.from(`--${boundary}--\r\n`));
+        gptBody = Buffer.concat(chunks);
+        gptPath = '/v1/images/edits';
+        gptReqHeaders = { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': gptBody.length, 'Authorization': 'Bearer ' + OPENAI_API_KEY };
+        console.log('[gpt-image] editing with', refImagesList.length, 'ref(s):', gptSize, gptQuality, prompt.substring(0, 80));
+      } else {
+        // Text-only: /v1/images/generations
+        gptBody = Buffer.from(JSON.stringify({ model: 'gpt-image-2', prompt, size: gptSize, quality: gptQuality, output_format: 'jpeg', n: 1 }));
+        gptPath = '/v1/images/generations';
+        gptReqHeaders = { 'Content-Type': 'application/json', 'Content-Length': gptBody.length, 'Authorization': 'Bearer ' + OPENAI_API_KEY };
+        console.log('[gpt-image] generating:', gptSize, gptQuality, prompt.substring(0, 80));
+      }
+
       try {
         const gptResult = await new Promise((resolve, reject) => {
           const opts = {
             hostname: 'api.openai.com', port: 443,
-            path: '/v1/images/generations', method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Content-Length': gptBody.length, 'Authorization': 'Bearer ' + OPENAI_API_KEY }
+            path: gptPath, method: 'POST',
+            headers: gptReqHeaders
           };
           const r = https.request(opts, resp => {
             const ch = [];
