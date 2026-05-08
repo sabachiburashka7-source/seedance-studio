@@ -1776,7 +1776,7 @@ async function createAd() {
           openingHint = `Use the reference images for character, product, and environment fidelity. `;
         }
         if (prevVideoUrl) openingHint += `Use the reference video for visual continuity from the previous scene. `;
-        content.push({ type: 'text', text: openingHint + prompt });
+        content.push({ type: 'text', text: openingHint + sanitizeVideoPrompt(prompt) });
         if (startImg) {
           const softenedStart = await softenDataUrl(startImg);
           content.push({ type: 'image_url', image_url: { url: softenedStart }, role: 'reference_image' });
@@ -2240,6 +2240,35 @@ function fileToDataUrl(file) {
     };
     reader.readAsDataURL(file);
   });
+}
+
+// Strip "real-person" cues from ads-pipeline video prompts. The manual video
+// tool slips through because users type short conversational prompts; the
+// video-prompt-builder + ref-sheet skills emit cinematic photographic
+// language ("photorealistic", "natural skin", "subtle freckles") that the
+// multimodal classifier keys on even when the ref image itself is softened.
+function sanitizeVideoPrompt(text) {
+  if (!text) return text;
+  const subs = [
+    [/\bphoto[- ]?realistic(ally)?\b/gi, 'stylized'],
+    [/\bphoto[- ]?real\b/gi, 'stylized'],
+    [/\bhyper[- ]?realistic\b/gi, 'stylized'],
+    [/\bultra[- ]?realistic\b/gi, 'stylized'],
+    [/\blife[- ]?like\b/gi, 'stylized'],
+    [/\blive[- ]?action\b/gi, 'cinematic'],
+    [/\bdocumentary(-style)?\b/gi, 'cinematic'],
+    [/\b(a |an )?real (person|human|woman|man|girl|boy|people)\b/gi, 'the character'],
+    [/\b(a |an )?actual (person|human|woman|man)\b/gi, 'the character'],
+    [/\bhuman (face|skin|eyes|hands|hair)\b/gi, '$1'],
+    [/\bnatural skin\b/gi, 'skin'],
+    [/\bskin (texture|pores?|pore detail)\b/gi, ''],
+    [/\b(subtle |visible |fine )?(freckles|pores|skin imperfections|micro[- ]?expressions)\b/gi, ''],
+    [/\bindividual hair(s| strands)?\b/gi, 'hair'],
+    [/\bcatch[- ]?light(s)? in (her|his|their) eyes?\b/gi, 'soft eye light'],
+  ];
+  let out = text;
+  for (const [re, repl] of subs) out = out.replace(re, repl);
+  return out.replace(/[ \t]{2,}/g, ' ').replace(/ ,/g, ',').replace(/ \./g, '.');
 }
 
 // ══ SOFTEN DATA URL (works on data: URLs and HTTPS URLs) ══════════════
