@@ -1159,6 +1159,12 @@ let userBalance = null;
 let adImages = []; // [{file, dataUrl}]
 let adStopped = false;
 
+// TEMPORARY TEST FLAG — when true, skip starting-frame prompt + image generation,
+// and skip attaching a starting frame to video gen. Stages 3 + 3.5 are bypassed;
+// video gen uses only ref images (chars / env / product) + previous-scene video.
+// Flip back to false to restore the original starting-frame pipeline.
+const SKIP_START_FRAMES = true;
+
 // ── Ad pipeline checkpoint (survives page refresh) ────────────────────
 const AD_CP_KEY = 'ad_checkpoint';
 function saveAdCheckpoint(patch) {
@@ -1238,8 +1244,8 @@ async function resumeAdPipeline() {
     if (li && li.url) { refMap[key] = li.url; adLog(`  ↳ Restored ref: ${label}`, 'info'); }
   });
 
-  // Reconstruct sceneStartImages from lib
-  const sceneStartImages = (cp.startFrames || []).map((sf, i) => {
+  // Reconstruct sceneStartImages from lib (skipped when SKIP_START_FRAMES is on)
+  const sceneStartImages = SKIP_START_FRAMES ? [] : (cp.startFrames || []).map((sf, i) => {
     const li = lib.find(item => item.folder === cp.adTitle && item.label === `Scene ${i+1} start` && item.type === 'image');
     return li?.url || null;
   });
@@ -1257,10 +1263,11 @@ async function resumeAdPipeline() {
   const adTitle = cp.adTitle;
   const { ideaText, refSheetsText } = cp;
   let { startFrames, startFramesText, scenes } = cp;
+  if (SKIP_START_FRAMES) { startFrames = []; startFramesText = ''; }
 
   try {
     // Re-run any missing Claude stages
-    if (cp.stage < 3) {
+    if (cp.stage < 3 && !SKIP_START_FRAMES) {
       if (!ideaText || !refSheetsText) { adLog('Stage 1/2 data missing — start a new pipeline', 'err'); return; }
       const s3 = adLog('Stage 3: Generating starting frame prompts…', 'run');
       const r3 = await fetch('/api/gen/startframes', {
@@ -1635,26 +1642,33 @@ async function createAd() {
     if (adStopped) { adLog('Pipeline stopped.', 'warn'); return; }
 
     // ── Step 3: Starting frame prompts (starting-frame-generator) ───────
-    const s3 = adLog('Stage 3: Claude generating starting frame prompts…', 'run');
-    const r3 = await fetch('/api/gen/startframes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-      body: JSON.stringify({ ideaText, refSheetsText })
-    });
-    const j3 = await r3.json();
-    if (!r3.ok) throw new Error(j3.error || 'Start frames failed');
-    if (j3.balance !== undefined) { userBalance = j3.balance; updateCreditsDisplay(); }
-    const startFrames = j3.startFrames || [];
-    const startFramesText = j3.startFramesText || '';
-    adLogUpdate(s3, `Stage 3 done: ${startFrames.length} starting frame prompt(s)`, 'done');
-    if (textOnly) adLogTextBlock('Starting frame prompts:', startFramesText);
-    saveAdCheckpoint({ stage: 3, startFrames, startFramesText });
+    let startFrames = [];
+    let startFramesText = '';
+    if (SKIP_START_FRAMES) {
+      adLog('Stage 3: skipped (SKIP_START_FRAMES = true — testing without starting frames)', 'info');
+      saveAdCheckpoint({ stage: 3, startFrames, startFramesText });
+    } else {
+      const s3 = adLog('Stage 3: Claude generating starting frame prompts…', 'run');
+      const r3 = await fetch('/api/gen/startframes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
+        body: JSON.stringify({ ideaText, refSheetsText })
+      });
+      const j3 = await r3.json();
+      if (!r3.ok) throw new Error(j3.error || 'Start frames failed');
+      if (j3.balance !== undefined) { userBalance = j3.balance; updateCreditsDisplay(); }
+      startFrames = j3.startFrames || [];
+      startFramesText = j3.startFramesText || '';
+      adLogUpdate(s3, `Stage 3 done: ${startFrames.length} starting frame prompt(s)`, 'done');
+      if (textOnly) adLogTextBlock('Starting frame prompts:', startFramesText);
+      saveAdCheckpoint({ stage: 3, startFrames, startFramesText });
+    }
     if (adStopped) { adLog('Pipeline stopped.', 'warn'); return; }
 
     // ── Step 3.5: Generate starting frame images ─────────────────────────
     const sceneStartImages = [];
-    if (!textOnly) adLog(`Generating ${startFrames.length} starting frame image(s)…`, 'info');
-    for (let i = 0; !textOnly && i < startFrames.length; i++) {
+    if (!textOnly && !SKIP_START_FRAMES) adLog(`Generating ${startFrames.length} starting frame image(s)…`, 'info');
+    for (let i = 0; !textOnly && !SKIP_START_FRAMES && i < startFrames.length; i++) {
       const sf = startFrames[i];
       if (!sf || !sf.prompt) { sceneStartImages.push(null); continue; }
       const sSf = adLog(`Starting frame ${i+1}/${startFrames.length}: scene ${i+1}…`, 'run');

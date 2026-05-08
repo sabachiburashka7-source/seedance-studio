@@ -168,6 +168,13 @@ If the input includes a REFERENCE SHEET PROMPTS block (output of `reference-shee
 **When starting frame prompts are provided.**
 If the input includes a STARTING FRAME PROMPTS block (output of `starting-frame-prompt-generator`), these describe the literal first frame of each scene as an image that has already been generated. **Shot 1 of each scene must match its starting frame prompt exactly** — same camera angle, same framing, same colour grade, same lighting direction, same entity positions, same mood. The starting frame is the seed the video generator animates from; Shot 1 is the text description of that same image. Treat the starting frame as the locked visual contract for how each scene opens.
 
+**When no starting frame prompts are provided.**
+If the input has CONCEPT + SCENES (and optionally REFERENCE SHEET PROMPTS) but no STARTING FRAME PROMPTS block, there is no pre-rendered first frame for the video generator to seed from. In that case:
+- Do not write Shot 1 as if matching a locked frame. Design Shot 1 freely from the scene description — choose the opening camera angle, framing, lens, lighting direction, and entity positions yourself, guided by the mood and energy the scene calls for.
+- The video generator will receive only the reference images (characters, environment, product) plus the previous scene's video for continuity. Reference images carry **identity** (faces, clothing, product appearance, room furnishings) but not **framing** — your shot description has to do all the framing work.
+- Make Shot 1's opening visual concrete and specific in your text — describe the literal first second the way you'd describe a starting frame, since this scene's text prompt is the only source of opening-frame guidance the generator will get. Camera height, distance to subject, what's in foreground vs background, lighting key direction, dominant colour, and the subject's exact pose/action at t=0.
+- Continuity across scenes still comes from the reference images and the previous-scene video reference; you do not need to enforce it through prose.
+
 ## Tone and style
 
 - Write in a direct, technical tone — like a director's shot notes, not a marketing brief
