@@ -105,6 +105,41 @@ async function uploadToR2(buffer, key, contentType) {
   });
 }
 
+// ── AI metadata tag (IPTC DigitalSourceType: trainedAlgorithmicMedia) ────────
+// Injects an XMP packet into JPEG buffers identifying the image as AI-generated
+// per the IPTC PhotoMetadata standard. Some content classifiers honor this
+// declared signal instead of running their own real-vs-AI detector. Pure-JS,
+// no deps, JPEG only (PNG/WebP pass through unchanged).
+function injectAiMetadata(buf, mime) {
+  if (!buf || buf.length < 4) return buf;
+  if (mime !== 'image/jpeg') return buf;
+  if (buf[0] !== 0xFF || buf[1] !== 0xD8) return buf; // not a JPEG (no SOI)
+  const xmpId = 'http://ns.adobe.com/xap/1.0/\0';
+  const xmp =
+      '<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>'
+    + '<x:xmpmeta xmlns:x="adobe:ns:meta/">'
+    + '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+    + '<rdf:Description rdf:about=""'
+    +   ' xmlns:Iptc4xmpExt="http://iptc.org/std/Iptc4xmpExt/2008-02-29/"'
+    +   ' xmlns:xmp="http://ns.adobe.com/xap/1.0/"'
+    +   ' xmlns:dc="http://purl.org/dc/elements/1.1/">'
+    +   '<Iptc4xmpExt:DigitalSourceType>http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia</Iptc4xmpExt:DigitalSourceType>'
+    +   '<xmp:CreatorTool>AI-generated</xmp:CreatorTool>'
+    +   '<dc:description><rdf:Alt><rdf:li xml:lang="x-default">AI-generated image</rdf:li></rdf:Alt></dc:description>'
+    + '</rdf:Description>'
+    + '</rdf:RDF>'
+    + '</x:xmpmeta>'
+    + '<?xpacket end="w"?>';
+  const idBuf  = Buffer.from(xmpId, 'binary');
+  const xmpBuf = Buffer.from(xmp, 'utf8');
+  const segLen = 2 + idBuf.length + xmpBuf.length; // length field + payload
+  if (segLen > 0xFFFF) return buf; // single APP1 segment max 64KB
+  const header = Buffer.alloc(4);
+  header[0] = 0xFF; header[1] = 0xE1;
+  header.writeUInt16BE(segLen, 2);
+  return Buffer.concat([buf.slice(0, 2), header, idBuf, xmpBuf, buf.slice(2)]);
+}
+
 // ── In-memory DB cache ────────────────────────────────────────────────────────
 let dbCache = { users: {}, emailIndex: {}, sessions: {}, library: {}, verifyCodes: {}, resetCodes: {}, redeemedPromos: {} };
 
@@ -997,16 +1032,19 @@ async function handleRequest(req, res) {
 
         let finalUrl;
         if (b64) {
-          const imgBuf = Buffer.from(b64, 'base64');
+          const imgBuf = injectAiMetadata(Buffer.from(b64, 'base64'), 'image/jpeg');
           if (R2_ENABLED) {
             const key = `img/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.jpg`;
             finalUrl = await uploadToR2(imgBuf, key, 'image/jpeg');
             console.log('[gpt-image] uploaded to R2:', key);
           } else {
-            finalUrl = `data:image/jpeg;base64,${b64}`;
+            finalUrl = `data:image/jpeg;base64,${imgBuf.toString('base64')}`;
           }
+        } else if (R2_ENABLED) {
+          const dlBuf = injectAiMetadata(await downloadBuffer(imgUrl), 'image/jpeg');
+          finalUrl = await uploadToR2(dlBuf, `img/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.jpg`, 'image/jpeg');
         } else {
-          finalUrl = R2_ENABLED ? await uploadToR2(await downloadBuffer(imgUrl), `img/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.jpg`, 'image/jpeg') : imgUrl;
+          finalUrl = imgUrl;
         }
 
         const db2 = loadDB();
@@ -1102,7 +1140,7 @@ async function handleRequest(req, res) {
           if (!imgUrl.startsWith('http')) return imgUrl;
           const mime = outputFormat === 'png' ? 'image/png' : 'image/jpeg';
           try {
-            const imgBuf = await downloadBuffer(imgUrl);
+            const imgBuf = injectAiMetadata(await downloadBuffer(imgUrl), mime);
             if (R2_ENABLED) {
               const ext = outputFormat === 'png' ? 'png' : 'jpg';
               const key = `img/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
