@@ -1454,6 +1454,35 @@ async function handleRequest(req, res) {
     }
   }
 
+  // ── Image-bytes proxy ─────────────────────────────────────────────────────
+  // Same-origin re-stream of R2 public URLs so the frontend canvas can read
+  // pixels without cross-origin taint (R2 doesn't send CORS by default).
+  // Whitelisted to R2_PUBLIC_URL so we're not an open proxy.
+  if (url.startsWith('/api/image-bytes')) {
+    const q = url.split('?')[1] || '';
+    const target = new URLSearchParams(q).get('url');
+    if (!target) { res.writeHead(400); return res.end('missing url'); }
+    if (!R2_PUBLIC_URL || !target.startsWith(R2_PUBLIC_URL)) {
+      res.writeHead(403); return res.end('only R2 public URLs allowed');
+    }
+    try {
+      const buf = await downloadBuffer(target);
+      const lower = target.toLowerCase();
+      const ct = lower.endsWith('.png') ? 'image/png'
+               : lower.endsWith('.webp') ? 'image/webp'
+               : 'image/jpeg';
+      res.writeHead(200, {
+        'Content-Type': ct,
+        'Cache-Control': 'public, max-age=300',
+        'Access-Control-Allow-Origin': '*',
+      });
+      return res.end(buf);
+    } catch (e) {
+      console.warn('[image-bytes] fetch failed:', e.message);
+      res.writeHead(502); return res.end('fetch failed');
+    }
+  }
+
   // ── BytePlus proxy ────────────────────────────────────────────────────────
   if (url.startsWith('/proxy/')) {
     const chunks = [];
