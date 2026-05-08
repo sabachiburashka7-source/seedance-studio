@@ -1565,6 +1565,24 @@ async function createAd() {
 
     // ── Step 2.5: Generate reference images ─────────────────────────────────
     const refMap = {};
+    // Build entity-name → refMap-key aliases. Skill prompts use prose names
+    // ("the plush bear", "the protagonist") rather than refMap keys
+    // ("product", "SUBJECT_001"), so prose-matching needs the alias map.
+    const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const refAliases = []; // [{ regex, key }]
+    for (const e of entities) {
+      const k = e.type === 'character' ? 'SUBJECT_' + e.subjectId
+              : e.type === 'environment' ? 'ENV_' + e.envId : 'product';
+      if (!e.name) continue;
+      const cleanName = e.name.replace(/^the\s+/i, '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+      if (!cleanName) continue;
+      refAliases.push({ regex: new RegExp(`\\b${escRe(cleanName)}\\b`, 'i'), key: k });
+    }
+    const refKeyMentioned = (promptText, refKey) => {
+      const lower = promptText.toLowerCase();
+      if (lower.includes(refKey.toLowerCase())) return true;
+      return refAliases.some(a => a.key === refKey && a.regex.test(promptText));
+    };
     if (!textOnly) adLog(`Generating ${entities.length} reference image(s)…`, 'info');
     for (let ei = 0; !textOnly && ei < entities.length; ei++) {
       const entity = entities[ei];
@@ -1580,12 +1598,12 @@ async function createAd() {
           }
           if (inputImages.length) adLog(`  → ${inputImages.length} product photo(s) attached`, 'info');
         }
-        // Attach any previously generated ref images whose key appears in this prompt
-        const promptLower = entity.prompt.toLowerCase();
+        // Attach any previously generated ref images whose key OR entity name appears in this prompt
         const prevAttached = [];
         for (const [refKey, refUrl] of Object.entries(refMap)) {
           if (!refUrl) continue;
-          if (!promptLower.includes(refKey.toLowerCase())) continue;
+          if (refKey === key) continue;
+          if (!refKeyMentioned(entity.prompt, refKey)) continue;
           try {
             if (refUrl.startsWith('data:')) {
               const resized = await resizeDataUrl(refUrl, 1024);
@@ -1667,26 +1685,14 @@ async function createAd() {
           const k = 'ENV_' + eid;
           await safeRefInput(refMap[k], k);
         }
-        // Product detection: the skill names the product directly (e.g. "the plush bear")
-        // rather than writing the literal word "product", so we check (1) the server's
-        // hasProduct flag, (2) the literal word, and (3) the actual product entity name.
-        let productMentioned = sf.hasProduct === true || /\bproduct\b/i.test(sf.prompt);
-        if (!productMentioned) {
-          const productEntity = entities.find(e => e.type === 'product');
-          if (productEntity && productEntity.name) {
-            const cleanName = productEntity.name.replace(/^the\s+/i, '').trim();
-            if (cleanName) {
-              const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              productMentioned = new RegExp(`\\b${escRe(cleanName)}\\b`, 'i').test(sf.prompt);
-            }
-          }
+        // Attach product ref + any other refs mentioned by key, "product" literal,
+        // or entity name. Server's hasProduct flag short-circuits the "product" key.
+        if (sf.hasProduct === true && !sfAttachedKeys.has('product')) {
+          await safeRefInput(refMap['product'], 'product');
         }
-        if (productMentioned) await safeRefInput(refMap['product'], 'product');
-        // Fallback: attach any other refs mentioned by key in the prompt text
-        const sfPromptLower = sf.prompt.toLowerCase();
         for (const [refKey, refUrl] of Object.entries(refMap)) {
           if (sfAttachedKeys.has(refKey)) continue;
-          if (sfPromptLower.includes(refKey.toLowerCase())) await safeRefInput(refUrl, refKey);
+          if (refKeyMentioned(sf.prompt, refKey)) await safeRefInput(refUrl, refKey);
         }
         if (sfInputs.length) adLog(`  → ${sfInputs.length} ref image(s) attached: ${[...sfAttachedKeys].join(', ')}`, 'info');
         const url = await genImage(sf.prompt, '9:16', sfInputs, `Scene ${i+1} start`, { model: 'gpt-image-2', quality: 'low' });

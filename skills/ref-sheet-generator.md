@@ -84,6 +84,14 @@ The downstream `starting-frame-prompt-generator` reads your output and uses the 
 **7. Concrete over abstract.**
 "Georgian man, late 20s, medium build, slightly stocky. Dark black short hair, slightly messy and textured. Brown eyes, medium stubble beard" beats "a stressed young man." Image generators reward specificity. Vague prompts produce drift, which defeats the entire purpose of a reference image.
 
+**8. If an env sheet depicts another entity (product or character), it MUST reference that entity's image.**
+The most common visual-drift bug in this pipeline: an environment sheet describes an item that resembles the product (e.g. plush toys on the shelf of a gift shop when the product *is* a plush bear), the pipeline does not attach the product reference image, and the generator produces a generic-looking item instead of the actual product. To prevent this:
+
+- Any env sheet whose described scene contains the product, a character, or any other entity already given a SUBJECT ID / ENV ID, MUST name that entity explicitly using the same wording the starting-frame skill uses: `the [product name]`, `the protagonist (SUBJECT ID: 001)`, etc.
+- Any env sheet that names another entity MUST open with a positional image reference line, identical in form to the starting-frame opener: `Use the [product name] from Image 1[, the protagonist's appearance from Image 2, ...]. The environment shows [...]` — counting images in the fixed pipeline order: subjects (ascending SUBJECT ID) → product (if mentioned) → the env itself is generated, not attached.
+- The downstream pipeline parses entity names out of env sheet prompts and attaches the matching reference images to the env-generation call. Without the explicit name, no reference is attached and the generator hallucinates.
+- If you do not want the product or another character to influence the env image, simply do not describe them in the env sheet at all — push them out of the depicted scene. The trade-off is binary: either describe the entity AND name it for the reference attachment, or leave it out entirely.
+
 ---
 
 ## Reference sheet formats
@@ -114,6 +122,8 @@ Required elements every character sheet must contain:
 
 ```
 ENVIRONMENT: [environment name and state]
+
+[OPTIONAL OPENER — only when the env depicts the product or another character. Omit this line entirely if no other entity appears in the depicted scene. Form: "Use the [product name] from Image 1[, the protagonist's appearance from Image 2, ...]." Image numbering follows the fixed pipeline order — subjects ascending by SUBJECT ID, then product. The env itself is the image being generated, never attached.]
 
 Environment reference sheet, professional format. [Specific location with cultural / regional context], photorealistic photography style. Real interior photography, not illustrated, not drawn, not rendered. Shot on Canon R5, natural lighting.
 
@@ -239,6 +249,8 @@ generate this product multi angle reference sheet image highlighting details vis
 === ENVIRONMENT REFERENCE SHEETS ===
 
 ENVIRONMENT: The gift shop (small Tbilisi-style independent retail interior)
+
+Use the plush bear from Image 1.
 
 Environment reference sheet, professional format. Small Tbilisi-style independent gift shop interior, photorealistic photography style. Real interior photography, not illustrated, not drawn, not rendered. Shot on Canon R5, natural lighting.
 

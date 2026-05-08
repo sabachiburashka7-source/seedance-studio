@@ -135,6 +135,9 @@ The first time the product appears, state its scale relative to a body part or n
 **8. Always describe facial expression and emotion for every character.**
 One dedicated sentence per character: eyes, brow, mouth, and the underlying feeling. Vague directions ("looks happy", "appears worried") are not enough. Be precise: "Eyes slightly narrowed, a small involuntary smile pulled back, not yet released." This is one of the highest-leverage lines for realism and emotional impact.
 
+**8a. Any visible entity in the frame MUST be named.**
+If the product is visible in the frame in any form — held, placed, on a shelf in the background, in a delivery box, peeking out of a bag, or as decoration — you MUST name it explicitly using its product name (`the plush bear`, `the candle`, etc.) and include it in the Part 1 image-count opener. Do NOT describe an item generically as "a small toy on the shelf" or "the gift in his hand" when that item is the product — generic phrasing prevents the pipeline from attaching the product reference image, and the generator hallucinates a different-looking item. Same rule for characters: any character visible in the frame, even briefly or in the background, must be named with their SUBJECT ID. The pipeline parses entity names and IDs out of your prompt to decide which reference images to attach; an unnamed entity gets no reference and drifts visually.
+
 **9. Keep Part 3 to 5 sentences maximum.**
 If it is growing longer, you are re-describing identity details the references already carry. Trim those first — never trim the emotion or product-scale sentences.
 
