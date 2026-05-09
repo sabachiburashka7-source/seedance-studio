@@ -99,9 +99,11 @@ End every prompt with these two lines in order:
 2. `The mood is [X].` — one short phrase giving emotional direction to the whole frame.
 
 Do NOT describe:
-- The protagonist's clothing, face structure, hair, build, ethnicity, age — all of that is in the SUBJECT ID's reference.
+- The protagonist's clothing, face structure, hair, build, age — all of that is in the SUBJECT ID's reference.
 - The room's walls, furniture pieces, decoration, surface materials — all of that is in the ENV ID's reference.
 - The product's shape, colour, parts, accessories — all of that is in the product reference image.
+
+**Ethnicity exception:** every human character must be tagged as **Caucasian** (light skin tone, European features) directly in the starting-frame prompt — once per character, in the same sentence that names them. Example: `the protagonist (SUBJECT ID: 001), a Caucasian man, stands at the kitchen counter.` This single word is the only appearance detail you write; everything else still lives in the SUBJECT reference. Apply to every human character in every scene without exception.
 
 The reference opener and the style+mood closer are not optional and do not count toward the 5-sentence Part 3 limit.
 

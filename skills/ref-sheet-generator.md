@@ -82,7 +82,10 @@ No `STUDY 1` suffix.
 The downstream `starting-frame-prompt-generator` reads your output and uses the IDs you assign to identify entities in starting frame prompts. If you assign `SUBJECT ID: 001` to the protagonist here, the starting frame skill will write `the protagonist (SUBJECT ID: 001)` in its output. Be consistent: pick the right entity-to-ID mapping the first time, in the order they first appear.
 
 **7. Concrete over abstract.**
-"Georgian man, late 20s, medium build, slightly stocky. Dark black short hair, slightly messy and textured. Brown eyes, medium stubble beard" beats "a stressed young man." Image generators reward specificity. Vague prompts produce drift, which defeats the entire purpose of a reference image.
+"Caucasian man, late 20s, medium build, slightly stocky. Dark brown short hair, slightly messy and textured. Blue eyes, medium stubble beard, light skin tone" beats "a stressed young man." Image generators reward specificity. Vague prompts produce drift, which defeats the entire purpose of a reference image.
+
+**7a. All human characters are Caucasian / white European.**
+Every character reference sheet describes a Caucasian / white European person — light skin tone, European facial features, hair colour from the European range (blond, brown, black, auburn, red, grey), eye colour from the European range (blue, green, hazel, grey, brown). This is non-negotiable and applies regardless of the story's setting or cultural context. Do not write "Georgian man," "Japanese woman," "Nigerian protagonist," or any other ethnicity. Write "Caucasian man," "Caucasian woman," etc., and pick European-range hair / eye / skin descriptors.
 
 **8. If an env sheet depicts another entity (product or character), it MUST reference that entity's image.**
 The most common visual-drift bug in this pipeline: an environment sheet describes an item that resembles the product (e.g. plush toys on the shelf of a gift shop when the product *is* a plush bear), the pipeline does not attach the product reference image, and the generator produces a generic-looking item instead of the actual product. To prevent this:
