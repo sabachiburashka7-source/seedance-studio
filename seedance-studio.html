@@ -1165,6 +1165,16 @@ let adStopped = false;
 // Flip back to false to restore the original starting-frame pipeline.
 const SKIP_START_FRAMES = true;
 
+// Skip generating character ref-sheet images (SUBJECT_* entities). They
+// are no longer sent to BytePlus video gen anyway (the real-person classifier
+// rejects AI portraits even after image disruption — the character is
+// described in the per-scene text prompt instead, with cross-scene continuity
+// carried by the previous-scene video reference). Skipping their generation
+// saves ~$0.08 per character per ad run during testing. Flip to false to
+// restore character ref-sheet generation (e.g. for debugging or if a
+// future BytePlus model accepts portraits).
+const SKIP_CHARACTER_REFS = true;
+
 // ── Ad pipeline checkpoint (survives page refresh) ────────────────────
 const AD_CP_KEY = 'ad_checkpoint';
 function saveAdCheckpoint(patch) {
@@ -1595,12 +1605,17 @@ async function createAd() {
       if (lower.includes(refKey.toLowerCase())) return true;
       return refAliases.some(a => a.key === refKey && a.regex.test(promptText));
     };
-    if (!textOnly) adLog(`Generating ${entities.length} reference image(s)…`, 'info');
+    const skipCount = SKIP_CHARACTER_REFS ? entities.filter(e => e.type === 'character').length : 0;
+    if (!textOnly) adLog(`Generating ${entities.length - skipCount} reference image(s)${skipCount ? ` (skipping ${skipCount} character ref${skipCount > 1 ? 's' : ''})` : ''}…`, 'info');
     for (let ei = 0; !textOnly && ei < entities.length; ei++) {
       const entity = entities[ei];
       const key = entity.type === 'character' ? 'SUBJECT_' + entity.subjectId
                 : entity.type === 'environment' ? 'ENV_' + entity.envId : 'product';
       const label = entity.name || key;
+      if (SKIP_CHARACTER_REFS && entity.type === 'character') {
+        adLog(`Ref image: ${label} — skipped (SKIP_CHARACTER_REFS)`, 'info');
+        continue;
+      }
       const sRef = adLog(`Ref image ${ei+1}/${entities.length}: ${label}…`, 'run');
       try {
         const inputImages = [];

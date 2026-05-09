@@ -111,7 +111,7 @@ User uploads product photos + optional description → `createAd()` runs the ful
 4. `POST /api/gen/startframes` — `ideaText + shotsText + refSheetsText` → Claude (`starting-frame-generator` skill) → one starting-frame prompt per scene (parsed into `startFrames[]` with `subjectIds` / `envIds` referencing entity IDs)
 
 **Then per-scene image + video generation:**
-- 3.5: For each entity, call `/api/generate-image` (product entity attaches the user's uploaded photos as refs, resized to 1024px)
+- 3.5: For each entity, call `/api/generate-image` (product entity attaches the user's uploaded photos as refs, resized to 1024px). When `SKIP_CHARACTER_REFS = true` (default), `SUBJECT_*` entities are skipped entirely — those refs would be discarded at the video step anyway.
 - 4.5: For each scene, call `/api/generate-image` with the starting-frame prompt + the matching `SUBJECT_xxx` / `ENV_xxx` / `product` ref images (each resized to 1024px — full-res ref sheets are 3–8MB and silently get dropped otherwise)
 - 5: For each scene, submit BytePlus video task with starting frame as first reference, then **only non-character refs** (env + product — `SUBJECT_*` entries are filtered out), optional previous-scene video for visual continuity. Character refs are skipped because BytePlus's real-person classifier rejects AI-generated portraits even after heavy image disruption; the character is described in the per-scene text prompt instead, and cross-scene continuity comes from the previous-scene video reference once Scene 1 has established the look. All scenes 9:16, duration capped at 5–15s. Frontend `pollAd(job)` and `finishAd(job, url, err)` save items into the `folder: adTitle` group.
 
