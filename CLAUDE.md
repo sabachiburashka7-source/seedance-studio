@@ -97,7 +97,7 @@ Wrappers:
 - `fileToDataUrl(file)` — for `File` inputs (manual T2V/I2V flow). Falls back to raw FileReader bytes if the canvas is tainted.
 - `urlToDataUrl(urlOrDataUrl)` — for data URLs and HTTPS URLs (ads pipeline ref-sheet R2 URLs). HTTPS routes through `/api/image-bytes` to avoid cross-origin canvas taint. Logs `[urlToDataUrl] fetch/decode failed` to console if it falls through.
 
-Both video paths in the ads pipeline (`createAd` and `resumeAd`) feed every refMap entry and starting frame through `urlToDataUrl` before sending. No prompt sanitization — image disruption is the entire defense.
+Both video paths in the ads pipeline (`createAd` and `resumeAd`) feed every non-character refMap entry (env + product) and starting frame through `urlToDataUrl` before sending. **Character refs (`SUBJECT_*`) are NOT sent at all** — image disruption alone could not get AI-generated portraits past the classifier reliably, so they're omitted entirely; the character is described in the per-scene text prompt and cross-scene continuity is carried by the previous-scene video reference. No prompt sanitization — image disruption + skipping character refs is the full defense.
 
 History: started with a heavy 5-pass (visible damage); shrank to invisible "option 3" chroma-only (cabda04) — rejections persisted; layered "normal vs aggressive" two-mode pipeline; finally torn down to this single clean pass that's strong enough to bypass the classifier and still preserves photoreal output.
 
@@ -113,7 +113,7 @@ User uploads product photos + optional description → `createAd()` runs the ful
 **Then per-scene image + video generation:**
 - 3.5: For each entity, call `/api/generate-image` (product entity attaches the user's uploaded photos as refs, resized to 1024px)
 - 4.5: For each scene, call `/api/generate-image` with the starting-frame prompt + the matching `SUBJECT_xxx` / `ENV_xxx` / `product` ref images (each resized to 1024px — full-res ref sheets are 3–8MB and silently get dropped otherwise)
-- 5: For each scene, submit BytePlus video task with starting frame as first reference, all ref images, optional previous-scene video for visual continuity. All scenes 9:16, duration capped at 5–15s. Frontend `pollAd(job)` and `finishAd(job, url, err)` save items into the `folder: adTitle` group.
+- 5: For each scene, submit BytePlus video task with starting frame as first reference, then **only non-character refs** (env + product — `SUBJECT_*` entries are filtered out), optional previous-scene video for visual continuity. Character refs are skipped because BytePlus's real-person classifier rejects AI-generated portraits even after heavy image disruption; the character is described in the per-scene text prompt instead, and cross-scene continuity comes from the previous-scene video reference once Scene 1 has established the look. All scenes 9:16, duration capped at 5–15s. Frontend `pollAd(job)` and `finishAd(job, url, err)` save items into the `folder: adTitle` group.
 
 **Costs (USD, charged on top of per-image / per-video gen):** brief $0.15, shots $0.15, refsheets $0.10, startframes $0.05.
 

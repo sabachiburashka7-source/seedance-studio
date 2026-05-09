@@ -1329,13 +1329,18 @@ async function resumeAdPipeline() {
 
           const content = [];
           const startImg = sceneStartImages[i];
-          let hint = startImg ? 'Open the scene exactly matching reference image 1. Use remaining reference images for character, product, and environment fidelity. '
-                   : Object.keys(refMap).length > 0 ? 'Use the reference images for character, product, and environment fidelity. ' : '';
+          // Character refs (SUBJECT_*) are NOT sent — they trip BytePlus's
+          // real-person classifier even after image disruption. Character
+          // is described in the per-scene text prompt instead; cross-scene
+          // continuity comes from the previous-scene video reference.
+          const sendableRefEntries = Object.entries(refMap).filter(([k, v]) => v && !k.startsWith('SUBJECT_'));
+          let hint = startImg ? 'Open the scene exactly matching reference image 1. Use remaining reference images for product and environment fidelity. '
+                   : sendableRefEntries.length > 0 ? 'Use the reference images for product and environment fidelity. ' : '';
           if (prevVideoUrl) hint += 'Use the reference video for visual continuity from the previous scene. ';
           content.push({ type: 'text', text: hint + prompt });
           if (startImg) { content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(startImg) }, role: 'reference_image' }); }
-          for (const url of Object.values(refMap)) {
-            if (url) content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(url) }, role: 'reference_image' });
+          for (const [, url] of sendableRefEntries) {
+            content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(url) }, role: 'reference_image' });
           }
           if (prevVideoUrl) content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
 
@@ -1766,22 +1771,26 @@ async function createAd() {
         if (!dcr.ok) throw new Error(dj.error || 'Insufficient balance');
         userBalance = dj.balance; updateCreditsDisplay();
 
-        // Build content: starting frame first (reference_image), then all ref images, then optional prev video
+        // Build content: starting frame first (reference_image), then non-character ref images, then optional prev video.
+        // Character refs (SUBJECT_*) are NOT sent — they trip BytePlus's real-person classifier even after image
+        // disruption. The character is described in the per-scene text prompt; cross-scene continuity comes from
+        // the previous-scene video reference once Scene 1 has set the look.
         const content = [];
         const startImg = sceneStartImages[i];
+        const sendableRefEntries = Object.entries(refMap).filter(([k, v]) => v && !k.startsWith('SUBJECT_'));
         let openingHint = '';
         if (startImg) {
-          openingHint = `Open the scene exactly matching reference image 1. Use remaining reference images for character, product, and environment fidelity. `;
-        } else if (Object.keys(refMap).length > 0) {
-          openingHint = `Use the reference images for character, product, and environment fidelity. `;
+          openingHint = `Open the scene exactly matching reference image 1. Use remaining reference images for product and environment fidelity. `;
+        } else if (sendableRefEntries.length > 0) {
+          openingHint = `Use the reference images for product and environment fidelity. `;
         }
         if (prevVideoUrl) openingHint += `Use the reference video for visual continuity from the previous scene. `;
         content.push({ type: 'text', text: openingHint + prompt });
         if (startImg) {
           content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(startImg) }, role: 'reference_image' });
         }
-        for (const url of Object.values(refMap)) {
-          if (url) content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(url) }, role: 'reference_image' });
+        for (const [, url] of sendableRefEntries) {
+          content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(url) }, role: 'reference_image' });
         }
         if (prevVideoUrl) content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
 
