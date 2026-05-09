@@ -1348,9 +1348,9 @@ async function resumeAdPipeline() {
                    : sendableRefEntries.length > 0 ? 'Use the reference images for product and environment fidelity. ' : '';
           if (prevVideoUrl) hint += 'Use the reference video for visual continuity from the previous scene. ';
           content.push({ type: 'text', text: hint + prompt });
-          if (startImg) { content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(startImg) }, role: 'reference_image' }); }
+          if (startImg) { content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(startImg, '9:16') }, role: 'reference_image' }); }
           for (const [, url] of sendableRefEntries) {
-            content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(url) }, role: 'reference_image' });
+            content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(url, '9:16') }, role: 'reference_image' });
           }
           if (prevVideoUrl) content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
           adLog(`  Scene ${i+1} attached: ${sendableRefEntries.map(([k]) => k).join(', ') || 'no images'}${prevVideoUrl ? ' + prev-scene video' : ' (no prev video)'}`, 'info');
@@ -1803,10 +1803,10 @@ async function createAd() {
         if (prevVideoUrl) openingHint += `Use the reference video for visual continuity from the previous scene. `;
         content.push({ type: 'text', text: openingHint + prompt });
         if (startImg) {
-          content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(startImg) }, role: 'reference_image' });
+          content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(startImg, '9:16') }, role: 'reference_image' });
         }
         for (const [, url] of sendableRefEntries) {
-          content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(url) }, role: 'reference_image' });
+          content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(url, '9:16') }, role: 'reference_image' });
         }
         if (prevVideoUrl) content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
         adLog(`  Scene ${i+1} attached: ${sendableRefEntries.map(([k]) => k).join(', ') || 'no images'}${prevVideoUrl ? ' + prev-scene video' : ' (no prev video)'}`, 'info');
@@ -2223,7 +2223,13 @@ function resizeDataUrl(dataUrl, maxPx = 1024) {
 //
 // Output looks like a real person photographed and lightly graded for a
 // documentary or film. No cartoon/illustration look.
-function processForVideo(img) {
+// targetAspect: optional 'W:H' string (e.g. '9:16'). When set, the processed
+// image is drawn fit-inside-centered onto a canvas of that aspect with black
+// letterbox/pillarbox bars. Used by the ads pipeline to force 9:16 output —
+// BytePlus Seedance derives the video's aspect from its reference images, so
+// non-9:16 refs (env 16:9, product 1:1) cause non-9:16 video output even when
+// the API param says aspect_ratio: '9:16'.
+function processForVideo(img, targetAspect) {
   const w = img.naturalWidth, h = img.naturalHeight;
 
   // Step 1+2+3: tone grade, downscale, then upscale back with blur
@@ -2267,6 +2273,27 @@ function processForVideo(img) {
   }
   bctx.putImageData(idata, 0, 0);
 
+  // Step 5 (optional): letterbox to a target aspect (e.g. '9:16') before encode.
+  if (targetAspect) {
+    const [tw, th] = targetAspect.split(':').map(Number);
+    const targetW = 720;
+    const targetH = Math.round(targetW * th / tw);
+    const scale = Math.min(targetW / w, targetH / h);
+    const drawW = Math.round(w * scale);
+    const drawH = Math.round(h * scale);
+    const offX = Math.round((targetW - drawW) / 2);
+    const offY = Math.round((targetH - drawH) / 2);
+    const padded = document.createElement('canvas');
+    padded.width = targetW; padded.height = targetH;
+    const pctx = padded.getContext('2d');
+    pctx.fillStyle = '#000';
+    pctx.fillRect(0, 0, targetW, targetH);
+    pctx.imageSmoothingEnabled = true;
+    pctx.imageSmoothingQuality = 'high';
+    pctx.drawImage(big, offX, offY, drawW, drawH);
+    return padded.toDataURL('image/jpeg', 0.84);
+  }
+
   // Step 5: JPEG at 84%
   return big.toDataURL('image/jpeg', 0.84);
 }
@@ -2292,7 +2319,9 @@ function fileToDataUrl(file) {
 
 // URL or data URL → JPEG data URL. HTTPS URLs route through our
 // same-origin /api/image-bytes proxy to avoid cross-origin canvas taint.
-async function urlToDataUrl(urlOrDataUrl) {
+// Optional targetAspect (e.g. '9:16') letterboxes the result — used by the
+// ads pipeline to force a uniform aspect on every reference image.
+async function urlToDataUrl(urlOrDataUrl, targetAspect) {
   if (!urlOrDataUrl) return urlOrDataUrl;
   let blob;
   try {
@@ -2317,7 +2346,7 @@ async function urlToDataUrl(urlOrDataUrl) {
       i.onerror = () => reject(new Error('image decode failed'));
       i.src = objUrl;
     });
-    return processForVideo(img);
+    return processForVideo(img, targetAspect);
   } catch (e) {
     console.warn('[urlToDataUrl] decode failed, sending raw URL through:', e.message);
     return urlOrDataUrl;
