@@ -454,22 +454,6 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
   nav, .api-bar, .page { padding-left: 16px; padding-right: 16px; }
 }
 
-/* ─── LAYOUT TOGGLE BUTTON ─────────────────────────────────────────── */
-.layout-btn {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
-  color: var(--text2);
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
-  transition: all 0.2s;
-  font-family: 'Manrope', sans-serif;
-}
-.layout-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,0,0,0.04); }
-.layout-btn.mobile-active { background: var(--accent); border-color: var(--accent); color: #fff; }
-
 /* ─── MOBILE TAB STRIP ─────────────────────────────────────────────── */
 #mobile-tab-strip {
   display: none;
@@ -565,7 +549,6 @@ body.mobile-mode .auth-btn { font-size: 16px !important; }
 body.mobile-mode .auth-btn { padding: 15px; min-height: 50px; }
 
 /* Nav right area */
-body.mobile-mode .user-email { max-width: 80px; font-size: 11px; }
 body.mobile-mode .logout-btn { font-size: 11px; padding: 5px 8px; }
 
 /* Toasts above sticky button */
@@ -703,7 +686,6 @@ body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100
 
 /* ─── USER AREA (nav) ─────────────────────────────────────────────── */
 .user-area { display: flex; align-items: center; gap: 10px; }
-.user-email { font-size: 12px; color: var(--text3); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .logout-btn {
   font-size: 12px; padding: 6px 12px; border-radius: 20px;
   border: 1px solid var(--border2); background: transparent; color: var(--text3);
@@ -796,9 +778,7 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <button class="tab" data-page="ads" onclick="goPage('ads',this)">Ads</button>
   </div>
   <div style="display:flex;align-items:center;gap:8px">
-    <button class="layout-btn" id="mobile-btn" onclick="toggleMobileMode()" title="Toggle mobile/desktop UI"></button>
     <div class="user-area" id="user-area" style="display:none">
-      <span class="user-email" id="user-email"></span>
       <span id="credits-badge" style="font-size:12px;color:var(--text);font-weight:700;font-family:'Fira Code',monospace;background:var(--bg2);padding:4px 10px;border-radius:20px;border:1px solid var(--border2);white-space:nowrap"></span>
       <button onclick="openPromoModal()" title="Redeem Promo Code" style="font-size:13px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:background 0.2s,transform 0.2s" onmouseover="this.style.background='#1f1f1f'" onmouseout="this.style.background='#0a0a0a'">+ Add Balance</button>
       <button class="logout-btn" onclick="logout()">Sign out</button>
@@ -2819,7 +2799,6 @@ function showAuthModal() {
 function hideAuthModal() {
   document.getElementById('auth-overlay').classList.add('hidden');
   document.getElementById('user-area').style.display = 'flex';
-  document.getElementById('user-email').textContent = currentUser.email;
   calcCost(); badge(); renderLib();
 }
 
@@ -3249,17 +3228,6 @@ let mobileMode = localStorage.getItem('sd_mobile') !== null
 
 function applyMobileMode() {
   document.body.classList.toggle('mobile-mode', mobileMode);
-  const btn = document.getElementById('mobile-btn');
-  btn.textContent = mobileMode ? '🖥️' : '📱';
-  btn.title       = mobileMode ? 'Switch to desktop layout' : 'Switch to mobile layout';
-  btn.classList.toggle('mobile-active', mobileMode);
-}
-
-function toggleMobileMode() {
-  mobileMode = !mobileMode;
-  localStorage.setItem('sd_mobile', mobileMode ? '1' : '0');
-  applyMobileMode();
-  toast(mobileMode ? 'Mobile layout on' : 'Desktop layout on', 'ok');
 }
 
 // ══ INIT ═══════════════════════════════════════════════════════════════
