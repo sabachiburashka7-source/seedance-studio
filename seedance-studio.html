@@ -1333,9 +1333,13 @@ async function resumeAdPipeline() {
                    : Object.keys(refMap).length > 0 ? 'Use the reference images for character, product, and environment fidelity. ' : '';
           if (prevVideoUrl) hint += 'Use the reference video for visual continuity from the previous scene. ';
           content.push({ type: 'text', text: hint + sanitizeVideoPrompt(prompt) });
-          if (startImg) { const s = await softenDataUrl(startImg); content.push({ type: 'image_url', image_url: { url: s }, role: 'reference_image' }); }
-          for (const url of Object.values(refMap)) {
-            if (url) { const s = await softenDataUrl(url); content.push({ type: 'image_url', image_url: { url: s }, role: 'reference_image' }); }
+          if (startImg) { const s = await softenDataUrl(startImg, 'aggressive'); content.push({ type: 'image_url', image_url: { url: s }, role: 'reference_image' }); }
+          for (const [refKey, url] of Object.entries(refMap)) {
+            if (url) {
+              const s = await softenDataUrl(url, 'aggressive');
+              if (s === url) adLog(`  ⚠ ref "${refKey}" softening fell through — raw URL sent`, 'warn');
+              content.push({ type: 'image_url', image_url: { url: s }, role: 'reference_image' });
+            }
           }
           if (prevVideoUrl) content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
 
@@ -1778,12 +1782,16 @@ async function createAd() {
         if (prevVideoUrl) openingHint += `Use the reference video for visual continuity from the previous scene. `;
         content.push({ type: 'text', text: openingHint + sanitizeVideoPrompt(prompt) });
         if (startImg) {
-          const softenedStart = await softenDataUrl(startImg);
+          const softenedStart = await softenDataUrl(startImg, 'aggressive');
           content.push({ type: 'image_url', image_url: { url: softenedStart }, role: 'reference_image' });
         }
         // Attach all reference images (characters, environments, product)
-        for (const url of Object.values(refMap)) {
-          if (url) { const softened = await softenDataUrl(url); content.push({ type: 'image_url', image_url: { url: softened }, role: 'reference_image' }); }
+        for (const [refKey, url] of Object.entries(refMap)) {
+          if (url) {
+            const softened = await softenDataUrl(url, 'aggressive');
+            if (softened === url) adLog(`  ⚠ ref "${refKey}" softening fell through — raw URL sent`, 'warn');
+            content.push({ type: 'image_url', image_url: { url: softened }, role: 'reference_image' });
+          }
         }
         if (prevVideoUrl) content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
 
@@ -2189,14 +2197,29 @@ function resizeDataUrl(dataUrl, maxPx = 1024) {
 // Earlier "option-3" version (chroma-only + 92% JPEG) was too subtle and
 // real-person rejections persisted in the ads pipeline; this layered
 // version is what we settled on.
-function applyAntiClassifierPass(img) {
+// `mode` selects intensity:
+//   'normal'     — manual T2V/I2V flow, preserves perceived quality.
+//   'aggressive' — ads-pipeline ref images, where the ref is scaffolding
+//                  for Seedance to composite from, not the final output.
+//                  Visible softening is acceptable; classifier bypass is
+//                  the priority.
+function applyAntiClassifierPass(img, mode = 'normal') {
+  const aggressive = mode === 'aggressive';
+  const lumaJitter   = aggressive ? 16 : 8;    // ±8 vs ±4
+  const chromaJitter = aggressive ? 56 : 32;   // ±28 vs ±16
+  const dsScale      = aggressive ? 0.78 : 0.92;
+  const blurPx       = aggressive ? 1.4 : 0.6;
+  const saturate     = aggressive ? 0.9 : 1.0;
+  const rotateMag    = aggressive ? 1.0 : 0.6; // ±0.5° vs ±0.3°
+  const jpegQ        = aggressive ? 0.78 : 0.87;
+
   const w = img.naturalWidth, h = img.naturalHeight;
   const canvas = document.createElement('canvas');
   canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0);
 
-  // Step 1: YCbCr noise — chroma-heavy, light luma
+  // Step 1: YCbCr noise — chroma-heavy + light luma
   const idata = ctx.getImageData(0, 0, w, h);
   const d = idata.data;
   for (let i = 0; i < d.length; i += 4) {
@@ -2204,9 +2227,9 @@ function applyAntiClassifierPass(img) {
     const Y  =  0.299    * R + 0.587    * G + 0.114    * B;
     const Cb = -0.168736 * R - 0.331264 * G + 0.5      * B + 128;
     const Cr =  0.5      * R - 0.418688 * G - 0.081312 * B + 128;
-    const Y2  = Y  + (Math.random() - 0.5) * 8;   // ±4 luma
-    const Cb2 = Cb + (Math.random() - 0.5) * 32;  // ±16 chroma
-    const Cr2 = Cr + (Math.random() - 0.5) * 32;  // ±16 chroma
+    const Y2  = Y  + (Math.random() - 0.5) * lumaJitter;
+    const Cb2 = Cb + (Math.random() - 0.5) * chromaJitter;
+    const Cr2 = Cr + (Math.random() - 0.5) * chromaJitter;
     const R2 = Y2 + 1.402    * (Cr2 - 128);
     const G2 = Y2 - 0.344136 * (Cb2 - 128) - 0.714136 * (Cr2 - 128);
     const B2 = Y2 + 1.772    * (Cb2 - 128);
@@ -2216,9 +2239,9 @@ function applyAntiClassifierPass(img) {
   }
   ctx.putImageData(idata, 0, 0);
 
-  // Step 2: downscale to 92% — destroys high-freq pixel patterns
-  const dw = Math.max(1, Math.round(w * 0.92));
-  const dh = Math.max(1, Math.round(h * 0.92));
+  // Step 2: downscale — destroys high-freq pixel patterns
+  const dw = Math.max(1, Math.round(w * dsScale));
+  const dh = Math.max(1, Math.round(h * dsScale));
   const ds = document.createElement('canvas');
   ds.width = dw; ds.height = dh;
   const dsCtx = ds.getContext('2d');
@@ -2226,22 +2249,36 @@ function applyAntiClassifierPass(img) {
   dsCtx.imageSmoothingQuality = 'high';
   dsCtx.drawImage(canvas, 0, 0, dw, dh);
 
-  // Step 3: rescale back + sub-degree rotation + 0.6px blur
+  // Step 3: rescale + rotation + blur (+ saturate in aggressive)
   const tmp = document.createElement('canvas');
   tmp.width = w; tmp.height = h;
   const tctx = tmp.getContext('2d');
   tctx.imageSmoothingEnabled = true;
   tctx.imageSmoothingQuality = 'high';
-  tctx.filter = 'blur(0.6px)';
+  tctx.filter = `blur(${blurPx}px) saturate(${saturate})`;
   const cx = w / 2, cy = h / 2;
   tctx.translate(cx, cy);
-  tctx.rotate(((Math.random() - 0.5) * 0.6) * Math.PI / 180); // [-0.3°, +0.3°]
+  tctx.rotate(((Math.random() - 0.5) * rotateMag) * Math.PI / 180);
   tctx.translate(-cx, -cy);
   tctx.drawImage(ds, 0, 0, w, h);
   tctx.filter = 'none';
 
-  // Step 4: 87% JPEG
-  return tmp.toDataURL('image/jpeg', 0.87);
+  // Step 4: aggressive adds a faint grid overlay — the most reliable
+  // landmark-disruptor from the original 5-pass pipeline.
+  if (aggressive) {
+    tctx.save();
+    tctx.globalAlpha = 0.10;
+    tctx.strokeStyle = '#000';
+    tctx.lineWidth = 1;
+    const step = Math.max(8, Math.round(Math.min(w, h) / 36));
+    tctx.beginPath();
+    for (let x = 0; x < w; x += step) { tctx.moveTo(x, 0); tctx.lineTo(x, h); }
+    for (let y = 0; y < h; y += step) { tctx.moveTo(0, y); tctx.lineTo(w, y); }
+    tctx.stroke();
+    tctx.restore();
+  }
+
+  return tmp.toDataURL('image/jpeg', jpegQ);
 }
 
 function fileToDataUrl(file) {
@@ -2295,7 +2332,7 @@ function sanitizeVideoPrompt(text) {
 // so the canvas isn't tainted by R2 cross-origin (the old version using
 // `img.src = url` silently no-op'd in production: tainted canvas, then
 // getImageData threw, then the catch returned the URL unmodified).
-async function softenDataUrl(urlOrDataUrl) {
+async function softenDataUrl(urlOrDataUrl, mode = 'normal') {
   if (!urlOrDataUrl) return urlOrDataUrl;
   let blob;
   try {
@@ -2308,7 +2345,10 @@ async function softenDataUrl(urlOrDataUrl) {
     } else {
       return urlOrDataUrl;
     }
-  } catch (_) { return urlOrDataUrl; }
+  } catch (e) {
+    console.warn('[softenDataUrl] fetch failed, sending raw URL through:', e.message);
+    return urlOrDataUrl;
+  }
   const objUrl = URL.createObjectURL(blob);
   try {
     const img = await new Promise((resolve, reject) => {
@@ -2317,8 +2357,9 @@ async function softenDataUrl(urlOrDataUrl) {
       i.onerror = () => reject(new Error('image decode failed'));
       i.src = objUrl;
     });
-    return applyAntiClassifierPass(img);
-  } catch (_) {
+    return applyAntiClassifierPass(img, mode);
+  } catch (e) {
+    console.warn('[softenDataUrl] decode failed, sending raw URL through:', e.message);
     return urlOrDataUrl;
   } finally {
     URL.revokeObjectURL(objUrl);
