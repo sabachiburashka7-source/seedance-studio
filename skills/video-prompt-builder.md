@@ -47,7 +47,14 @@ For each scene in the input, produce a complete document with FIVE sections in t
 
 Each scene's document begins with a clear header: `=== SCENE [N] OF [TOTAL] — [short scene title] ===`
 
-Visual continuity between scenes (matching the bear's appearance, the protagonist's look, the location's lighting) is **not handled in this skill**. The downstream pipeline supplies reference images and a starting frame to Seedance for each scene, which controls visual consistency far more reliably than text descriptions could. Do not include CONTINUITY blocks, character-match notes, or "identical to Scene 1" prose in the per-scene output. Focus only on the shot grammar, effects, and energy of the scene itself.
+Visual continuity for **environments and products** is handled by the downstream pipeline — those reference images are supplied to the video generator and you don't need to re-describe their identity in prose.
+
+Character continuity, however, is **not** carried by reference images. The video generator's real-person classifier rejects AI-generated portraits, so character reference sheets are intentionally not sent. This has two consequences for every per-scene document you produce:
+
+1. **Every scene that contains a character must describe that character in full visual prose** — face shape, age, ethnicity, hair (colour, length, style, texture), eye colour, build, clothing, posture, distinguishing features, anything that would make the character recognisably the same person across scenes. Do not assume a reference image will fill in the gaps — there is none. Repeat the description in every scene where the character appears, even if it feels redundant.
+2. **From Scene 2 onward, explicitly state that the character should match the protagonist from the previous scene's video.** The previous scene's finished video is supplied as a continuity reference to the generator, so a line like "matching the protagonist from the previous scene's video reference — the same woman, identical face, hair, build, and clothing" tells the generator to lock onto that look. Pair this with the full prose description so the generator has both the visual reference and the textual anchor.
+
+Do not include CONTINUITY blocks or "identical to Scene 1" framing notes about effects or shot choices — only the character description and the previous-video callback. Stay focused on shot grammar, effects, and energy for everything else.
 
 #### Section 1: SHOT-BY-SHOT EFFECTS TIMELINE
 
@@ -163,7 +170,9 @@ If the brief is structured as a CONCEPT block followed by a numbered SCENES list
 - Treat both the "language-free / silent video" and "no readable screen content" constraints above as automatically active for any concept-and-scenes input, unless the input explicitly contradicts them. These inputs are designed for silent organic-feeling content by default.
 
 **When reference sheet prompts are provided.**
-If the input includes a REFERENCE SHEET PROMPTS block (output of `reference-sheet-prompt-generator`), use the SUBJECT IDs and ENV IDs assigned there to identify entities in your shot descriptions where helpful — e.g. "the protagonist (SUBJECT ID: 001)" or "the gift shop (ENV ID: 001)". Do not re-describe identity details (face, clothing, room furnishings) that the reference images already carry.
+If the input includes a REFERENCE SHEET PROMPTS block (output of `reference-sheet-prompt-generator`), use the ENV IDs and product entries to identify environments and products in your shot descriptions where helpful — e.g. "the gift shop (ENV ID: 001)". Do not re-describe environment details (room furnishings, walls, lighting fixtures) or product appearance — the environment and product reference images carry that identity for the video generator.
+
+**Character SUBJECT entries are different.** Character reference images are intentionally not sent to the video generator (its real-person classifier rejects AI-generated portraits). You may still use the SUBJECT label for clarity (e.g. "the protagonist (SUBJECT 001)"), but the descriptive prose has to carry the entire identity — face shape and features, age, ethnicity, hair (colour, length, style), eye colour, body type, clothing, posture, distinguishing features. Read the SUBJECT entry from the reference sheet prompts and faithfully embed those details into your shot prose. From Scene 2 onward, also include the explicit "matching the protagonist from the previous scene's video reference" callback.
 
 **When starting frame prompts are provided.**
 If the input includes a STARTING FRAME PROMPTS block (output of `starting-frame-prompt-generator`), these describe the literal first frame of each scene as an image that has already been generated. **Shot 1 of each scene must match its starting frame prompt exactly** — same camera angle, same framing, same colour grade, same lighting direction, same entity positions, same mood. The starting frame is the seed the video generator animates from; Shot 1 is the text description of that same image. Treat the starting frame as the locked visual contract for how each scene opens.
@@ -171,9 +180,10 @@ If the input includes a STARTING FRAME PROMPTS block (output of `starting-frame-
 **When no starting frame prompts are provided.**
 If the input has CONCEPT + SCENES (and optionally REFERENCE SHEET PROMPTS) but no STARTING FRAME PROMPTS block, there is no pre-rendered first frame for the video generator to seed from. In that case:
 - Do not write Shot 1 as if matching a locked frame. Design Shot 1 freely from the scene description — choose the opening camera angle, framing, lens, lighting direction, and entity positions yourself, guided by the mood and energy the scene calls for.
-- The video generator will receive only the reference images (characters, environment, product) plus the previous scene's video for continuity. Reference images carry **identity** (faces, clothing, product appearance, room furnishings) but not **framing** — your shot description has to do all the framing work.
+- The video generator will receive only **environment and product** reference images (no character refs) plus the previous scene's video for continuity. Environment and product refs carry identity for those entities; character identity must be carried entirely by your shot prose.
 - Make Shot 1's opening visual concrete and specific in your text — describe the literal first second the way you'd describe a starting frame, since this scene's text prompt is the only source of opening-frame guidance the generator will get. Camera height, distance to subject, what's in foreground vs background, lighting key direction, dominant colour, and the subject's exact pose/action at t=0.
-- Continuity across scenes still comes from the reference images and the previous-scene video reference; you do not need to enforce it through prose.
+- For environments and products, continuity across scenes comes from the reference images, so you don't need to re-describe their identity in prose.
+- For characters, continuity across scenes is carried by (a) the full character description you write into every scene's prose, and (b) from Scene 2 onward, the previous scene's video supplied as a continuity reference. Always pair both: the prose description AND, on Scene 2+, the explicit "matching the protagonist from the previous scene's video" callback.
 
 ## Tone and style
 
