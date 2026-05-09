@@ -176,11 +176,32 @@ function redisCmd(cmd, timeoutMs = 12000) {
   });
 }
 
-async function redisSave(db) {
-  try {
-    await redisCmd(['SET', REDIS_KEY, JSON.stringify(db)]);
-    console.log('[redis] saved OK');
-  } catch(e) { console.error('[redis] save error:', e.message); }
+// Serialized + retrying Redis writes.
+// Multiple saveDB calls used to fire concurrent SETs; out-of-order completion
+// could leave Redis with an older snapshot than what was already in the
+// in-memory cache. Then on the next dyno restart we'd reload that stale
+// snapshot and the user's most recent library generations would be gone.
+// The chain ensures writes hit Redis in caller order; the retry covers
+// transient Upstash timeouts that previously lost a DB version forever.
+let _redisWriteChain = Promise.resolve(true);
+
+function redisSave(db) {
+  const payload = JSON.stringify(db); // snapshot synchronously
+  const next = _redisWriteChain.then(async () => {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await redisCmd(['SET', REDIS_KEY, payload]);
+        console.log('[redis] saved OK' + (attempt > 1 ? ` (attempt ${attempt})` : ''));
+        return true;
+      } catch(e) {
+        console.error(`[redis] save error (attempt ${attempt}/3):`, e.message);
+        if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 1500));
+      }
+    }
+    return false;
+  });
+  _redisWriteChain = next.catch(() => false);
+  return next;
 }
 
 async function redisLoad() {
@@ -198,17 +219,22 @@ async function redisLoad() {
 // ── Database (sync interface, async persistence) ──────────────────────────────
 function loadDB() { return dbCache; }
 
+// Returns a Promise<boolean> — true if the write hit durable storage.
+// Most callers ignore the return value (fire-and-forget is fine for
+// auth/balance updates). The /library POST awaits it so the client knows
+// whether to retry.
 function saveDB(db) {
   dbCache = db;
   if (REDIS_URL && REDIS_TOKEN) {
     if (!redisReady) {
       // Redis didn't respond at startup — refuse to overwrite Redis with potentially stale data
       console.warn('[db] saveDB: skipping Redis write — Redis was unreachable at startup. Data saved in-memory only.');
-      return;
+      return Promise.resolve(false);
     }
-    redisSave(db); // async, fire-and-forget
+    return redisSave(db);
   } else {
     try { fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8'); } catch {}
+    return Promise.resolve(true);
   }
 }
 
@@ -756,9 +782,21 @@ async function handleRequest(req, res) {
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
     const body = await readBody(req);
-    const db   = loadDB();
-    db.library[sess.userId] = body.library || [];
-    saveDB(db);
+    // Validate shape — readBody returns {} on parse failure or truncated upload.
+    // The previous `body.library || []` silently wrote an empty array, wiping
+    // the user's library on any malformed POST. Reject instead so the client
+    // retries and the existing data is preserved.
+    if (!Array.isArray(body.library)) {
+      console.warn('[library] rejected save — body.library not an array (likely parse failure / truncated upload). User data preserved.');
+      return sendJSON(res, 400, { error: 'Invalid library payload' });
+    }
+    const db = loadDB();
+    db.library[sess.userId] = body.library;
+    const ok = await saveDB(db);
+    if (!ok) {
+      console.error('[library] redis write failed — telling client to retry');
+      return sendJSON(res, 503, { error: 'Database unavailable, retry' });
+    }
     return sendJSON(res, 200, { ok: true });
   }
 
