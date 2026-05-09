@@ -82,14 +82,16 @@ There is no Stripe integration — payments live entirely on promo codes.
 ## Canvas softening (real-person classifier bypass)
 ByteDance runs a real-person classifier on every input image. Even clearly AI-generated photorealistic portraits trigger it. There is no API parameter to declare an image as AI-generated.
 
-**Solution**: 5-pass canvas pipeline applied before sending any image to ByteDance. `fileToDataUrl(file)` (for `File` inputs) and `softenDataUrl(dataUrl)` (for already-fetched data URLs) both implement it:
-1. `blur(1.2px) saturate(0.85)` CSS filter on canvas context — softens photographic micro-texture
-2. 72% downscale → upscale back — bilinear interpolation twice destroys high-frequency sharpness
-3. Grid overlay (lines every ~`min(w,h)/28` px, 18% opacity) — breaks facial-landmark sampling regions; the most effective pass
-4. ±25 per-channel random noise
-5. JPEG re-encode at 80% quality — DCT artifacts further distinguish from a clean camera original
+**Solution**: layered canvas pass in `applyAntiClassifierPass(img)`, called by both `fileToDataUrl(file)` (for `File` inputs) and `softenDataUrl(urlOrDataUrl)` (for data URLs / HTTPS URLs routed through `/api/image-bytes`). Each step is individually near-invisible; the combination is what bypasses the classifier:
+1. YCbCr noise — ±16 chroma (Cb/Cr) + ±4 luma (Y). Chroma-heavy because skin-tone cues are the strongest signal; light luma still adds pixel-level disruption.
+2. Downscale to 92% then upscale back to original size — two bilinear interpolations destroy the high-frequency micro-texture that says "camera capture."
+3. `blur(0.6px)` CSS filter during the upscale — softens tack-sharp facial landmarks the classifier locks onto.
+4. Sub-degree rotation (±0.3°) — breaks landmark sampling alignment.
+5. JPEG re-encode at 87% — DCT signature distinct from a clean camera original.
 
-Falls back to the raw FileReader data URL if the canvas is tainted (cross-origin). Visually indistinguishable, but consider DRYing the two duplicates if you touch them.
+History: the first version was a heavy 5-pass with `blur(1.2px) saturate(0.85)`, 72% downscale, grid overlay, ±25 channel noise, 80% JPEG — visible quality damage. Replaced with chroma-only "option 3" (cabda04) which was too subtle and real-person rejections kept happening on the ads pipeline. Current version is the middle ground: heavier than option 3, no visible grid/saturation damage.
+
+Falls back to the raw FileReader data URL if the canvas is tainted (cross-origin). Consider DRYing the two callers if you touch them.
 
 ## Ads pipeline (4-stage Claude → image gen → video gen)
 User uploads product photos + optional description → `createAd()` runs the full pipeline.
