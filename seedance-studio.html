@@ -2926,36 +2926,76 @@ async function saveLib() {
   if (_saveInFlight) { _saveDirty = true; return; }
 
   _saveInFlight = (async () => {
+    let failStreak = 0;
     do {
       _saveDirty = false;
+      let ok = false;
       try {
         const r = await fetch('/library', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
           body: JSON.stringify({ library: lib })
         });
-        if (!r.ok) console.warn('saveLib server returned', r.status);
+        ok = r.ok;
+        if (!ok) console.warn('saveLib server returned', r.status);
       } catch(e) { console.warn('saveLib error:', e.message); }
+      if (ok) {
+        failStreak = 0;
+      } else if (failStreak < 4) {
+        // Retry up to 4 times with backoff so an aborted/timed-out POST
+        // doesn't silently leave the server with a stale library.
+        failStreak++;
+        await new Promise(r => setTimeout(r, failStreak * 3000));
+        _saveDirty = true;
+      }
     } while (_saveDirty);
     _saveInFlight = null;
   })();
 }
 
 async function loadLib(userId) {
-  // Try server first; fall back to localStorage backup
+  // Read local backup synchronously — always populated by saveLib, so it
+  // reflects the user's most recent view even if the last POST was lost.
+  let localLib = [];
+  try { localLib = JSON.parse(localStorage.getItem('sd_lib_' + userId) || '[]'); }
+  catch { localLib = []; }
+
+  // Then try server.
+  let serverLib = null;
   try {
     const r = await fetch('/library', { headers: { 'Authorization': 'Bearer ' + authToken } });
     if (r.ok) {
       const j = await r.json();
-      if (Array.isArray(j.library)) { lib = j.library; resumeUpscaling(); return; }
-      console.warn('loadLib: unexpected server response', j);
+      if (Array.isArray(j.library)) serverLib = j.library;
+      else console.warn('loadLib: unexpected server response', j);
     } else {
       console.warn('loadLib: server returned', r.status, '— falling back to localStorage');
     }
   } catch(e) { console.warn('loadLib fetch error:', e.message); }
-  // Fallback
-  try { lib = JSON.parse(localStorage.getItem('sd_lib_' + userId) || '[]'); }
-  catch { lib = []; }
+
+  if (serverLib === null) {
+    // Server unreachable — fall back to local backup.
+    lib = localLib;
+  } else {
+    // Merge: any item in localLib but missing from serverLib is an unsaved
+    // change (POST was aborted, dyno cold-started before Redis flushed,
+    // etc.). Restore those rather than silently dropping them. This was
+    // causing ads-pipeline scenes/refs to vanish after a refresh because
+    // each saveLib POST is fire-and-forget with no retry across reloads.
+    const serverIds = new Set(serverLib.map(it => it && it.id));
+    const localOnly = localLib.filter(it => it && it.id && !serverIds.has(it.id));
+    if (localOnly.length) {
+      console.log('[loadLib] Restoring', localOnly.length, 'local-only item(s) missing from server');
+      const localIds = new Set(localLib.map(it => it && it.id));
+      const serverOnly = serverLib.filter(it => it && it.id && !localIds.has(it.id));
+      // localLib order first (the user's last view), then any newer
+      // server-side items the local backup didn't have.
+      lib = [...localLib, ...serverOnly];
+      saveLib(); // re-sync the merged state to the server
+    } else {
+      lib = serverLib;
+    }
+  }
   resumeUpscaling();
 }
 
