@@ -1353,6 +1353,7 @@ async function resumeAdPipeline() {
             content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(url) }, role: 'reference_image' });
           }
           if (prevVideoUrl) content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
+          adLog(`  Scene ${i+1} attached: ${sendableRefEntries.map(([k]) => k).join(', ') || 'no images'}${prevVideoUrl ? ' + prev-scene video' : ' (no prev video)'}`, 'info');
 
           const payload = buildPayload(model, content, false, ratio, dur, false, vidRes);
           let jV;
@@ -1808,6 +1809,7 @@ async function createAd() {
           content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(url) }, role: 'reference_image' });
         }
         if (prevVideoUrl) content.push({ type: 'video_url', video_url: { url: prevVideoUrl }, role: 'reference_video' });
+        adLog(`  Scene ${i+1} attached: ${sendableRefEntries.map(([k]) => k).join(', ') || 'no images'}${prevVideoUrl ? ' + prev-scene video' : ' (no prev video)'}`, 'info');
 
         const payload = buildPayload(model, content, false, ratio, dur, false, vidRes);
         let taskId, jV;
@@ -1867,7 +1869,7 @@ function pollAd(job) {
   return new Promise((resolve) => {
     let n = 0;
     const run = async () => {
-      if (++n > 80) { finishAd(job, null, 'Timed out'); resolve(null); return; }
+      if (++n > 80) { await finishAd(job, null, 'Timed out'); resolve(null); return; }
       try {
         const r = await fetch('/proxy/api/v3/contents/generations/tasks/' + job.id);
         const d = await r.json();
@@ -1875,10 +1877,13 @@ function pollAd(job) {
         if (status === 'succeeded' || status === 'success' || status === 'completed') {
           const url = d.content?.video_url || d.content?.[0]?.video_url?.url || d.content?.[0]?.url
             || d.outputs?.[0]?.url || d.output?.url || d.result?.url || '';
-          finishAd(job, url, null);
-          resolve(url || null);
+          // Await finishAd so the returned URL is the permanent stored copy (R2),
+          // not the short-lived BytePlus output URL. The ads pipeline uses this
+          // returned URL as the continuity reference for the next scene.
+          const storedUrl = await finishAd(job, url, null);
+          resolve(storedUrl || url || null);
         } else if (status === 'failed' || status === 'error' || status === 'cancelled') {
-          finishAd(job, null, d.error?.message || d.message || 'Status: ' + d.status);
+          await finishAd(job, null, d.error?.message || d.message || 'Status: ' + d.status);
           resolve(null);
         } else {
           setTimeout(run, 30000);
@@ -1892,9 +1897,14 @@ function pollAd(job) {
   });
 }
 
+// Returns the stored (R2) URL when upload succeeds, falling back to the
+// original URL otherwise. The ads pipeline awaits this and uses the
+// returned URL as the continuity reference for the next scene — passing
+// the original short-lived BytePlus output URL caused continuity to
+// silently drop on later scenes.
 async function finishAd(job, url, err) {
   jobs = jobs.filter(j => j.id !== job.id);
-  if (err) { toast('Scene failed: ' + friendlyErr(err), 'err'); renderLib(); return; }
+  if (err) { toast('Scene failed: ' + friendlyErr(err), 'err'); renderLib(); return null; }
   if (url) {
     try {
       const r = await fetch('/api/store-video', {
@@ -1914,6 +1924,7 @@ async function finishAd(job, url, err) {
   saveLib(); renderLib(); badge();
   toast('Scene ready! Upscaling…', 'ok');
   if (url) upscaleVideo(item);
+  return url;
 }
 
 // ══ IMAGE REFERENCE ════════════════════════════════════════════════════
