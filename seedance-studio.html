@@ -337,8 +337,10 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 .vid-preview-play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.18); opacity: 0; transition: opacity 0.18s; pointer-events: none; }
 .vid-preview:hover .vid-preview-play { opacity: 1; }
 .vid-preview-play span { font-size: 38px; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5)); }
-.upscale-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: rgba(0,0,0,0.55); pointer-events: none; }
+.upscale-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: rgba(0,0,0,0.55); pointer-events: auto; }
 .upscale-overlay span { font-size: 12px; color: #fff; opacity: .85; letter-spacing: .04em; }
+.upscale-overlay .skip-btn { font-size: 11px; padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.35); background: rgba(0,0,0,0.45); color: #fff; cursor: pointer; letter-spacing: .03em; }
+.upscale-overlay .skip-btn:hover { background: rgba(255,255,255,0.12); }
 .vid-no-url { width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text3);font-size:12px;gap:6px;padding:12px;text-align:center; }
 .vid-body { padding: 14px; }
 .vid-prompt-wrap { margin-bottom: 10px; }
@@ -2535,31 +2537,53 @@ async function upscaleVideo(item) {
   }
 }
 
+function cancelUpscale(id) {
+  const item = lib.find(x => x.id === id);
+  if (!item) return;
+  item.upscaling = false;
+  delete item.upscaleRequestId;
+  delete item.upscaleStatusUrl;
+  delete item.upscaleResponseUrl;
+  saveLib(); renderLib();
+  toast('Using original video', 'ok');
+}
+
 function pollUpscale(item) {
   const requestId = item.upscaleRequestId;
   if (!requestId) return;
   let n = 0;
+  let errs = 0;
   const buildUrl = () => {
     const qs = new URLSearchParams({ id: requestId });
     if (item.upscaleStatusUrl)   qs.set('statusUrl', item.upscaleStatusUrl);
     if (item.upscaleResponseUrl) qs.set('responseUrl', item.upscaleResponseUrl);
     return '/api/upscale/status?' + qs.toString();
   };
+  const giveUp = (msg) => {
+    item.upscaling = false;
+    delete item.upscaleRequestId;
+    delete item.upscaleStatusUrl;
+    delete item.upscaleResponseUrl;
+    saveLib(); renderLib();
+    toast(msg, 'warn');
+  };
   const run = async () => {
-    if (++n > 60) {
-      item.upscaling = false;
-      delete item.upscaleRequestId;
-      delete item.upscaleStatusUrl;
-      delete item.upscaleResponseUrl;
-      saveLib(); renderLib();
-      toast('Upscale timed out — original video saved', 'warn');
-      return;
-    }
+    // User canceled via "Use original" — stop polling.
+    if (!item.upscaling || item.upscaleRequestId !== requestId) return;
+    if (++n > 60) return giveUp('Upscale timed out — original video saved');
     try {
       const r = await fetch(buildUrl(), {
         headers: { 'Authorization': 'Bearer ' + authToken }
       });
-      const d = await r.json();
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) {
+        // Treat repeated Fal-side errors (e.g. 502 internal error) as terminal
+        // so items don't sit in "Upscaling…" forever during a Fal outage.
+        if (++errs >= 8) return giveUp('Upscaler unreachable — original video saved');
+        setTimeout(run, 15000);
+        return;
+      }
+      errs = 0;
       if (d.status === 'COMPLETED' && d.url) {
         item.url = d.url;
         item.upscaling = false;
@@ -2570,16 +2594,12 @@ function pollUpscale(item) {
         saveLib(); renderLib();
         toast('Video upscaled!', 'ok');
       } else if (d.status === 'FAILED') {
-        item.upscaling = false;
-        delete item.upscaleRequestId;
-        delete item.upscaleStatusUrl;
-        delete item.upscaleResponseUrl;
-        saveLib(); renderLib();
-        toast('Upscale failed — original video saved', 'warn');
+        giveUp('Upscale failed — original video saved');
       } else {
         setTimeout(run, 15000);
       }
     } catch(e) {
+      if (++errs >= 8) return giveUp('Upscaler unreachable — original video saved');
       setTimeout(run, 15000);
     }
   };
@@ -3074,7 +3094,7 @@ function makeLibCard(item, i) {
             : `<video src="${item.url}" preload="metadata"></video>`)
         : `<div class="vid-no-url">No URL returned<br><small style="font-size:10px;opacity:.6">${item.id?.substring(0,20)}...</small></div>`}
       ${item.upscaling
-        ? `<div class="upscale-overlay"><div class="spin"></div><span>Upscaling…</span></div>`
+        ? `<div class="upscale-overlay" onclick="event.stopPropagation()"><div class="spin"></div><span>Upscaling…</span>${item.url ? `<button class="skip-btn" onclick="event.stopPropagation();cancelUpscale('${item.id}')">Use original</button>` : ''}</div>`
         : (item.url ? `<div class="vid-preview-play"><span>${isImg ? '🔍' : '▶'}</span></div>` : '')}
     </div>
     <div class="vid-body">
