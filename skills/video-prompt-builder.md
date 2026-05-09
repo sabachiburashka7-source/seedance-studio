@@ -138,6 +138,39 @@ These principles should guide every prompt you write:
 4. **Specificity over vagueness.** "The frame rotates clockwise by approximately 15-20°" is better than "the camera tilts." "Approximately 20-25% speed" is better than "slow motion."
 5. **Energy must resolve.** No matter how intense the opening, the video needs to land. The final moments should feel intentional, not like the effects budget ran out.
 
+## Set geometry and character life
+
+Two recurring failure modes in generated video — fix both at the prompt level.
+
+### Set geometry must be consistent across every shot
+
+When characters share furniture (a table, a couch, a counter, a car) or when their relative positions matter to the scene, every shot that references position must:
+
+1. **Spell out the shared geometry on first appearance** — "seated opposite her at the same table," "sharing the booth, her on the left, him on the right," "standing shoulder-to-shoulder at the counter." Never write "across the table" without "from her" attached — the bare phrase can be read as "across the room at a different table," and the model will render two tables.
+2. **Maintain the geometry in every subsequent shot** that mentions either character's position. Re-anchor with the same wording each time, even if it feels redundant. Singular phrases like "the table" are not enough on their own — pair them with the relational anchor ("opposite her at the same table") at least once per shot.
+3. **Keep the camera position consistent with the geometry.** If the camera is across the table from Character A, then Character B (who is sitting opposite A at the same table) is *behind the camera*, not "behind her." Common mistakes that force the model to invent a second table or break the layout:
+   - Describing a character as "behind her" while the camera is on an across-table eyeline.
+   - Switching the camera from "near side" to "across-table eyeline" between shots without rotating the spatial language to match.
+   - Describing a character as "in the background" when the established geometry would put them out of frame or behind the lens.
+
+Before finalising any per-scene document where two or more characters share a confined space, mentally place the camera and confirm each character's described position is reachable from that camera angle. If a shot needs the second character visible behind the first, the camera must be on a side angle looking down the shared furniture — not opposite either character.
+
+### Characters must be visibly alive in every shot
+
+Default failure mode: the model renders waxwork faces with locked, unchanging expressions because the prompt only describes the *primary* action ("she reads," "he stares") and never tells the model the face should evolve. Without explicit micro-life written into the shot, the face freezes for the entire duration.
+
+In every shot that holds on a character's face for more than about a second, write at least one of the following alongside the primary action:
+
+- A blink, or eyes flicking briefly to a different point and back
+- A subtle expression shift — the corner of the mouth softening, brow easing, jaw releasing, a quick swallow
+- A small head movement — a tilt, a slight turn, a settle
+- A breath — a visible inhale, an exhale through the nose
+- A weight shift — leaning forward an inch, settling back, adjusting in the chair
+
+Phrase these as natural, unforced beats: "she blinks slowly once, eyes returning to the page," "his jaw releases as he exhales through his nose," "she shifts her weight and her shoulders settle." Never write a character as "expressionless," "frozen," "arrested," "suspended," or "held" unless the comedic or dramatic *gag* of the shot is the unnatural stillness itself (e.g. a deliberate freeze-frame effect). Even in an outwardly "still" shot, the character should be *alive in stillness* — breathing, blinking, micro-shifting — not a mannequin.
+
+For any shot longer than ~3 seconds on the same face, describe two distinct micro-beats so the expression visibly evolves across the shot rather than locking into a single fixed look. Vary the beats across shots within a scene — a blink in Shot 1, a swallow in Shot 2, a brow shift in Shot 3 — so the character reads as a continuously living person rather than a series of identical poses.
+
 ## Brief-driven constraints
 
 Some briefs come with hard constraints — the video is silent, the audience speaks a language the model can't generate well, the product is unbranded, etc. **Read the brief for these signals and apply the matching constraints below before writing a single shot.** If any of these constraints apply, they override the default behaviours of this skill.
