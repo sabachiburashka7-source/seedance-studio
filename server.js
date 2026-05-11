@@ -402,6 +402,98 @@ async function retryRedisBackground() {
   console.error('[redis] background retry exhausted after 30 attempts (~5 min)');
 }
 
+// ── Per-user library storage ──────────────────────────────────────────────────
+// Library data lives in its OWN Redis key per user (`seedance_lib_<userId>`),
+// not embedded in the main DB key. This keeps the main key well under Upstash's
+// 10 MB request-size limit even when users accumulate many base64-encoded
+// images, and lets each user have up to 10 MB of their own library separately.
+const LIB_KEY_PREFIX  = 'seedance_lib_';
+const REDIS_MAX_BYTES = 10 * 1024 * 1024; // Upstash REST max request body
+
+// In-memory per-user library cache. Keys are user IDs.
+const libCache = {};
+
+async function loadUserLibrary(userId) {
+  if (userId in libCache) return libCache[userId];
+  if (!REDIS_URL || !REDIS_TOKEN) {
+    libCache[userId] = (dbCache.library && dbCache.library[userId]) || [];
+    return libCache[userId];
+  }
+  try {
+    const r = await redisCmd(['GET', LIB_KEY_PREFIX + userId]);
+    if (r && r.result) {
+      libCache[userId] = JSON.parse(r.result);
+    } else {
+      // No per-user key yet — fall back to legacy db.library entry if present
+      libCache[userId] = (dbCache.library && dbCache.library[userId]) || [];
+    }
+    return libCache[userId];
+  } catch (e) {
+    console.error('[lib] load error for', userId, '—', e.message);
+    // Don't cache on error; let the next call retry
+    return (dbCache.library && dbCache.library[userId]) || [];
+  }
+}
+
+// Returns { ok, error?, size? }
+async function saveUserLibrary(userId, library) {
+  libCache[userId] = library;
+  if (!REDIS_URL || !REDIS_TOKEN) {
+    if (!dbCache.library) dbCache.library = {};
+    dbCache.library[userId] = library;
+    try { fs.writeFileSync(DB_FILE, JSON.stringify(dbCache, null, 2), 'utf8'); } catch {}
+    return { ok: true };
+  }
+  if (!redisReady) return { ok: false, error: 'redis_not_ready' };
+  const payload = JSON.stringify(library);
+  // Reserve 1 KB for command framing overhead.
+  if (payload.length > REDIS_MAX_BYTES - 1024) {
+    console.error(`[lib] user ${userId}: payload ${(payload.length/1024/1024).toFixed(2)} MB exceeds Upstash 10 MB limit — refusing save`);
+    return { ok: false, error: 'too_large', size: payload.length };
+  }
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await redisCmd(['SET', LIB_KEY_PREFIX + userId, payload]);
+      console.log(`[lib] saved ${userId} (${(payload.length/1024).toFixed(1)} KB)` + (attempt > 1 ? ` (attempt ${attempt})` : ''));
+      return { ok: true };
+    } catch (e) {
+      console.error(`[lib] save attempt ${attempt}/3 failed for ${userId}:`, e.message);
+      if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 1500));
+    }
+  }
+  return { ok: false, error: 'save_failed' };
+}
+
+// One-time migration: move db.library[userId] entries into per-user keys, then
+// strip them from the main DB key so it goes back under the 10 MB SET limit.
+// Idempotent — safe to run on every boot. Users whose libraries are still too
+// big after migration are kept in main DB (and will keep blocking main DB
+// saves) so we surface the situation in logs rather than silently truncating.
+async function migrateLibrariesToOwnKeys() {
+  if (!REDIS_URL || !REDIS_TOKEN || !redisReady) return;
+  const oldLib = dbCache.library;
+  if (!oldLib) return;
+  const entries = Object.entries(oldLib).filter(([, l]) => Array.isArray(l) && l.length > 0);
+  if (!entries.length) return;
+  console.log(`[migrate] Found ${entries.length} legacy library/ies in main DB key — moving to per-user keys`);
+  const migrated = [];
+  const failed   = [];
+  for (const [userId, library] of entries) {
+    const result = await saveUserLibrary(userId, library);
+    if (result.ok) migrated.push(userId);
+    else { failed.push({ userId, error: result.error, size: result.size }); }
+  }
+  if (migrated.length) {
+    for (const uid of migrated) delete dbCache.library[uid];
+    const saved = await saveDB(dbCache);
+    console.log(`[migrate] Cleared ${migrated.length} migrated entry/entries from main DB key (saveDB ok=${saved})`);
+  }
+  if (failed.length) {
+    console.warn(`[migrate] ${failed.length} user library/ies did NOT migrate:`,
+      failed.map(f => `${f.userId} (${f.error}${f.size ? ' ' + (f.size/1024/1024).toFixed(1) + ' MB' : ''})`).join(', '));
+  }
+}
+
 // ── Email (Brevo preferred, Resend fallback) ──────────────────────────────────
 function sendEmail(to, subject, html) {
   return new Promise((resolve) => {
@@ -861,8 +953,8 @@ async function handleRequest(req, res) {
   if (url === '/library' && method === 'GET') {
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
-    const db   = loadDB();
-    return sendJSON(res, 200, { library: db.library[sess.userId] || [] });
+    const library = await loadUserLibrary(sess.userId);
+    return sendJSON(res, 200, { library });
   }
 
   // ── Save library ──────────────────────────────────────────────────────────
@@ -878,11 +970,15 @@ async function handleRequest(req, res) {
       console.warn('[library] rejected save — body.library not an array (likely parse failure / truncated upload). User data preserved.');
       return sendJSON(res, 400, { error: 'Invalid library payload' });
     }
-    const db = loadDB();
-    db.library[sess.userId] = body.library;
-    const ok = await saveDB(db);
-    if (!ok) {
-      console.error('[library] redis write failed — telling client to retry');
+    const result = await saveUserLibrary(sess.userId, body.library);
+    if (!result.ok) {
+      if (result.error === 'too_large') {
+        return sendJSON(res, 413, {
+          error: `Library too large to persist (${(result.size/1024/1024).toFixed(1)} MB). Maximum is 10 MB. Delete old items or enable Cloudflare R2 image storage to free space.`,
+          size: result.size
+        });
+      }
+      console.error('[library] save failed —', result.error);
       return sendJSON(res, 503, { error: 'Database unavailable, retry' });
     }
     return sendJSON(res, 200, { ok: true });
@@ -1623,7 +1719,13 @@ async function handleRequest(req, res) {
 // ── Start ─────────────────────────────────────────────────────────────────────
 initDB()
   .catch(e => console.error('[db] initDB rejected (server will still start):', e.message))
-  .then(() => {
+  .then(async () => {
+  // Move any legacy library entries out of the main DB key into per-user keys
+  // BEFORE we start serving traffic. This shrinks the main DB key back under
+  // Upstash's 10 MB request-size limit so balance/auth saves stop failing.
+  try { await migrateLibrariesToOwnKeys(); }
+  catch(e) { console.error('[migrate] unexpected error:', e.message); }
+
   const server = http.createServer((req, res) => {
     handleRequest(req, res).catch(e => {
       console.error('Server error:', e);

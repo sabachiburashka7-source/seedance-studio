@@ -2968,6 +2968,8 @@ async function saveLib() {
     do {
       _saveDirty = false;
       let ok = false;
+      let status = 0;
+      let body = null;
       try {
         const r = await fetch('/library', {
           method: 'POST',
@@ -2975,10 +2977,21 @@ async function saveLib() {
           body: JSON.stringify({ library: lib })
         });
         ok = r.ok;
-        if (!ok) console.warn('saveLib server returned', r.status);
+        status = r.status;
+        if (!ok) {
+          try { body = await r.json(); } catch {}
+          console.warn('saveLib server returned', status, body);
+        }
       } catch(e) { console.warn('saveLib error:', e.message); }
       if (ok) {
         failStreak = 0;
+      } else if (status === 413) {
+        // Library too big for Redis (>10 MB). Retrying won't help — the
+        // payload will keep failing. Surface a toast and stop retrying.
+        if (typeof toast === 'function') {
+          toast(body?.error || 'Library too large to save on server. Delete old items to free space.', 'err', 9000);
+        }
+        break;
       } else if (failStreak < 4) {
         // Retry up to 4 times with backoff so an aborted/timed-out POST
         // doesn't silently leave the server with a stale library.
