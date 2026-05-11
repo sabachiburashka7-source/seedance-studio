@@ -142,6 +142,24 @@ nav {
   transition: box-shadow 0.3s var(--ease), border-color 0.3s var(--ease);
 }
 .panel::after { content: none; }
+
+/* ─── OPTIONAL SECTION TOGGLE ──────────────────────────────────────── */
+.opt-add-btn {
+  background: transparent; border: 1.5px dashed var(--border2);
+  color: var(--text3); padding: 12px 14px; border-radius: var(--radius);
+  font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
+  width: 100%; margin-bottom: 14px; transition: border-color 0.2s, color 0.2s;
+  display: block; box-sizing: border-box;
+}
+.opt-add-btn:hover { border-color: var(--accent); color: var(--text1); }
+.opt-panel-close {
+  position: absolute; top: 12px; right: 12px;
+  background: transparent; border: none; color: var(--text3);
+  font-size: 20px; cursor: pointer; padding: 2px 8px;
+  line-height: 1; border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.opt-panel-close:hover { background: var(--surface3); color: var(--text1); }
 .panel-label {
   font-size: 11px; font-weight: 700; color: var(--text3);
   text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 14px;
@@ -782,8 +800,10 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         <textarea id="img-prompt" rows="5" placeholder="Describe the image you want to generate...&#10;&#10;Example: A futuristic city skyline at dusk, neon reflections on wet streets, cinematic wide shot"></textarea>
       </div>
 
-      <!-- REFERENCE IMAGE -->
-      <div class="panel">
+      <!-- REFERENCE IMAGE (optional) -->
+      <button class="opt-add-btn" id="img-ref-toggle" onclick="showOptSection('img-ref-panel','img-ref-toggle')">+ Add reference image (optional)</button>
+      <div class="panel" id="img-ref-panel" hidden>
+        <button class="opt-panel-close" onclick="hideImgRefSection()" title="Remove">×</button>
         <div class="panel-label">Reference Image</div>
         <div class="vid-zone" id="img-ref-zone" onclick="document.getElementById('img-ref-input').click()">
           <input type="file" id="img-ref-input" accept="image/*" style="display:none" onchange="addImgRef(this)">
@@ -862,8 +882,10 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         <textarea id="prompt" rows="5" placeholder="Describe your video in detail. Reference uploaded images as 'Image 1', 'Image 2', etc.&#10;&#10;Example: A woman in Image 1 walks through a neon-lit Tokyo street at night, cinematic slow motion, shallow depth of field"></textarea>
       </div>
 
-      <!-- IMAGES -->
-      <div class="panel">
+      <!-- IMAGES (optional) -->
+      <button class="opt-add-btn" id="gen-imgs-toggle" onclick="showOptSection('gen-imgs-panel','gen-imgs-toggle')">+ Add reference images (optional)</button>
+      <div class="panel" id="gen-imgs-panel" hidden>
+        <button class="opt-panel-close" onclick="hideGenImgsSection()" title="Remove">×</button>
         <div class="panel-label">Reference Images</div>
         <div class="img-thumbs" id="img-thumbs"></div>
         <label class="add-img-btn">
@@ -873,8 +895,10 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         <button id="clr-imgs" onclick="clearImgs()" hidden style="margin-left:8px;background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:'Manrope',sans-serif;">Clear all</button>
       </div>
 
-      <!-- VIDEO REF -->
-      <div class="panel">
+      <!-- VIDEO REF (optional) -->
+      <button class="opt-add-btn" id="gen-vid-toggle" onclick="showOptSection('gen-vid-panel','gen-vid-toggle')">+ Add reference video (optional)</button>
+      <div class="panel" id="gen-vid-panel" hidden>
+        <button class="opt-panel-close" onclick="hideGenVidSection()" title="Remove">×</button>
         <div class="panel-label">Reference Video</div>
         <div class="vid-zone" id="vid-zone" onclick="document.getElementById('vid-file-input').click()">
           <input type="file" id="vid-file-input" accept="video/*" style="display:none" onchange="uploadVidFile(this)">
@@ -986,8 +1010,10 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         <input type="file" id="ad-img-input" accept="image/*" multiple style="display:none" onchange="addAdImages(this)">
       </div>
 
-      <div class="panel">
-        <div class="panel-label">Product Description <span style="font-size:11px;color:var(--text3);font-weight:400">(optional)</span></div>
+      <button class="opt-add-btn" id="ad-desc-toggle" onclick="showOptSection('ad-desc-panel','ad-desc-toggle')">+ Add product description (optional)</button>
+      <div class="panel" id="ad-desc-panel" hidden>
+        <button class="opt-panel-close" onclick="hideOptSection('ad-desc-panel','ad-desc-toggle','ad-description')" title="Remove">×</button>
+        <div class="panel-label">Product Description</div>
         <textarea id="ad-description" rows="4" placeholder="Describe your product, target audience, key selling points, desired mood or tone...&#10;&#10;Example: Luxury perfume for confident women 25-40. Notes of jasmine and oud. Sleek black bottle. Mood: mysterious, sensual, powerful."></textarea>
       </div>
 
@@ -1002,15 +1028,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <!-- RIGHT: settings -->
     <div>
       <div class="panel" style="margin-bottom:0">
-
-
-        <div class="cost-box" style="margin-bottom:12px">
-          <div>
-            <div class="cost-lbl">Pipeline cost</div>
-            <div class="cost-sub">Brainstorm 5cr · Prompts 5cr · Ref images ~2.5cr each · Videos vary</div>
-          </div>
-        </div>
-
         <button class="btn-gen" id="ad-gen-btn" onclick="createAd()">Create Ad</button>
         <button class="btn-stop" id="ad-stop-btn" onclick="stopAd()" style="display:none">■ Stop Pipeline</button>
       </div>
@@ -1921,6 +1938,32 @@ function clearImgRef(e) {
   inner.innerHTML = `<div class="vid-text">Click to upload a reference image</div>`;
 }
 
+// ══ OPTIONAL-SECTION TOGGLES ════════════════════════════════════════
+function showOptSection(panelId, toggleId) {
+  document.getElementById(panelId).hidden = false;
+  document.getElementById(toggleId).hidden = true;
+}
+function hideOptSection(panelId, toggleId, resetInputId) {
+  document.getElementById(panelId).hidden = true;
+  document.getElementById(toggleId).hidden = false;
+  if (resetInputId) {
+    const el = document.getElementById(resetInputId);
+    if (el) el.value = '';
+  }
+}
+function hideImgRefSection() {
+  clearImgRef();
+  hideOptSection('img-ref-panel', 'img-ref-toggle');
+}
+function hideGenImgsSection() {
+  clearImgs();
+  hideOptSection('gen-imgs-panel', 'gen-imgs-toggle');
+}
+function hideGenVidSection() {
+  clearVid();
+  hideOptSection('gen-vid-panel', 'gen-vid-toggle');
+}
+
 // ══ NAVIGATION ═════════════════════════════════════════════════════════
 function goPage(name, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -2080,6 +2123,7 @@ function clearVid(e) {
 }
 function useAsReference(url) {
   vidUrl = url;
+  showOptSection('gen-vid-panel', 'gen-vid-toggle');
   document.getElementById('vid-url-input').value = url;
   onVidUrlInput(url);
   goPage('generate', document.getElementById('tab-generate'));
