@@ -343,7 +343,6 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 /* ─── LIBRARY ─────────────────────────────────────────────────────── */
 .lib-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
 .lib-title { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; }
-.lib-count { font-size: 12px; color: var(--text3); background: var(--surface2); border: 1px solid var(--border); padding: 4px 12px; border-radius: 20px; font-weight: 600; }
 
 .empty-state { text-align: center; padding: 80px 20px; color: var(--text3); }
 .empty-state .ei { font-size: 56px; margin-bottom: 16px; opacity: 0.35; }
@@ -720,41 +719,17 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
 }
 .ad-img-add:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,0,0,0.03); }
 
-.ad-log {
-  margin-top: 12px; border-radius: 10px; background: var(--bg3);
-  border: 1px solid var(--border2); overflow: hidden;
-  max-height: 0; transition: max-height 0.4s ease;
+/* ─── LIBRARY TABS ────────────────────────────────────────────── */
+.lib-tabs { display: flex; gap: 4px; background: var(--surface2); border: 1px solid var(--border); padding: 3px; border-radius: 12px; }
+.lib-tab {
+  background: transparent; border: none; padding: 7px 16px;
+  border-radius: 9px; font-size: 13px; font-weight: 600;
+  color: var(--text2); cursor: pointer; transition: background 0.15s, color 0.15s;
+  display: inline-flex; align-items: center; gap: 6px;
 }
-.ad-log.show { max-height: 500px; }
-.ad-log-inner { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; max-height: 340px; overflow-y: auto; }
-.ad-step {
-  display: flex; align-items: flex-start; gap: 8px;
-  font-size: 12.5px; color: var(--text2); line-height: 1.5;
-}
-.ad-step-icon { flex-shrink: 0; width: 16px; text-align: center; margin-top: 1px; }
-.ad-step.done { color: var(--green); }
-.ad-step.run  { color: var(--text); font-weight: 600; }
-.ad-step.err  { color: var(--red); }
-.ad-step.info { color: var(--text3); }
-.ad-step .spin { width: 12px; height: 12px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; margin-top: 2px; }
-.ad-text-block { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin: 2px 0 4px 20px; font-family: monospace; font-size: 11px; line-height: 1.5; white-space: pre-wrap; max-height: 220px; overflow-y: auto; color: var(--text2); }
-
-/* ─── LIBRARY FOLDERS ────────────────────────────────────────────── */
-.lib-folder-header {
-  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
-  background: var(--bg3); border: 1px solid var(--border2);
-  border-radius: 10px; margin-bottom: 10px; margin-top: 18px; cursor: pointer;
-  user-select: none; transition: border-color 0.2s;
-  grid-column: 1 / -1;
-}
-.lib-folder-header:hover { border-color: var(--accent); }
-.lib-folder-icon { font-size: 16px; }
-.lib-folder-name { font-size: 14px; font-weight: 700; color: var(--text1); flex: 1; }
-.lib-folder-count { font-size: 12px; color: var(--text3); }
-.lib-folder-chevron { font-size: 11px; color: var(--text3); transition: transform 0.2s; }
-.lib-folder-header.collapsed .lib-folder-chevron { transform: rotate(-90deg); }
-.lib-folder-items { display: contents; }
-.lib-folder-items.hidden { display: none; }
+.lib-tab:hover { color: var(--text1); }
+.lib-tab.active { background: var(--surface); color: var(--text1); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+.lib-tab .lib-tab-count { font-size: 11px; opacity: 0.55; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -982,7 +957,11 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
 <div class="page" id="page-library">
   <div class="lib-head">
     <div class="lib-title">Library</div>
-    <span class="lib-count" id="lib-count">0 videos</span>
+    <div class="lib-tabs" role="tablist">
+      <button class="lib-tab active" data-libtab="images" onclick="setLibTab('images')">Images <span class="lib-tab-count" id="lib-tab-count-images">0</span></button>
+      <button class="lib-tab" data-libtab="videos" onclick="setLibTab('videos')">Videos <span class="lib-tab-count" id="lib-tab-count-videos">0</span></button>
+      <button class="lib-tab" data-libtab="ads" onclick="setLibTab('ads')">Ads <span class="lib-tab-count" id="lib-tab-count-ads">0</span></button>
+    </div>
   </div>
   <div class="pend-list" id="pend-list"></div>
   <div class="vid-grid" id="vid-grid"></div>
@@ -1018,11 +997,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         <button class="btn-rb btn-rb-yes" onclick="resumeAdPipeline()">Resume</button>
         <button class="btn-rb btn-rb-no" onclick="dismissAdResume()">Dismiss</button>
       </div>
-
-      <!-- Step log -->
-      <div class="ad-log" id="ad-log">
-        <div class="ad-log-inner" id="ad-log-inner"></div>
-      </div>
     </div>
 
     <!-- RIGHT: settings -->
@@ -1037,9 +1011,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
           </div>
         </div>
 
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text3);margin-bottom:8px;cursor:pointer">
-          <input type="checkbox" id="ad-text-only"> Text only — skip image &amp; video generation (for testing)
-        </label>
         <button class="btn-gen" id="ad-gen-btn" onclick="createAd()">Create Ad</button>
         <button class="btn-stop" id="ad-stop-btn" onclick="stopAd()" style="display:none">■ Stop Pipeline</button>
       </div>
@@ -1405,7 +1376,7 @@ async function resumeAdPipeline() {
       clearAdCheckpoint();
       adLog(`All ${scenes.length} scene(s) done! See "${adTitle}" in your Library.`, 'done');
       goPage('library', document.querySelector('.tab[data-page="library"]'));
-      renderLib();
+      setLibTab('ads');
       toast(`Pipeline complete! ${scenes.length} scene(s) done.`, 'ok', 7000);
     } else {
       adLog('Pipeline stopped. You can resume it after refreshing.', 'warn');
@@ -1454,43 +1425,12 @@ function renderAdImages() {
   grid.appendChild(add);
 }
 
-function adLog(msg, type = 'info') {
-  const log = document.getElementById('ad-log');
-  const inner = document.getElementById('ad-log-inner');
-  log.classList.add('show');
-  const step = document.createElement('div');
-  step.className = 'ad-step ' + type;
-  const icon = type === 'done' ? '✓' : type === 'err' ? '✗' : type === 'run' ? '<span class="spin"></span>' : '·';
-  step.innerHTML = `<span class="ad-step-icon">${icon}</span><span>${msg}</span>`;
-  inner.appendChild(step);
-  inner.scrollTop = inner.scrollHeight;
-  return step; // caller can update it
-}
-
-function adLogUpdate(step, msg, type) {
-  step.className = 'ad-step ' + type;
-  const icon = type === 'done' ? '✓' : type === 'err' ? '✗' : type === 'run' ? '<span class="spin"></span>' : '·';
-  step.innerHTML = `<span class="ad-step-icon">${icon}</span><span>${msg}</span>`;
-}
-
-function adLogTextBlock(label, text) {
-  const inner = document.getElementById('ad-log-inner');
-  document.getElementById('ad-log').classList.add('show');
-  const lbl = document.createElement('div');
-  lbl.className = 'ad-step info';
-  lbl.innerHTML = `<span class="ad-step-icon">·</span><span>${label}</span>`;
-  const pre = document.createElement('pre');
-  pre.className = 'ad-text-block';
-  pre.textContent = text;
-  inner.appendChild(lbl);
-  inner.appendChild(pre);
-  inner.scrollTop = inner.scrollHeight;
-}
-
-function adLogClear() {
-  document.getElementById('ad-log-inner').innerHTML = '';
-  document.getElementById('ad-log').classList.remove('show');
-}
+// Step log was removed — errors surface via toast in the catch blocks below.
+// These stubs keep the existing call sites working as no-ops.
+function adLog() { return null; }
+function adLogUpdate() {}
+function adLogTextBlock() {}
+function adLogClear() {}
 
 async function createAd() {
   // Drop any checkpoint thumbnails (no file object) — user is starting fresh
@@ -1499,11 +1439,10 @@ async function createAd() {
   if (!adImages.length) return toast('Upload at least one product image', 'err');
   if (!authToken)      return toast('Sign in to use Ads', 'err');
 
-  const textOnly = document.getElementById('ad-text-only').checked;
   const btn = document.getElementById('ad-gen-btn');
   const stopBtn = document.getElementById('ad-stop-btn');
   adStopped = false;
-  btn.disabled = true; btn.textContent = textOnly ? 'Running (text only)...' : 'Creating...';
+  btn.disabled = true; btn.textContent = 'Creating...';
   stopBtn.style.display = ''; stopBtn.disabled = false; stopBtn.textContent = '■ Stop Pipeline';
   clearAdCheckpoint();
   adLogClear();
@@ -1581,7 +1520,6 @@ async function createAd() {
     const adTitle = description ? description.replace(/\s+/g, ' ').trim().substring(0, 40) :
       (() => { const m = ideaText.match(/CONCEPT\s*\n+([\s\S]*?)\n+SCENES/); const prose = m ? m[1] : ideaText; return prose.split(/[.,]/)[0].trim().substring(0, 40) || ('Ad — ' + new Date().toLocaleDateString()); })();
     adLogUpdate(s1, `Stage 1 done: "${adTitle}" — ${sceneCount} scene(s)`, 'done');
-    if (textOnly) adLogTextBlock('Concept output:', ideaText);
     // Checkpoint: save ad thumbnails + stage 1 outputs
     const adThumbnails = await Promise.all(adImages.map(img => resizeDataUrlSmall(img.dataUrl)));
     saveAdCheckpoint({ stage: 1, description, adTitle, adThumbnails, ideaText });
@@ -1600,7 +1538,6 @@ async function createAd() {
     const entities = j2.entities || [];
     const refSheetsText = j2.refSheetsText || '';
     adLogUpdate(s2, `Stage 2 done: ${entities.length} entity reference sheet(s)`, 'done');
-    if (textOnly) adLogTextBlock('Reference sheet prompts:', refSheetsText);
     saveAdCheckpoint({ stage: 2, entities, refSheetsText });
     if (adStopped) { adLog('Pipeline stopped.', 'warn'); return; }
 
@@ -1625,8 +1562,8 @@ async function createAd() {
       return refAliases.some(a => a.key === refKey && a.regex.test(promptText));
     };
     const skipCount = SKIP_CHARACTER_REFS ? entities.filter(e => e.type === 'character').length : 0;
-    if (!textOnly) adLog(`Generating ${entities.length - skipCount} reference image(s)${skipCount ? ` (skipping ${skipCount} character ref${skipCount > 1 ? 's' : ''})` : ''}…`, 'info');
-    for (let ei = 0; !textOnly && ei < entities.length; ei++) {
+    adLog(`Generating ${entities.length - skipCount} reference image(s)${skipCount ? ` (skipping ${skipCount} character ref${skipCount > 1 ? 's' : ''})` : ''}…`, 'info');
+    for (let ei = 0; ei < entities.length; ei++) {
       const entity = entities[ei];
       const key = entity.type === 'character' ? 'SUBJECT_' + entity.subjectId
                 : entity.type === 'environment' ? 'ENV_' + entity.envId : 'product';
@@ -1700,15 +1637,14 @@ async function createAd() {
       startFrames = j3.startFrames || [];
       startFramesText = j3.startFramesText || '';
       adLogUpdate(s3, `Stage 3 done: ${startFrames.length} starting frame prompt(s)`, 'done');
-      if (textOnly) adLogTextBlock('Starting frame prompts:', startFramesText);
       saveAdCheckpoint({ stage: 3, startFrames, startFramesText });
     }
     if (adStopped) { adLog('Pipeline stopped.', 'warn'); return; }
 
     // ── Step 3.5: Generate starting frame images ─────────────────────────
     const sceneStartImages = [];
-    if (!textOnly && !SKIP_START_FRAMES) adLog(`Generating ${startFrames.length} starting frame image(s)…`, 'info');
-    for (let i = 0; !textOnly && !SKIP_START_FRAMES && i < startFrames.length; i++) {
+    if (!SKIP_START_FRAMES) adLog(`Generating ${startFrames.length} starting frame image(s)…`, 'info');
+    for (let i = 0; !SKIP_START_FRAMES && i < startFrames.length; i++) {
       const sf = startFrames[i];
       if (!sf || !sf.prompt) { sceneStartImages.push(null); continue; }
       const sSf = adLog(`Starting frame ${i+1}/${startFrames.length}: scene ${i+1}…`, 'run');
@@ -1777,13 +1713,6 @@ async function createAd() {
     if (j4.balance !== undefined) { userBalance = j4.balance; updateCreditsDisplay(); }
     const scenes = j4.scenes || [];
     adLogUpdate(s4, `Stage 4 done: ${scenes.length} scene prompt(s) ready`, 'done');
-    if (textOnly) {
-      adLogTextBlock('Video shot prompts:', j4.shotsText || '');
-      adLog('Text-only mode: image and video generation skipped.', 'info');
-      adLog('All 4 Claude stages complete.', 'done');
-      clearAdCheckpoint();
-      return;
-    }
     saveAdCheckpoint({ stage: 4, scenes, nextSceneIndex: 0, submittedSceneJobIds: {} });
     if (adStopped) { adLog('Pipeline stopped.', 'warn'); return; }
 
@@ -1867,7 +1796,7 @@ async function createAd() {
       clearAdCheckpoint();
       adLog(`All ${scenes.length} scene(s) done! See "${adTitle}" in your Library.`, 'done');
       goPage('library', document.querySelector('.tab[data-page="library"]'));
-      renderLib();
+      setLibTab('ads');
       toast(`Ad pipeline complete! ${scenes.length} scene(s) generating.`, 'ok', 7000);
     }
 
@@ -3082,16 +3011,37 @@ function resumeUpscaling() {
   if (changed) saveLib();
 }
 
+function tabOf(item) {
+  if (item && item.folder) return 'ads';
+  if (item && item.type === 'image') return 'images';
+  return 'videos';
+}
+
+let libTab = localStorage.getItem('sd_libtab') || 'images';
+
+function setLibTab(name) {
+  libTab = name;
+  localStorage.setItem('sd_libtab', name);
+  document.querySelectorAll('.lib-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.libtab === name);
+  });
+  renderLib();
+}
+
 function badge() {
   const n = lib.length + jobs.length;
   document.getElementById('badge').textContent = n ? ` (${n})` : '';
   const bm = document.getElementById('badge-m');
   if (bm) bm.textContent = n ? ` (${n})` : '';
-  const vids = lib.filter(x => x.type !== 'image').length;
-  const imgs = lib.filter(x => x.type === 'image').length;
-  let countTxt = vids && imgs ? `${vids} video${vids!==1?'s':''} · ${imgs} image${imgs!==1?'s':''}`
-    : vids ? `${vids} video${vids!==1?'s':''}` : imgs ? `${imgs} image${imgs!==1?'s':''}` : '0 items';
-  document.getElementById('lib-count').textContent = countTxt;
+  const counts = { images: 0, videos: 0, ads: 0 };
+  lib.forEach(it => { counts[tabOf(it)]++; });
+  jobs.forEach(j => { counts[j.folder ? 'ads' : 'videos']++; });
+  const ci = document.getElementById('lib-tab-count-images');
+  const cv = document.getElementById('lib-tab-count-videos');
+  const ca = document.getElementById('lib-tab-count-ads');
+  if (ci) ci.textContent = counts.images;
+  if (cv) cv.textContent = counts.videos;
+  if (ca) ca.textContent = counts.ads;
 }
 
 function makeLibCard(item, i) {
@@ -3137,17 +3087,16 @@ function makeLibCard(item, i) {
   return card;
 }
 
-const libFolderState = {}; // folderName → collapsed bool
-
 function renderPending() {
   const pl = document.getElementById('pend-list'); pl.innerHTML = '';
   jobs.forEach(j => {
+    const jobTab = j.folder ? 'ads' : 'videos';
+    if (jobTab !== libTab) return;
     const sec = Math.floor((Date.now()-j.ts)/1000);
     const div = document.createElement('div'); div.className = 'pend-card';
-    const folderTag = j.folder ? `<span class="badge" style="background:var(--bg2);color:var(--text);border:1px solid var(--border);margin-left:4px">${j.folder}</span>` : '';
     div.innerHTML = `<div class="spin"></div>
       <div class="pend-info">
-        <div class="pend-prompt">${j.prompt.substring(0,70)}${j.prompt.length>70?'...':''}${folderTag}</div>
+        <div class="pend-prompt">${j.prompt.substring(0,70)}${j.prompt.length>70?'...':''}</div>
         <div class="pend-meta">${j.res} · ${j.ratio} · ${j.dur}s · ${Math.floor(sec/60)}m ${sec%60}s</div>
       </div>
       <span class="badge badge-run">Running</span>`;
@@ -3162,47 +3111,20 @@ function renderLib() {
   const grid  = document.getElementById('vid-grid');
   const empty = document.getElementById('lib-empty');
   grid.innerHTML = '';
-  if (!lib.length && !jobs.length) { empty.style.display = 'block'; return; }
+
+  const entries = [];
+  lib.forEach((item, i) => { if (tabOf(item) === libTab) entries.push({ item, i }); });
+  const tabHasPending = jobs.some(j => (j.folder ? 'ads' : 'videos') === libTab);
+
+  if (!entries.length && !tabHasPending) {
+    empty.style.display = 'block';
+    const labels = { images: 'images', videos: 'videos', ads: 'ad campaigns' };
+    empty.querySelector('p').textContent = `No ${labels[libTab] || 'content'} yet.`;
+    return;
+  }
   empty.style.display = 'none';
 
-  // Separate into folders and ungrouped
-  const folders = {};
-  const ungrouped = [];
-  lib.forEach((item, i) => {
-    if (item.folder) {
-      if (!folders[item.folder]) folders[item.folder] = [];
-      folders[item.folder].push({ item, i });
-    } else {
-      ungrouped.push({ item, i });
-    }
-  });
-
-  // Render folder sections first
-  Object.entries(folders).forEach(([name, entries]) => {
-    const collapsed = !!libFolderState[name];
-    const hdr = document.createElement('div');
-    hdr.className = 'lib-folder-header' + (collapsed ? ' collapsed' : '');
-    hdr.innerHTML = `<span class="lib-folder-icon">📁</span>
-      <span class="lib-folder-name">${name}</span>
-      <span class="lib-folder-count">${entries.length} scene${entries.length!==1?'s':''}</span>
-      <span class="lib-folder-chevron">▾</span>`;
-    hdr.onclick = () => {
-      libFolderState[name] = !libFolderState[name];
-      renderLib();
-    };
-    grid.appendChild(hdr);
-
-    if (!collapsed) {
-      const wrap = document.createElement('div');
-      wrap.className = 'vid-grid';
-      wrap.style.cssText = 'margin-bottom:8px;padding:0;grid-column:1/-1';
-      entries.forEach(({ item, i }) => wrap.appendChild(makeLibCard(item, i)));
-      grid.appendChild(wrap);
-    }
-  });
-
-  // Render ungrouped items
-  ungrouped.forEach(({ item, i }) => grid.appendChild(makeLibCard(item, i)));
+  entries.forEach(({ item, i }) => grid.appendChild(makeLibCard(item, i)));
 }
 
 function del(i) {
@@ -3235,6 +3157,10 @@ function applyMobileMode() {
 applyMobileMode();
 calcCost();
 calcImgCost();
+// Sync library tab buttons to saved tab
+document.querySelectorAll('.lib-tab').forEach(b => {
+  b.classList.toggle('active', b.dataset.libtab === libTab);
+});
 initAuth().then(() => {
   if (new URLSearchParams(location.search).get('payment') === 'success') {
     history.replaceState(null, '', '/');
