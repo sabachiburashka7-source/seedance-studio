@@ -19,7 +19,10 @@ AI video + image + ad generation app using BytePlus ModelArk (Seedance 2.0 video
 - BytePlus API host: `ark.ap-southeast.bytepluses.com`
 - Proxy strips `accept-encoding` header, sets `identity` to avoid gzip issues
 - DB: Upstash Redis (REST API) with in-memory cache; falls back to `db.json` locally
-- **`redisReady` safety flag**: only writes to Redis after confirmed load at boot (prevents data wipe on Redis hiccup)
+- **`redisReady` safety flag**: only writes to Redis after confirmed load at boot (prevents data wipe on Redis hiccup). `redisCmd` rejects non-2xx HTTP and Upstash `error` JSON responses; `redisLoad` confirms null GET results with a one-shot retry before accepting "empty"
+- **Empty-write refusal**: once `dbCacheKnownNonEmpty` is set (cache observed with users at least once this process), `saveDB` refuses to write back an empty users map to Redis and async-reloads from Redis to repair in-memory state. Catches any logic bug that would otherwise wipe everything
+- **Library lives in PER-USER Redis keys**: `seedance_lib_<userId>` (not embedded in the main `seedance_db` key). Main key only holds users/sessions/balance/etc. so it stays well under Upstash's 10 MB SET limit even as libraries grow. `/library` GET/POST go through `loadUserLibrary` / `saveUserLibrary` helpers backed by a per-user `libCache`. On boot, `migrateLibrariesToOwnKeys()` moves any legacy `db.library[userId]` entries into per-user keys and strips them from the main key — idempotent
+- **HTTP 413 on oversized library**: `saveUserLibrary` refuses payloads >10 MB (Upstash REST limit) and returns `{ ok: false, error: 'too_large' }`; the `/library` POST handler turns this into HTTP 413 with a human-readable message; the frontend `saveLib` stops retrying and shows a toast
 - 12-second timeout on Redis HTTP requests; background retry loop every 10s up to 30 attempts
 - Email: Brevo REST API (primary), Resend fallback (`api.resend.com`)
 - `EMAIL_ENABLED` constant gates verification/forgot-password/login-block on either provider being configured (was previously gated only on `RESEND_KEY` — silently disabled verification on Brevo-only deployments)
