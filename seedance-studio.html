@@ -1664,11 +1664,12 @@ async function createAd() {
         }
         if (prevAttached.length) adLog(`  → ${prevAttached.length} prev ref(s) attached: ${prevAttached.join(', ')}`, 'info');
         const ratio = entity.type === 'environment' ? '16:9' : '1:1';
-        const imgOpts = entity.type === 'product' ? { model: 'seedream-4-5-251128' } : {};
+        const useGpt = entity.type === 'product' || entity.type === 'environment';
+        const imgOpts = useGpt ? { model: 'gpt-image-2', quality: 'low' } : {};
         const url = await genImage(entity.prompt, ratio, inputImages, label, imgOpts);
         refMap[key] = url;
         lib.unshift({ id: 'ref-' + Date.now() + '-' + ei, prompt: entity.prompt, url,
-          ratio, model: 'seedream-5-0-lite', ts: Date.now(), done: Date.now(),
+          ratio, model: useGpt ? 'gpt-image-2' : 'seedream-5-0-lite', ts: Date.now(), done: Date.now(),
           type: 'image', folder: adTitle, label });
         saveLib(); renderLib();
         adLogUpdate(sRef, `✓ ${label}`, 'done');
