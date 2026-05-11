@@ -147,6 +147,18 @@ let dbCache = { users: {}, emailIndex: {}, sessions: {}, library: {}, verifyCode
 // This prevents wiping Redis with an empty DB when Redis was temporarily unreachable on boot.
 let redisReady = false;
 
+// Tracks whether dbCache has ever been observed with users in it during this
+// process lifetime. Once true, any saveDB that would write back an EMPTY users
+// map is treated as a corruption bug and refused — the in-memory state must
+// have been wiped by something unexpected, and overwriting Redis with that
+// empty state is exactly the regression we keep fighting. Reset never happens.
+let dbCacheKnownNonEmpty = false;
+function noteCacheState() {
+  if (!dbCacheKnownNonEmpty && dbCache.users && Object.keys(dbCache.users).length > 0) {
+    dbCacheKnownNonEmpty = true;
+  }
+}
+
 // ── Upstash Redis helpers ─────────────────────────────────────────────────────
 function redisCmd(cmd, timeoutMs = 12000) {
   return new Promise((resolve, reject) => {
@@ -165,8 +177,23 @@ function redisCmd(cmd, timeoutMs = 12000) {
     const req = https.request(opts, res => {
       const ch = []; res.on('data', c => ch.push(c));
       res.on('end', () => {
-        try { resolve(JSON.parse(Buffer.concat(ch).toString())); }
-        catch(e) { reject(e); }
+        const raw = Buffer.concat(ch).toString();
+        // Reject on non-2xx HTTP status. Previously we'd parse the body and
+        // resolve, which meant a 500/401 with a JSON error body was treated
+        // like a successful response — load would return data=null,ok=true and
+        // the empty dbCache would get written back to Redis on the next save.
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return reject(new Error('Redis HTTP ' + res.statusCode + ': ' + raw.substring(0, 200)));
+        }
+        let parsed;
+        try { parsed = JSON.parse(raw); }
+        catch(e) { return reject(new Error('Redis non-JSON response: ' + raw.substring(0, 200))); }
+        // Upstash signals errors via an `error` field on a 200 response too.
+        // Reject so callers know the command did not actually succeed.
+        if (parsed && parsed.error) {
+          return reject(new Error('Redis error: ' + parsed.error));
+        }
+        resolve(parsed);
       });
     });
     // Abort if Redis hangs — prevents server from stalling on boot
@@ -205,11 +232,52 @@ function redisSave(db) {
 }
 
 async function redisLoad() {
-  // Returns { data, ok } — ok=true means Redis responded (even if no data yet)
+  // Returns { data, ok } — ok=true means Redis responded with a definitive answer
+  // (either real data, or a confirmed empty key). Any error / ambiguous response
+  // returns ok=false so saveDB will refuse to write and avoid wiping live data.
   try {
     const r = await redisCmd(['GET', REDIS_KEY]);
-    const data = r.result ? JSON.parse(r.result) : null;
-    return { data, ok: true };
+    // Upstash returns { result: <string|null> } on success. A missing `result`
+    // field means the response shape is unexpected — treat as a load failure
+    // rather than as "key is empty", which would let the next saveDB overwrite
+    // Redis with our default empty dbCache.
+    if (!('result' in r)) {
+      console.error('[redis] load: unexpected response shape (no result field):', JSON.stringify(r).substring(0, 200));
+      return { data: null, ok: false };
+    }
+    if (r.result) {
+      try { return { data: JSON.parse(r.result), ok: true }; }
+      catch(e) {
+        console.error('[redis] load: stored value is not valid JSON — refusing to overwrite. Length:', r.result.length);
+        return { data: null, ok: false };
+      }
+    }
+    // result === null — key genuinely doesn't exist. Confirm with a one-shot
+    // retry to make sure this isn't a transient Upstash glitch that would
+    // otherwise let us mark redisReady=true with an empty cache, then wipe
+    // real data on the next saveDB.
+    console.warn('[redis] load: GET returned null result — retrying once in 1500ms to confirm');
+    await new Promise(r => setTimeout(r, 1500));
+    try {
+      const r2 = await redisCmd(['GET', REDIS_KEY]);
+      if (!('result' in r2)) {
+        console.error('[redis] load: confirmation retry returned unexpected shape — refusing to mark Redis ready');
+        return { data: null, ok: false };
+      }
+      if (r2.result) {
+        console.warn('[redis] load: confirmation retry returned data after initial null — using that. First read was a transient glitch.');
+        try { return { data: JSON.parse(r2.result), ok: true }; }
+        catch(e) {
+          console.error('[redis] load: confirmation retry value is not valid JSON — refusing.');
+          return { data: null, ok: false };
+        }
+      }
+      console.log('[redis] load: confirmed empty key on retry — fresh install OK to proceed');
+      return { data: null, ok: true };
+    } catch(e) {
+      console.error('[redis] load: confirmation retry failed:', e.message);
+      return { data: null, ok: false };
+    }
   } catch(e) {
     console.error('[redis] load error:', e.message);
     return { data: null, ok: false };
@@ -231,6 +299,23 @@ function saveDB(db) {
       console.warn('[db] saveDB: skipping Redis write — Redis was unreachable at startup. Data saved in-memory only.');
       return Promise.resolve(false);
     }
+    // Last-line defence: once we've seen users in dbCache during this process,
+    // never write an empty users map back to Redis. If this branch fires, some
+    // earlier code path corrupted dbCache and we'd be one SET away from wiping
+    // every user's library/balance/auth.
+    if (dbCacheKnownNonEmpty && (!db.users || Object.keys(db.users).length === 0)) {
+      console.error('[db] saveDB: REFUSING to write empty users map to Redis — dbCache was previously non-empty. Reloading from Redis to repair in-memory state.');
+      // Repair in-memory state asynchronously so any next saveDB has correct
+      // data to write. Don't await — this save call has already returned false.
+      redisLoad().then(({ data, ok }) => {
+        if (ok && data && data.users && Object.keys(data.users).length > 0) {
+          dbCache = { verifyCodes: {}, resetCodes: {}, ...data };
+          console.log('[db] in-memory dbCache restored from Redis after empty-write refusal.');
+        }
+      }).catch(e => console.error('[db] repair reload failed:', e.message));
+      return Promise.resolve(false);
+    }
+    noteCacheState();
     return redisSave(db);
   } else {
     try { fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8'); } catch {}
@@ -247,6 +332,7 @@ async function initDB() {
         redisReady = true;
         if (data) {
           dbCache = { verifyCodes: {}, resetCodes: {}, ...data };
+          noteCacheState();
           const userCount = Object.keys(data.users || {}).length;
           console.log(`[db] Loaded from Redis — ${userCount} user(s)`);
         } else {
@@ -262,6 +348,7 @@ async function initDB() {
       try {
         const raw = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
         dbCache = { verifyCodes: {}, resetCodes: {}, ...raw };
+        noteCacheState();
       } catch { /* fresh db */ }
     }
     migrateBalance();
@@ -300,6 +387,7 @@ async function retryRedisBackground() {
         redisReady = true;
         if (data) {
           dbCache = { verifyCodes: {}, resetCodes: {}, ...data };
+          noteCacheState();
           console.log('[redis] background retry succeeded —', Object.keys(data.users || {}).length, 'users restored');
           migrateBalance();
         } else {
