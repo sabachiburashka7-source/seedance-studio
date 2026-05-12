@@ -900,6 +900,7 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
       <div class="panel" id="gen-vid-panel" hidden>
         <button class="opt-panel-close" onclick="hideGenVidSection()" title="Remove">×</button>
         <div class="panel-label">Reference Video</div>
+        <div style="font-size:11px;color:var(--text3);margin:-4px 0 8px">Max 15 seconds. Longer videos will be rejected.</div>
         <div class="vid-zone" id="vid-zone" onclick="document.getElementById('vid-file-input').click()">
           <input type="file" id="vid-file-input" accept="video/*" style="display:none" onchange="uploadVidFile(this)">
           <div id="vid-zone-inner">
@@ -2069,6 +2070,25 @@ function renderThumbs() {
 async function uploadVidFile(inp) {
   const file = inp.files[0]; if (!file) return;
   if (file.size > 512 * 1024 * 1024) return toast('Video too large (max 512 MB)', 'err');
+
+  let duration = 0;
+  try {
+    duration = await new Promise((resolve, reject) => {
+      const v = document.createElement('video');
+      v.preload = 'metadata';
+      const url = URL.createObjectURL(file);
+      v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(v.duration); };
+      v.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read video metadata')); };
+      v.src = url;
+    });
+  } catch (e) {
+    inp.value = '';
+    return toast('Could not read video duration. Please try a different file.', 'err');
+  }
+  if (duration && duration > 15.5) {
+    inp.value = '';
+    return toast(`Reference video must be 15 seconds or less (this one is ${duration.toFixed(1)}s)`, 'err');
+  }
 
   const zone = document.getElementById('vid-zone');
   const inner = document.getElementById('vid-zone-inner');
