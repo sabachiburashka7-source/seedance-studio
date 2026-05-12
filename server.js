@@ -796,6 +796,15 @@ async function handleRequest(req, res) {
   const pathname = url.split('?')[0].split('#')[0];
   if (pathname === '/' || pathname === '/index.html') return serveHTML(res);
 
+  if (pathname === '/logo.jpg' || pathname === '/favicon.ico') {
+    fs.readFile(path.join(__dirname, 'logo.jpg'), (err, data) => {
+      if (err) { res.writeHead(404); res.end('not found'); return; }
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' });
+      res.end(data);
+    });
+    return;
+  }
+
   // ── Register ──────────────────────────────────────────────────────────────
   if (url === '/auth/register' && method === 'POST') {
     const { email, password } = await readBody(req);
