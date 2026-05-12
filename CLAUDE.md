@@ -82,27 +82,32 @@ There is no Stripe integration — payments live entirely on promo codes.
 - `draft` parameter not supported on Seedance 2.0
 - `OutputAudioSensitiveContentDetected` is non-deterministic — frontend refunds and tells user to retry
 
-## Canvas softening (real-person classifier bypass)
+## Canvas softening (real-person classifier bypass — selective, face-only)
 ByteDance runs a real-person classifier on every input image. Even clearly AI-generated photorealistic portraits trigger it. There is no API parameter to declare an image as AI-generated.
 
-**Solution**: single processor `processForVideo(img)` runs every image we send to the BytePlus video task through one fixed pipeline. Goal: shift the image away from the "raw camera capture" signature the classifier locks onto, while keeping the person clearly recognizable so Seedance still produces a photoreal character in the output video.
+**Selective application** — the disruption pipeline is only applied where it earns its keep:
+- **Manual T2V/I2V flow (`fileToDataUrl`)** — runs `hasFace(img)` (browser `FaceDetector` API) before processing. Images containing a face → full disruption pipeline. Images without (products, environments, scenery) → pass through with the original FileReader bytes, completely unchanged. When `FaceDetector` is not available in the browser (most desktop Chrome on Windows/Linux, Firefox, Safari), `hasFace` defaults to `true` so face images are still protected.
+- **Ads pipeline (`urlToDataUrl`)** — disruption pipeline is **NOT applied at all**. Refs go through `letterboxToAspect(img, '9:16')` for clean letterboxing to 9:16 + JPEG at 0.95 quality, no tone grade, no downscale/upscale, no grain. Character refs (`SUBJECT_*`) are filtered out at the call site instead — they would trip the classifier regardless of how heavy the disruption was.
 
-Pipeline (one pass, no modes):
-1. Tone grade — `contrast(1.06) saturate(1.04) brightness(1.02)` via canvas filter, gives the input a subtly "graded film still" feel.
-2. Downscale to 72% then upscale back to original size — two bilinear passes destroy the pixel-level micro-texture the classifier reads as "camera capture." This is the most important step.
-3. `blur(0.7px)` during the upscale — kills tack-sharp AI artifacts at facial landmarks without making anyone look soft.
-4. Film-grain noise: ±12 luma + ±6 chroma per pixel — image reads as "shot on film" rather than "AI-generated digital portrait."
+**Disruption pipeline (`processForVideo`, face images only):**
+1. Tone grade — `contrast(1.06) saturate(1.04) brightness(1.02)` via canvas filter.
+2. Downscale to 72% then upscale back to original size — two bilinear passes destroy the pixel-level micro-texture the classifier reads as "camera capture."
+3. `blur(0.7px)` during the upscale — kills tack-sharp AI artifacts at facial landmarks.
+4. Film-grain noise: ±12 luma + ±6 chroma per pixel.
 5. JPEG re-encode at 84%.
 
-Output looks like a real person photographed and lightly graded for a documentary or film. No cartoon/illustration look. The output video character will still look photoreal because the ref still shows a photoreal person, just professionally processed.
+Output looks like a real person photographed and lightly graded for a documentary or film. No cartoon/illustration look.
 
-Wrappers:
-- `fileToDataUrl(file)` — for `File` inputs (manual T2V/I2V flow). Falls back to raw FileReader bytes if the canvas is tainted.
-- `urlToDataUrl(urlOrDataUrl)` — for data URLs and HTTPS URLs (ads pipeline ref-sheet R2 URLs). HTTPS routes through `/api/image-bytes` to avoid cross-origin canvas taint. Logs `[urlToDataUrl] fetch/decode failed` to console if it falls through.
+Helpers (`seedance-studio.html`):
+- `processForVideo(img)` — disruption pipeline only (no aspect arg anymore).
+- `letterboxToAspect(img, targetAspect)` — clean letterbox to target aspect at JPEG 0.95. Used by `urlToDataUrl`.
+- `hasFace(img)` — async, uses `window.FaceDetector` if available, else returns `true`.
+- `fileToDataUrl(file)` — manual flow. Runs `hasFace` and routes accordingly.
+- `urlToDataUrl(urlOrDataUrl, targetAspect)` — ads pipeline. Always letterbox-only, never disruption.
 
-Both video paths in the ads pipeline (`createAd` and `resumeAd`) feed every non-character refMap entry (env + product) and starting frame through `urlToDataUrl` before sending. **Character refs (`SUBJECT_*`) are NOT sent at all** — image disruption alone could not get AI-generated portraits past the classifier reliably, so they're omitted entirely; the character is described in the per-scene text prompt and cross-scene continuity is carried by the previous-scene video reference. No prompt sanitization — image disruption + skipping character refs is the full defense.
+**Ads pipeline character handling unchanged:** `createAd` and `resumeAd` filter `refMap` entries where the key starts with `SUBJECT_` before sending to BytePlus. The character is described in the per-scene text prompt; the starting frame still encodes the character visually but is letterboxed only (no disruption).
 
-History: started with a heavy 5-pass (visible damage); shrank to invisible "option 3" chroma-only (cabda04) — rejections persisted; layered "normal vs aggressive" two-mode pipeline; finally torn down to this single clean pass that's strong enough to bypass the classifier and still preserves photoreal output.
+History: 5-pass heavy → invisible chroma-only (cabda04) → two-mode normal/aggressive → single-pass disruption on every image (every flow) → **selective face-only disruption in manual flow + zero disruption in ads** (current). Ads pipeline previously ran every ref through `processForVideo` with letterboxing; testing showed the disruption was not load-bearing once character refs were dropped, so the pipeline was cleaned out and only the aspect-enforcing letterbox kept.
 
 ## Ads pipeline (4-stage Claude → image gen → video gen)
 User uploads product photos + optional description → `createAd()` runs the full pipeline.
