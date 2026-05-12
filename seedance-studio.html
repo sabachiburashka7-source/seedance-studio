@@ -177,6 +177,108 @@ textarea {
 textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,0,0,0.06); }
 textarea::placeholder { color: var(--text3); }
 
+/* ─── PROMPT CARD (beautiful writing area) ─────────────────────────── */
+.prompt-card {
+  position: relative;
+  padding: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(900px 240px at -10% -20%, rgba(0,0,0,0.035), transparent 60%),
+    linear-gradient(180deg, var(--surface) 0%, #fafafb 100%);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+}
+.prompt-card::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--accent) 0%, rgba(0,0,0,0) 100%);
+  opacity: 0; transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+.prompt-card:focus-within {
+  border-color: var(--accent2);
+  box-shadow:
+    0 0 0 4px rgba(0,0,0,0.04),
+    0 14px 36px -18px rgba(0,0,0,0.22);
+}
+.prompt-card:focus-within::before { opacity: 1; }
+
+.prompt-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 22px 6px;
+  position: relative; z-index: 1;
+}
+.prompt-card-head .panel-label {
+  margin: 0;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.prompt-card-head .panel-label::before {
+  content: '';
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0,0,0,0.06);
+  display: inline-block;
+}
+.prompt-counter {
+  font-size: 11px; color: var(--text3);
+  font-family: 'Fira Code', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.prompt-card textarea {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 4px 22px 16px;
+  min-height: 168px;
+  font-size: 15px;
+  line-height: 1.7;
+  position: relative; z-index: 1;
+}
+.prompt-card textarea:focus {
+  outline: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.prompt-card-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 22px 13px;
+  border-top: 1px solid var(--border);
+  background: rgba(0,0,0,0.018);
+  font-size: 11px; color: var(--text3);
+  position: relative; z-index: 1;
+}
+.prompt-hint {
+  display: inline-flex; align-items: center; gap: 7px;
+  letter-spacing: 0.01em;
+}
+.prompt-hint::before {
+  content: '✦';
+  color: var(--text2);
+  font-size: 11px;
+  transform: translateY(-0.5px);
+}
+.prompt-kbd {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: 'Fira Code', monospace;
+}
+.prompt-kbd kbd {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 10px;
+  color: var(--text2);
+  font-family: 'Fira Code', monospace;
+}
+
+body.mobile-mode .prompt-card textarea { min-height: 130px; padding: 4px 16px 14px; font-size: 16px !important; }
+body.mobile-mode .prompt-card-head { padding: 14px 16px 4px; }
+body.mobile-mode .prompt-card-foot { padding: 9px 16px 11px; }
+
 /* ─── IMAGE UPLOAD ────────────────────────────────────────────────── */
 .img-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .thumb-wrap { position: relative; }
@@ -899,9 +1001,16 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
 
     <!-- LEFT -->
     <div>
-      <div class="panel">
-        <div class="panel-label">Prompt</div>
+      <div class="panel prompt-card">
+        <div class="prompt-card-head">
+          <div class="panel-label">Prompt</div>
+          <span class="prompt-counter" id="img-prompt-counter">0 chars</span>
+        </div>
         <textarea id="img-prompt" rows="5" placeholder="Describe the image you want to generate...&#10;&#10;Example: A futuristic city skyline at dusk, neon reflections on wet streets, cinematic wide shot"></textarea>
+        <div class="prompt-card-foot">
+          <span class="prompt-hint">Be specific about subject, mood, lighting and style</span>
+          <span class="prompt-kbd"><kbd>⌘</kbd><kbd>↵</kbd> generate</span>
+        </div>
       </div>
 
       <!-- REFERENCE IMAGE (optional) -->
@@ -981,9 +1090,16 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <!-- LEFT -->
     <div>
       <!-- PROMPT -->
-      <div class="panel">
-        <div class="panel-label">Prompt</div>
+      <div class="panel prompt-card">
+        <div class="prompt-card-head">
+          <div class="panel-label">Prompt</div>
+          <span class="prompt-counter" id="prompt-counter">0 chars</span>
+        </div>
         <textarea id="prompt" rows="5" placeholder="Describe your video in detail. Reference uploaded images as 'Image 1', 'Image 2', etc.&#10;&#10;Example: A woman in Image 1 walks through a neon-lit Tokyo street at night, cinematic slow motion, shallow depth of field"></textarea>
+        <div class="prompt-card-foot">
+          <span class="prompt-hint">Describe subject, motion, camera and mood for best results</span>
+          <span class="prompt-kbd"><kbd>⌘</kbd><kbd>↵</kbd> generate</span>
+        </div>
       </div>
 
       <!-- IMAGES (optional) -->
@@ -1116,10 +1232,16 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
       </div>
 
       <button class="opt-add-btn" id="ad-desc-toggle" onclick="showOptSection('ad-desc-panel','ad-desc-toggle')">+ Add product description (optional)</button>
-      <div class="panel" id="ad-desc-panel" hidden>
+      <div class="panel prompt-card" id="ad-desc-panel" hidden>
         <button class="opt-panel-close" onclick="hideOptSection('ad-desc-panel','ad-desc-toggle','ad-description')" title="Remove">×</button>
-        <div class="panel-label">Product Description</div>
+        <div class="prompt-card-head">
+          <div class="panel-label">Product Description</div>
+          <span class="prompt-counter" id="ad-description-counter">0 chars</span>
+        </div>
         <textarea id="ad-description" rows="4" placeholder="Describe your product, target audience, key selling points, desired mood or tone...&#10;&#10;Example: Luxury perfume for confident women 25-40. Notes of jasmine and oud. Sleek black bottle. Mood: mysterious, sensual, powerful."></textarea>
+        <div class="prompt-card-foot">
+          <span class="prompt-hint">Audience, selling points and mood help Claude write a sharper concept</span>
+        </div>
       </div>
 
       <!-- Resume banner (shown when checkpoint exists) -->
@@ -3729,6 +3851,34 @@ function togglePrompt(i) {
   const expanded = el.classList.toggle('expanded');
   btn.textContent = expanded ? 'Show less ▴' : 'Show more ▾';
 }
+
+// ══ PROMPT CARD — live char counter + ⌘↵ shortcut ═════════════════════
+(function wirePromptCards() {
+  const map = [
+    { ta: 'prompt',         counter: 'prompt-counter',         submit: () => typeof doGenerate === 'function' && doGenerate() },
+    { ta: 'img-prompt',     counter: 'img-prompt-counter',     submit: () => typeof doGenerateImage === 'function' && doGenerateImage() },
+    { ta: 'ad-description', counter: 'ad-description-counter', submit: null },
+  ];
+  for (const { ta, counter, submit } of map) {
+    const t = document.getElementById(ta);
+    const c = document.getElementById(counter);
+    if (!t) continue;
+    const update = () => {
+      const n = t.value.length;
+      if (c) c.textContent = n === 1 ? '1 char' : n.toLocaleString() + ' chars';
+    };
+    t.addEventListener('input', update);
+    update();
+    if (submit) {
+      t.addEventListener('keydown', e => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+          e.preventDefault();
+          submit();
+        }
+      });
+    }
+  }
+})();
 </script>
 </body>
 </html>
