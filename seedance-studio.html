@@ -1309,6 +1309,22 @@ const SKIP_START_FRAMES = true;
 // future BytePlus model accepts portraits).
 const SKIP_CHARACTER_REFS = true;
 
+// Skip generating environment ref-sheet images (ENV_* entities). The
+// environment description from the ref-sheet prompt is injected into the
+// video-gen text prompt instead. Seedance handles environment fidelity
+// well from text alone, so paying for env images was wasted spend.
+// Flip to false to restore env ref-image generation.
+const SKIP_ENV_REFS = true;
+
+// Build a text prefix describing the environment(s) from entities, used
+// when SKIP_ENV_REFS is on so Seedance still gets the environment detail.
+function buildEnvPromptPrefix(entities) {
+  if (!entities) return '';
+  const envs = entities.filter(e => e.type === 'environment' && e.prompt);
+  if (!envs.length) return '';
+  return envs.map(e => `Environment — ${e.name || ('ENV_' + e.envId)}: ${e.prompt}`).join('\n\n') + '\n\n';
+}
+
 // ── Ad pipeline checkpoint (survives page refresh) ────────────────────
 const AD_CP_KEY = 'ad_checkpoint';
 function saveAdCheckpoint(patch) {
@@ -1512,11 +1528,14 @@ async function resumeAdPipeline() {
           // real-person classifier even after image disruption. Character
           // is described in the per-scene text prompt instead; cross-scene
           // continuity comes from the previous-scene video reference.
-          const sendableRefEntries = Object.entries(refMap).filter(([k, v]) => v && !k.startsWith('SUBJECT_'));
-          let hint = startImg ? 'Open the scene exactly matching reference image 1. Use remaining reference images for product and environment fidelity. '
-                   : sendableRefEntries.length > 0 ? 'Use the reference images for product and environment fidelity. ' : '';
+          // Environment refs (ENV_*) are also not sent when SKIP_ENV_REFS
+          // is on — the env description is injected into the text prompt.
+          const sendableRefEntries = Object.entries(refMap).filter(([k, v]) => v && !k.startsWith('SUBJECT_') && !k.startsWith('ENV_'));
+          const envPrefix = SKIP_ENV_REFS ? buildEnvPromptPrefix(cp.entities) : '';
+          let hint = startImg ? 'Open the scene exactly matching reference image 1. Use remaining reference images for product fidelity. '
+                   : sendableRefEntries.length > 0 ? 'Use the reference images for product fidelity. ' : '';
           if (prevVideoUrl) hint += 'Use the reference video for visual continuity from the previous scene. ';
-          content.push({ type: 'text', text: hint + prompt });
+          content.push({ type: 'text', text: envPrefix + hint + prompt });
           if (startImg) { content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(startImg, '9:16') }, role: 'reference_image' }); }
           for (const [, url] of sendableRefEntries) {
             content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(url, '9:16') }, role: 'reference_image' });
@@ -1898,8 +1917,13 @@ async function createAd() {
       if (lower.includes(refKey.toLowerCase())) return true;
       return refAliases.some(a => a.key === refKey && a.regex.test(promptText));
     };
-    const skipCount = SKIP_CHARACTER_REFS ? entities.filter(e => e.type === 'character').length : 0;
-    adLog(`Generating ${entities.length - skipCount} reference image(s)${skipCount ? ` (skipping ${skipCount} character ref${skipCount > 1 ? 's' : ''})` : ''}…`, 'info');
+    const charSkip = SKIP_CHARACTER_REFS ? entities.filter(e => e.type === 'character').length : 0;
+    const envSkip  = SKIP_ENV_REFS       ? entities.filter(e => e.type === 'environment').length : 0;
+    const skipCount = charSkip + envSkip;
+    const skipParts = [];
+    if (charSkip) skipParts.push(`${charSkip} character ref${charSkip > 1 ? 's' : ''}`);
+    if (envSkip)  skipParts.push(`${envSkip} environment ref${envSkip > 1 ? 's' : ''}`);
+    adLog(`Generating ${entities.length - skipCount} reference image(s)${skipParts.length ? ` (skipping ${skipParts.join(' + ')})` : ''}…`, 'info');
     adProgEnter('refImages');
     const refTotal = Math.max(1, entities.length);
     for (let ei = 0; ei < entities.length; ei++) {
@@ -1909,6 +1933,10 @@ async function createAd() {
       const label = entity.name || key;
       if (SKIP_CHARACTER_REFS && entity.type === 'character') {
         adLog(`Ref image: ${label} — skipped (SKIP_CHARACTER_REFS)`, 'info');
+        continue;
+      }
+      if (SKIP_ENV_REFS && entity.type === 'environment') {
+        adLog(`Ref image: ${label} — skipped (SKIP_ENV_REFS, prompt injected into video text)`, 'info');
         continue;
       }
       const sRef = adLog(`Ref image ${ei+1}/${entities.length}: ${label}…`, 'run');
@@ -2088,15 +2116,16 @@ async function createAd() {
         // the previous-scene video reference once Scene 1 has set the look.
         const content = [];
         const startImg = sceneStartImages[i];
-        const sendableRefEntries = Object.entries(refMap).filter(([k, v]) => v && !k.startsWith('SUBJECT_'));
+        const sendableRefEntries = Object.entries(refMap).filter(([k, v]) => v && !k.startsWith('SUBJECT_') && !k.startsWith('ENV_'));
+        const envPrefix = SKIP_ENV_REFS ? buildEnvPromptPrefix(entities) : '';
         let openingHint = '';
         if (startImg) {
-          openingHint = `Open the scene exactly matching reference image 1. Use remaining reference images for product and environment fidelity. `;
+          openingHint = `Open the scene exactly matching reference image 1. Use remaining reference images for product fidelity. `;
         } else if (sendableRefEntries.length > 0) {
-          openingHint = `Use the reference images for product and environment fidelity. `;
+          openingHint = `Use the reference images for product fidelity. `;
         }
         if (prevVideoUrl) openingHint += `Use the reference video for visual continuity from the previous scene. `;
-        content.push({ type: 'text', text: openingHint + prompt });
+        content.push({ type: 'text', text: envPrefix + openingHint + prompt });
         if (startImg) {
           content.push({ type: 'image_url', image_url: { url: await urlToDataUrl(startImg, '9:16') }, role: 'reference_image' });
         }
