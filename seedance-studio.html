@@ -358,6 +358,110 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 .prog-fill { height: 100%; border-radius: 10px; background: var(--accent); transition: width 0.8s var(--ease); width: 0%; }
 .prog-msg { font-size: 12px; color: var(--text3); margin-top: 8px; font-family: 'Fira Code', monospace; }
 
+/* ─── ADS PROGRESS BAR ────────────────────────────────────────────── */
+.ad-progress {
+  background: var(--bg2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 18px 18px 16px;
+  margin-bottom: 10px;
+  display: none;
+  position: relative;
+  overflow: hidden;
+}
+.ad-progress.show { display: block; animation: ad-prog-in 0.35s var(--ease); }
+@keyframes ad-prog-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ad-prog-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 12px; gap: 12px;
+}
+.ad-prog-label {
+  font-size: 13px; font-weight: 600; color: var(--text);
+  letter-spacing: -0.01em;
+  display: flex; align-items: center; gap: 8px;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ad-prog-spinner {
+  width: 12px; height: 12px; border-radius: 50%;
+  border: 2px solid var(--surface3); border-top-color: var(--accent);
+  animation: ad-prog-spin 0.9s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes ad-prog-spin { to { transform: rotate(360deg); } }
+.ad-prog-pct {
+  font-size: 20px; font-weight: 700; color: var(--text);
+  font-variant-numeric: tabular-nums; letter-spacing: -0.03em;
+  flex-shrink: 0;
+}
+.ad-prog-track {
+  height: 10px; border-radius: 999px;
+  background: var(--surface3);
+  overflow: hidden; position: relative;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.08);
+}
+.ad-prog-fill {
+  height: 100%; width: 0%; border-radius: 999px;
+  background: linear-gradient(90deg, #0a0a0a 0%, #3a3a3a 40%, #0a0a0a 80%);
+  background-size: 200% 100%;
+  animation: ad-prog-shimmer 2.4s linear infinite;
+  transition: width 0.6s var(--ease);
+  position: relative;
+  box-shadow: 0 0 14px rgba(0,0,0,0.28);
+}
+.ad-prog-fill::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent);
+  width: 40%; transform: translateX(-100%);
+  animation: ad-prog-sweep 1.8s ease-in-out infinite;
+}
+@keyframes ad-prog-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@keyframes ad-prog-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+.ad-prog-meta {
+  display: flex; justify-content: space-between; margin-top: 10px;
+  font-size: 11.5px; color: var(--text3);
+  font-family: 'Fira Code', monospace;
+}
+.ad-prog-elapsed { font-variant-numeric: tabular-nums; }
+.ad-prog-hint { font-family: inherit; font-weight: 500; }
+.ad-prog-chips {
+  display: flex; flex-wrap: wrap; gap: 5px; margin-top: 14px;
+}
+.ad-prog-chip {
+  font-size: 10.5px; padding: 3px 9px; border-radius: 999px;
+  background: var(--surface3); color: var(--text3);
+  font-weight: 600; letter-spacing: 0.01em;
+  transition: background 0.3s var(--ease), color 0.3s var(--ease), box-shadow 0.3s var(--ease);
+}
+.ad-prog-chip.chip-active {
+  background: var(--accent); color: #fff;
+  animation: ad-prog-pulse 1.6s ease-in-out infinite;
+}
+.ad-prog-chip.chip-done {
+  background: rgba(22,163,74,0.12); color: var(--green);
+}
+.ad-prog-chip.chip-done::before { content: '✓ '; font-weight: 700; }
+@keyframes ad-prog-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0.18); }
+  50%      { box-shadow: 0 0 0 6px rgba(0,0,0,0); }
+}
+.ad-progress.done .ad-prog-fill,
+.ad-progress.done .ad-prog-fill::after { animation: none; }
+.ad-progress.done .ad-prog-fill { background: var(--green); }
+.ad-progress.done .ad-prog-spinner { display: none; }
+.ad-progress.error .ad-prog-fill,
+.ad-progress.error .ad-prog-fill::after { animation: none; }
+.ad-progress.error .ad-prog-fill { background: #dc2626; }
+.ad-progress.error .ad-prog-spinner { display: none; }
+
 /* ─── LIBRARY ─────────────────────────────────────────────────────── */
 .lib-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
 .lib-title { font-size: 22px; font-weight: 700; letter-spacing: -0.03em; }
@@ -1024,6 +1128,29 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         <button class="btn-rb btn-rb-yes" onclick="resumeAdPipeline()">Resume</button>
         <button class="btn-rb btn-rb-no" onclick="dismissAdResume()">Dismiss</button>
       </div>
+
+      <!-- Beautiful progress bar for the ads pipeline -->
+      <div class="ad-progress" id="ad-progress">
+        <div class="ad-prog-head">
+          <div class="ad-prog-label"><span class="ad-prog-spinner"></span><span id="ad-prog-label">Starting…</span></div>
+          <div class="ad-prog-pct" id="ad-prog-pct">0%</div>
+        </div>
+        <div class="ad-prog-track"><div class="ad-prog-fill" id="ad-prog-fill"></div></div>
+        <div class="ad-prog-meta">
+          <span>Elapsed <span class="ad-prog-elapsed" id="ad-prog-elapsed">00:00</span></span>
+          <span class="ad-prog-hint" id="ad-prog-hint">Usually takes 8–12 minutes</span>
+        </div>
+        <div class="ad-prog-chips">
+          <span class="ad-prog-chip" id="ad-prog-chip-warmup">Connect</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-brief">Concept</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-refsheets">Refs</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-refImages">Images</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-startPrompts">Frames</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-startImages">Stills</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-shots">Script</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-video">Video</span>
+        </div>
+      </div>
     </div>
 
     <!-- RIGHT: settings -->
@@ -1214,6 +1341,8 @@ function stopAd() {
   adStopped = true;
   const sb = document.getElementById('ad-stop-btn');
   sb.disabled = true; sb.textContent = 'Stopping…';
+  const lbl = document.getElementById('ad-prog-label');
+  if (lbl && adProg) lbl.textContent = 'Stopping…';
 }
 
 function dismissAdResume() {
@@ -1250,6 +1379,29 @@ async function resumeAdPipeline() {
 
   adLogClear();
   adLog(`Resuming: "${cp.adTitle}" (stage ${cp.stage} completed)`, 'info');
+  // Show progress bar with pre-video stages already marked done (resume always
+  // re-enters at stage 3+ at the earliest, so concept/refsheets/refImages are
+  // certainly past).
+  adProgShow();
+  for (const k of ['warmup','brief','refsheets','refImages']) {
+    if (adProg) {
+      adProg.completed.add(k);
+      const chip = document.getElementById('ad-prog-chip-' + k);
+      if (chip) chip.classList.add('chip-done');
+    }
+  }
+  if (cp.stage >= 3 && adProg) {
+    adProg.completed.add('startPrompts');
+    const chip = document.getElementById('ad-prog-chip-startPrompts');
+    if (chip) chip.classList.add('chip-done');
+  }
+  if (cp.stage >= 4 && adProg) {
+    for (const k of ['startImages','shots']) {
+      adProg.completed.add(k);
+      const chip = document.getElementById('ad-prog-chip-' + k);
+      if (chip) chip.classList.add('chip-done');
+    }
+  }
 
   // Reconstruct refMap from lib items saved in this folder
   const refMap = {};
@@ -1286,6 +1438,7 @@ async function resumeAdPipeline() {
     // Re-run any missing Claude stages
     if (cp.stage < 3 && !SKIP_START_FRAMES) {
       if (!ideaText || !refSheetsText) { adLog('Stage 1/2 data missing — start a new pipeline', 'err'); return; }
+      adProgEnter('startPrompts');
       const s3 = adLog('Stage 3: Generating starting frame prompts…', 'run');
       const r3 = await fetch('/api/gen/startframes', {
         method: 'POST',
@@ -1299,6 +1452,7 @@ async function resumeAdPipeline() {
       adLogUpdate(s3, `Stage 3 done: ${startFrames.length} frame prompt(s)`, 'done');
     }
     if (cp.stage < 4) {
+      adProgEnter('shots');
       const s4 = adLog('Stage 4: Writing cinematic shot prompts…', 'run');
       const r4 = await fetch('/api/gen/shots', {
         method: 'POST',
@@ -1317,6 +1471,14 @@ async function resumeAdPipeline() {
     // Resume video generation
     let prevVideoUrl = null;
     const submittedJobIds = cp.submittedSceneJobIds || {};
+    adProgEnter('video');
+    const sceneTotal = Math.max(1, scenes.length);
+    // Pre-fill progress for scenes already complete in lib
+    let completedCount = 0;
+    for (let i = 0; i < scenes.length; i++) {
+      if (completedSceneUrls[i]) completedCount++;
+    }
+    if (completedCount > 0) adProgSub(completedCount / sceneTotal);
 
     for (let i = 0; i < scenes.length; i++) {
       if (adStopped) break;
@@ -1383,6 +1545,7 @@ async function resumeAdPipeline() {
         adLogUpdate(sV, `Scene ${i+1} generating…`, 'run');
         prevVideoUrl = await pollAd(job);
         adLogUpdate(sV, prevVideoUrl ? `Scene ${i+1} "${scene.name || ''}" ✓` : `Scene ${i+1} failed`, prevVideoUrl ? 'done' : 'err');
+        adProgSub((i + 1) / sceneTotal);
         saveAdCheckpoint({ nextSceneIndex: i + 1 });
       } catch(e) {
         adLogUpdate(sV, `Scene ${i+1} failed: ${e.message}`, 'err');
@@ -1393,13 +1556,16 @@ async function resumeAdPipeline() {
     if (!adStopped) {
       clearAdCheckpoint();
       adLog(`All ${scenes.length} scene(s) done! See "${adTitle}" in your Library.`, 'done');
+      adProgFinish();
       goPage('library', document.querySelector('.tab[data-page="library"]'));
       setLibTab('ads');
       toast(`Pipeline complete! ${scenes.length} scene(s) done.`, 'ok', 7000);
     } else {
       adLog('Pipeline stopped. You can resume it after refreshing.', 'warn');
+      adProgHide();
     }
   } catch(e) {
+    adProgError(e.message);
     adLog('Error: ' + e.message, 'err');
     toast(e.message, 'err');
   } finally {
@@ -1450,6 +1616,155 @@ function adLogUpdate() {}
 function adLogTextBlock() {}
 function adLogClear() {}
 
+// ─── Ads pipeline progress bar ────────────────────────────────────────
+// Stages are weighted by their typical wall-clock cost. Video gen is the
+// dominant chunk (~85% of total time), so it gets the lion's share.
+const AD_STAGE_ORDER = ['warmup','brief','refsheets','refImages','startPrompts','startImages','shots','video'];
+const AD_STAGE_WEIGHTS = {
+  warmup: 1, brief: 4, refsheets: 3, refImages: 5,
+  startPrompts: 3, startImages: 5, shots: 3, video: 76,
+};
+const AD_STAGE_LABELS = {
+  warmup:       'Connecting to server',
+  brief:        'Brainstorming ad concept',
+  refsheets:    'Designing reference sheets',
+  refImages:    'Creating reference images',
+  startPrompts: 'Writing starting frame prompts',
+  startImages:  'Painting starting frames',
+  shots:        'Writing cinematic shot prompts',
+  video:        'Rendering video (this is the slow part)',
+};
+const AD_VIDEO_ETA_SEC = 8 * 60; // ~8 min — the video sub-progress eases toward 92% over this
+
+let adProg = null; // active state object, or null when hidden
+
+function adProgShow() {
+  adProg = {
+    startTs: Date.now(),
+    currentStage: null,
+    stageSub: 0,
+    completed: new Set(),
+    displayPct: 0,
+    targetPct: 0,
+    videoStageStart: 0,
+    rafId: 0,
+    ended: false,
+  };
+  const panel = document.getElementById('ad-progress');
+  if (!panel) return;
+  panel.classList.remove('done', 'error');
+  panel.classList.add('show');
+  for (const k of AD_STAGE_ORDER) {
+    const chip = document.getElementById('ad-prog-chip-' + k);
+    if (chip) chip.classList.remove('chip-active', 'chip-done');
+  }
+  document.getElementById('ad-prog-fill').style.width = '0%';
+  document.getElementById('ad-prog-pct').textContent = '0%';
+  document.getElementById('ad-prog-label').textContent = 'Starting…';
+  document.getElementById('ad-prog-elapsed').textContent = '00:00';
+  document.getElementById('ad-prog-hint').textContent = 'Usually takes 8–12 minutes';
+  adProgTick();
+}
+
+function adProgHide() {
+  if (!adProg) return;
+  adProg.ended = true;
+  cancelAnimationFrame(adProg.rafId);
+  const panel = document.getElementById('ad-progress');
+  if (panel) panel.classList.remove('show');
+  adProg = null;
+}
+
+function adProgEnter(stageKey) {
+  if (!adProg) return;
+  // Mark the previous stage fully complete
+  if (adProg.currentStage) {
+    adProg.completed.add(adProg.currentStage);
+    const prevChip = document.getElementById('ad-prog-chip-' + adProg.currentStage);
+    if (prevChip) { prevChip.classList.remove('chip-active'); prevChip.classList.add('chip-done'); }
+  }
+  adProg.currentStage = stageKey;
+  adProg.stageSub = 0;
+  if (stageKey === 'video') adProg.videoStageStart = Date.now();
+  const chip = document.getElementById('ad-prog-chip-' + stageKey);
+  if (chip) chip.classList.add('chip-active');
+  const label = document.getElementById('ad-prog-label');
+  if (label) label.textContent = AD_STAGE_LABELS[stageKey] || stageKey;
+}
+
+function adProgSub(frac) {
+  if (!adProg) return;
+  if (frac > adProg.stageSub) adProg.stageSub = Math.min(1, Math.max(0, frac));
+}
+
+function adProgFinish() {
+  if (!adProg) return;
+  for (const k of AD_STAGE_ORDER) {
+    adProg.completed.add(k);
+    const chip = document.getElementById('ad-prog-chip-' + k);
+    if (chip) { chip.classList.remove('chip-active'); chip.classList.add('chip-done'); }
+  }
+  adProg.currentStage = null;
+  adProg.targetPct = 100;
+  adProg.displayPct = 100;
+  document.getElementById('ad-prog-fill').style.width = '100%';
+  document.getElementById('ad-prog-pct').textContent = '100%';
+  document.getElementById('ad-prog-label').textContent = 'Done!';
+  document.getElementById('ad-prog-hint').textContent = 'Ad pipeline complete';
+  document.getElementById('ad-progress').classList.add('done');
+  cancelAnimationFrame(adProg.rafId);
+  setTimeout(adProgHide, 2400);
+}
+
+function adProgError(msg) {
+  if (!adProg) return;
+  document.getElementById('ad-prog-label').textContent = 'Failed: ' + (msg || 'pipeline error');
+  document.getElementById('ad-prog-hint').textContent = 'You can resume after refreshing if a checkpoint was saved';
+  document.getElementById('ad-progress').classList.add('error');
+  cancelAnimationFrame(adProg.rafId);
+  setTimeout(adProgHide, 5000);
+}
+
+function adProgComputeTarget() {
+  if (!adProg) return 0;
+  let acc = 0;
+  for (const k of AD_STAGE_ORDER) {
+    if (k === adProg.currentStage) {
+      acc += AD_STAGE_WEIGHTS[k] * adProg.stageSub;
+      break;
+    }
+    if (adProg.completed.has(k)) acc += AD_STAGE_WEIGHTS[k];
+  }
+  return acc;
+}
+
+function adProgTick() {
+  if (!adProg || adProg.ended) return;
+  // Auto-creep video sub-progress based on elapsed (caps at 92%)
+  if (adProg.currentStage === 'video' && adProg.videoStageStart) {
+    const vElapsed = (Date.now() - adProg.videoStageStart) / 1000;
+    const expected = Math.min(0.92, vElapsed / AD_VIDEO_ETA_SEC);
+    if (expected > adProg.stageSub) adProg.stageSub = expected;
+  }
+  const target = adProgComputeTarget();
+  if (target > adProg.targetPct) adProg.targetPct = target;
+  // Ease displayed value toward target
+  const diff = adProg.targetPct - adProg.displayPct;
+  if (Math.abs(diff) < 0.04) adProg.displayPct = adProg.targetPct;
+  else adProg.displayPct += diff * 0.07;
+  const fill = document.getElementById('ad-prog-fill');
+  if (fill) fill.style.width = adProg.displayPct.toFixed(1) + '%';
+  const pct = document.getElementById('ad-prog-pct');
+  if (pct) pct.textContent = Math.floor(adProg.displayPct) + '%';
+  // Elapsed mm:ss
+  const elapsed = ((Date.now() - adProg.startTs) / 1000) | 0;
+  const mm = String((elapsed / 60) | 0).padStart(2, '0');
+  const ss = String(elapsed % 60).padStart(2, '0');
+  const el = document.getElementById('ad-prog-elapsed');
+  if (el) el.textContent = mm + ':' + ss;
+  adProg.rafId = requestAnimationFrame(adProgTick);
+}
+
 async function createAd() {
   // Drop any checkpoint thumbnails (no file object) — user is starting fresh
   adImages = adImages.filter(img => img.file);
@@ -1464,6 +1779,7 @@ async function createAd() {
   stopBtn.style.display = ''; stopBtn.disabled = false; stopBtn.textContent = '■ Stop Pipeline';
   clearAdCheckpoint();
   adLogClear();
+  adProgShow();
 
   const model       = 'dreamina-seedance-2-0-260128';
   const vidRes      = '480p';
@@ -1510,6 +1826,7 @@ async function createAd() {
   try {
     // ── Step 0: Ensure server is awake ─────────────────────────────────
     const s0 = adLog('Connecting to server…', 'run');
+    adProgEnter('warmup');
     let serverOk = false;
     for (let i = 0; i < 6; i++) {
       try { const hr = await fetch('/health'); if (hr.ok) { serverOk = true; break; } } catch (_) {}
@@ -1519,6 +1836,7 @@ async function createAd() {
     adLogUpdate(s0, 'Server ready', 'done');
 
     // ── Step 1: Ad idea (ad-idea-generator) ───────────────────────────
+    adProgEnter('brief');
     const s1 = adLog('Stage 1: Claude generating ad concept…', 'run');
     const imagesPayload = await Promise.all(adImages.map(async img => {
       const processed = await resizeForClaude(img.file);
@@ -1544,6 +1862,7 @@ async function createAd() {
     if (adStopped) { adLog('Pipeline stopped.', 'warn'); return; }
 
     // ── Step 2: Reference sheet prompts (ref-sheet-generator) ──────────
+    adProgEnter('refsheets');
     const s2 = adLog('Stage 2: Claude generating reference sheet prompts…', 'run');
     const r2 = await fetch('/api/gen/refsheets', {
       method: 'POST',
@@ -1581,6 +1900,8 @@ async function createAd() {
     };
     const skipCount = SKIP_CHARACTER_REFS ? entities.filter(e => e.type === 'character').length : 0;
     adLog(`Generating ${entities.length - skipCount} reference image(s)${skipCount ? ` (skipping ${skipCount} character ref${skipCount > 1 ? 's' : ''})` : ''}…`, 'info');
+    adProgEnter('refImages');
+    const refTotal = Math.max(1, entities.length);
     for (let ei = 0; ei < entities.length; ei++) {
       const entity = entities[ei];
       const key = entity.type === 'character' ? 'SUBJECT_' + entity.subjectId
@@ -1631,6 +1952,7 @@ async function createAd() {
       } catch(e) {
         adLogUpdate(sRef, `${label} skipped: ${e.message}`, 'warn');
       }
+      adProgSub((ei + 1) / refTotal);
       if (ei < entities.length - 1) await new Promise(r => setTimeout(r, 3000));
       if (adStopped) break;
     }
@@ -1643,6 +1965,7 @@ async function createAd() {
       adLog('Stage 3: skipped (SKIP_START_FRAMES = true — testing without starting frames)', 'info');
       saveAdCheckpoint({ stage: 3, startFrames, startFramesText });
     } else {
+      adProgEnter('startPrompts');
       const s3 = adLog('Stage 3: Claude generating starting frame prompts…', 'run');
       const r3 = await fetch('/api/gen/startframes', {
         method: 'POST',
@@ -1662,6 +1985,8 @@ async function createAd() {
     // ── Step 3.5: Generate starting frame images ─────────────────────────
     const sceneStartImages = [];
     if (!SKIP_START_FRAMES) adLog(`Generating ${startFrames.length} starting frame image(s)…`, 'info');
+    if (!SKIP_START_FRAMES && startFrames.length) adProgEnter('startImages');
+    const sfTotal = Math.max(1, startFrames.length);
     for (let i = 0; !SKIP_START_FRAMES && i < startFrames.length; i++) {
       const sf = startFrames[i];
       if (!sf || !sf.prompt) { sceneStartImages.push(null); continue; }
@@ -1714,12 +2039,14 @@ async function createAd() {
         sceneStartImages.push(null);
         adLogUpdate(sSf, `Scene ${i+1} starting frame failed: ${e.message} — will use T2V`, 'warn');
       }
+      adProgSub((i + 1) / sfTotal);
       if (i < startFrames.length - 1) await new Promise(r => setTimeout(r, 3000));
       if (adStopped) break;
     }
     if (adStopped) { adLog('Pipeline stopped.', 'warn'); return; }
 
     // ── Step 4: Video prompts (video-prompt-builder) ───────────────────
+    adProgEnter('shots');
     const s4 = adLog('Stage 4: Claude writing cinematic shot prompts…', 'run');
     const r4 = await fetch('/api/gen/shots', {
       method: 'POST',
@@ -1736,6 +2063,8 @@ async function createAd() {
 
     // ── Step 5: Video generation (sequential, each scene uses prev as ref) ──
     let prevVideoUrl = null;
+    if (scenes.length) adProgEnter('video');
+    const sceneTotal = Math.max(1, scenes.length);
     for (let i = 0; i < scenes.length; i++) {
       if (adStopped) break;
       const scene = scenes[i];
@@ -1801,6 +2130,7 @@ async function createAd() {
         adLogUpdate(sV, `Scene ${i+1} generating${prevVideoUrl ? ' (visual continuity from prev scene)' : ''}…`, 'run');
         prevVideoUrl = await pollAd(job);
         adLogUpdate(sV, prevVideoUrl ? `Scene ${i+1} "${scene.name || ''}" ✓` : `Scene ${i+1} failed`, prevVideoUrl ? 'done' : 'err');
+        adProgSub((i + 1) / sceneTotal);
         saveAdCheckpoint({ nextSceneIndex: i + 1 });
       } catch(e) {
         adLogUpdate(sV, `Scene ${i+1} failed: ${e.message}`, 'err');
@@ -1810,15 +2140,18 @@ async function createAd() {
 
     if (adStopped) {
       adLog('Pipeline stopped. Refresh and click Resume to continue.', 'warn');
+      adProgHide();
     } else {
       clearAdCheckpoint();
       adLog(`All ${scenes.length} scene(s) done! See "${adTitle}" in your Library.`, 'done');
+      adProgFinish();
       goPage('library', document.querySelector('.tab[data-page="library"]'));
       setLibTab('ads');
       toast(`Ad pipeline complete! ${scenes.length} scene(s) generating.`, 'ok', 7000);
     }
 
   } catch(e) {
+    adProgError(e.message);
     adLog('Error: ' + e.message, 'err');
     toast(e.message, 'err');
   } finally {
