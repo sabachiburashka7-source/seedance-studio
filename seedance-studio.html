@@ -919,7 +919,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <!-- LEFT -->
     <div>
       <div class="panel prompt-card">
-        <div class="panel-label">Prompt</div>
         <textarea id="img-prompt" rows="5" placeholder="Describe the image you want to generate...&#10;&#10;Example: A futuristic city skyline at dusk, neon reflections on wet streets, cinematic wide shot"></textarea>
       </div>
 
@@ -952,7 +951,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
       <div class="panel" style="margin-bottom:0">
 
         <div class="setting-group">
-          <span class="setting-label">Model</span>
           <div class="btn-group" id="img-model-group">
             <button class="bg-btn active" data-value="seedream-5-0-lite" onclick="onBtnGroup(this,'img-model-group');calcImgCost()">Seedream 5.0</button>
             <button class="bg-btn" data-value="gpt-image-2" onclick="onBtnGroup(this,'img-model-group');calcImgCost()">GPT Image 2</button>
@@ -968,7 +966,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         </div>
 
         <div class="setting-group">
-          <span class="setting-label">Aspect Ratio</span>
           <div class="ratio-grid" id="img-ratio-group">
             <button class="ratio-btn active" data-value="9:16" onclick="onBtnGroup(this,'img-ratio-group')">9:16<span class="ratio-sub">Vertical</span></button>
             <button class="ratio-btn" data-value="16:9" onclick="onBtnGroup(this,'img-ratio-group')">16:9<span class="ratio-sub">Wide</span></button>
@@ -980,10 +977,7 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         </div>
 
         <div class="cost-box" style="margin-bottom:12px">
-          <div>
-            <div class="cost-lbl">Credits cost</div>
-            <div class="cost-sub" id="img-cost-mode">High quality</div>
-          </div>
+          <span id="img-cost-mode" style="display:none"></span>
           <div class="cost-val" id="img-cost-val">2.5 cr</div>
         </div>
         <button class="btn-gen" id="img-gen-btn" onclick="doGenerateImage()">Generate Image</button>
@@ -1001,7 +995,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <div>
       <!-- PROMPT -->
       <div class="panel prompt-card">
-        <div class="panel-label">Prompt</div>
         <textarea id="prompt" rows="5" placeholder="Describe your video in detail. Reference uploaded images as 'Image 1', 'Image 2', etc.&#10;&#10;Example: A woman in Image 1 walks through a neon-lit Tokyo street at night, cinematic slow motion, shallow depth of field"></textarea>
       </div>
 
@@ -1057,7 +1050,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
 
         <!-- Aspect Ratio -->
         <div class="setting-group">
-          <span class="setting-label">Aspect Ratio</span>
           <div class="ratio-grid" id="ratio-group">
             <button class="ratio-btn active" data-value="9:16" onclick="onBtnGroup(this,'ratio-group');calcCost()">9:16<span class="ratio-sub">Vertical</span></button>
             <button class="ratio-btn" data-value="16:9" onclick="onBtnGroup(this,'ratio-group');calcCost()">16:9<span class="ratio-sub">Wide</span></button>
@@ -1070,7 +1062,7 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
 
         <!-- Duration -->
         <div class="setting-group">
-          <span class="setting-label">Duration — <span id="dur-sub" style="font-weight:400;text-transform:none;letter-spacing:0">10 seconds</span></span>
+          <span id="dur-sub" style="display:none"></span>
           <div class="dur-row">
             <input type="range" id="s-dur" min="5" max="15" value="10" oninput="setDur(this.value)">
             <span class="rval" id="dur-val">10s</span>
@@ -1079,7 +1071,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
 
         <!-- Options -->
         <div class="setting-group">
-          <span class="setting-label">Options</span>
           <div class="opt-row">
             <div><div class="opt-label">Audio</div></div>
             <label class="tog"><input type="checkbox" id="s-audio" checked><span class="tog-track"></span></label>
@@ -1088,10 +1079,7 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
 
         <!-- Cost + Generate -->
         <div class="cost-box">
-          <div>
-            <div class="cost-lbl">Estimated cost</div>
-            <div class="cost-sub" id="cost-mode">Text/image · $7.00/M tokens</div>
-          </div>
+          <span id="cost-mode" style="display:none"></span>
           <div class="cost-val" id="cost-val">—</div>
         </div>
         <button class="btn-gen" id="gen-btn" onclick="doGenerate()">Generate Video</button>
