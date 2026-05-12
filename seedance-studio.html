@@ -2463,6 +2463,7 @@ async function doGenerate() {
     toast('Task submitted! Polling for result...', 'ok');
     const job = { id: taskId, prompt: pt, model, res, ratio, dur, audio, wm, content, cost: costUsd, ts: Date.now(), status: 'running' };
     jobs.push(job);
+    saveJobs();
     poll(job);
 
     btn.disabled = false; btn.textContent = 'Generate Video';
@@ -2538,6 +2539,7 @@ function friendlyErr(msg) {
 
 async function finish(job, url, err) {
   jobs = jobs.filter(j => j.id !== job.id);
+  saveJobs();
   if (err) { toast(friendlyErr(err), 'err'); renderLib(); return; }
   if (url) {
     try {
@@ -2997,6 +2999,7 @@ async function onLoggedIn(j) {
 
 async function logout() {
   try { await fetch('/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + authToken } }); } catch {}
+  try { localStorage.removeItem(jobsLocalKey()); } catch {}
   authToken = null; currentUser = null; lib = []; jobs = []; userBalance = null;
   localStorage.removeItem('sd_token');
   updateCreditsDisplay();
@@ -3004,7 +3007,51 @@ async function logout() {
 }
 
 // ══ LIBRARY ════════════════════════════════════════════════════════════
-function libLocalKey() { return 'sd_lib_' + (currentUser?.userId || 'anon'); }
+function libLocalKey()  { return 'sd_lib_'  + (currentUser?.userId || 'anon'); }
+function jobsLocalKey() { return 'sd_jobs_' + (currentUser?.userId || 'anon'); }
+
+// Persist in-flight manual video gen jobs so a page refresh doesn't lose them.
+// Ad-pipeline jobs (have `folder`) are intentionally excluded — they're driven
+// by an in-memory async pipeline (createAd / resumeAdPipeline) that has its
+// own checkpoint mechanism and can't be safely resumed by polling alone.
+// We strip the heavy `content` field (base64 image data) because polling only
+// needs the task id + display metadata, not the original submission body.
+function saveJobs() {
+  try {
+    const slim = jobs
+      .filter(j => j && j.id && !j.folder)
+      .map(j => ({ id: j.id, prompt: j.prompt, model: j.model, res: j.res,
+                   ratio: j.ratio, dur: j.dur, audio: j.audio, wm: j.wm,
+                   cost: j.cost, ts: j.ts, status: j.status }));
+    localStorage.setItem(jobsLocalKey(), JSON.stringify(slim));
+  } catch {}
+}
+
+function resumeJobs() {
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem(jobsLocalKey()) || '[]'); }
+  catch { saved = []; }
+  if (!Array.isArray(saved) || !saved.length) return;
+  // BytePlus tasks don't survive much past an hour; drop anything older so we
+  // don't poll a dead task id forever.
+  const cutoff = Date.now() - 60 * 60 * 1000;
+  const existing = new Set(jobs.map(j => j.id));
+  let resumed = 0;
+  saved.forEach(j => {
+    if (!j || !j.id || j.ts <= cutoff || existing.has(j.id)) return;
+    jobs.push(j);
+    poll(j);
+    resumed++;
+  });
+  if (resumed) {
+    saveJobs(); // re-save in case stale entries were dropped
+    renderLib();
+    toast(`Resumed ${resumed} in-progress video${resumed === 1 ? '' : 's'}`, 'ok');
+  } else if (saved.length) {
+    // All entries were stale; clear them out.
+    saveJobs();
+  }
+}
 
 // Serialized + coalescing save: only one /library POST in flight at a time.
 // Saves requested while a POST is in flight collapse into a single follow-up
@@ -3106,6 +3153,7 @@ async function loadLib(userId) {
     }
   }
   resumeUpscaling();
+  resumeJobs();
 }
 
 // Resume polling for items whose upscale was in flight when the page closed.
