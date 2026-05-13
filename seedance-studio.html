@@ -511,11 +511,6 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 .upscale-overlay .skip-btn:hover { background: rgba(255,255,255,0.12); }
 .vid-no-url { width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text3);font-size:12px;gap:6px;padding:12px;text-align:center; }
 .vid-body { padding: 14px; }
-.vid-prompt-wrap { margin-bottom: 10px; }
-.vid-prompt { font-size: 13px; line-height: 1.55; color: var(--text2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.vid-prompt.expanded { display: block; -webkit-line-clamp: unset; }
-.vid-prompt-toggle { font-size: 11px; color: var(--text); cursor: pointer; margin-top: 4px; display: inline-block; user-select: none; text-decoration: underline; text-underline-offset: 2px; }
-.vid-prompt-toggle:hover { opacity: 0.8; }
 
 /* ── Lightbox ── */
 .lb-overlay { display: none; position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.92); align-items: center; justify-content: center; padding: 24px; }
@@ -525,9 +520,6 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 .lb-inner img   { max-width: 90vw; max-height: 88vh; object-fit: contain; border-radius: 10px; }
 .lb-close { position: fixed; top: 18px; right: 22px; font-size: 28px; color: #fff; cursor: pointer; opacity: 0.75; line-height: 1; z-index: 10000; }
 .lb-close:hover { opacity: 1; }
-.vid-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
-.vtag { font-size: 11px; padding: 3px 8px; border-radius: 6px; background: var(--surface2); color: var(--text3); font-weight: 500; }
-.vtag.hi { background: rgba(0,0,0,0.06); color: var(--text); }
 .vid-btns { display: flex; gap: 7px; }
 .vbtn {
   flex: 1; padding: 8px 6px; border-radius: var(--radius-sm);
@@ -919,7 +911,7 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <!-- LEFT -->
     <div>
       <div class="panel prompt-card">
-        <textarea id="img-prompt" rows="5" placeholder="Describe the image you want to generate...&#10;&#10;Example: A futuristic city skyline at dusk, neon reflections on wet streets, cinematic wide shot"></textarea>
+        <textarea id="img-prompt" rows="5" placeholder="Describe the image you want to generate..."></textarea>
       </div>
 
       <!-- REFERENCE IMAGE (optional) -->
@@ -995,7 +987,7 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <div>
       <!-- PROMPT -->
       <div class="panel prompt-card">
-        <textarea id="prompt" rows="5" placeholder="Describe your video in detail. Reference uploaded images as 'Image 1', 'Image 2', etc.&#10;&#10;Example: A woman in Image 1 walks through a neon-lit Tokyo street at night, cinematic slow motion, shallow depth of field"></textarea>
+        <textarea id="prompt" rows="5" placeholder="Describe your video in detail. Reference uploaded images as 'Image 1', 'Image 2', etc."></textarea>
       </div>
 
       <!-- IMAGES (optional) -->
@@ -3617,7 +3609,6 @@ function makeLibCard(item, i) {
   const date  = new Date(item.ts).toLocaleDateString();
   const card  = document.createElement('div'); card.className = 'vid-card';
   const safeUrl = (item.url || '').replace(/"/g, '&quot;');
-  const safePrompt = (item.prompt || '').replace(/`/g, '\\`').replace(/\$/g, '\\$');
   card.innerHTML = `
     <div class="vid-preview ${cls}" onclick="${item.upscaling ? '' : `openLightbox('${safeUrl}',${!isImg})`}">
       ${item.url
@@ -3630,18 +3621,6 @@ function makeLibCard(item, i) {
         : (item.url ? `<div class="vid-preview-play"><span>${isImg ? '🔍' : '▶'}</span></div>` : '')}
     </div>
     <div class="vid-body">
-      <div class="vid-prompt-wrap">
-        <div class="vid-prompt" id="prompt-${i}">${item.prompt || ''}</div>
-        ${(item.prompt||'').length > 120 ? `<span class="vid-prompt-toggle" onclick="togglePrompt(${i})">Show more ▾</span>` : ''}
-      </div>
-      <div class="vid-tags">
-        <span class="vtag hi">${isImg ? 'Image' : (item.upscaling ? '↑ Upscaling' : (item.res || ''))}</span>
-        <span class="vtag">${item.ratio}</span>
-        ${!isImg ? `<span class="vtag">${item.dur}s</span>` : ''}
-        <span class="vtag">${mod}</span>
-        ${item.audio ? '<span class="vtag">Audio</span>' : ''}
-        <span class="vtag">${date}</span>
-      </div>
       <div class="vid-btns">
         ${item.url
           ? `<button class="vbtn dl" onclick="dlFile('${safeUrl}','seedance_${isImg?'img':'vid'}_${i+1}.${isImg?'jpg':'mp4'}')">⬇ Download</button>`
@@ -3777,15 +3756,6 @@ function closeLightbox(e) {
   document.body.style.overflow = '';
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox({ target: document.getElementById('lb-overlay') }); });
-
-// ══ PROMPT TOGGLE ══════════════════════════════════════════════════════
-function togglePrompt(i) {
-  const el = document.getElementById('prompt-' + i);
-  const btn = el?.nextElementSibling;
-  if (!el || !btn) return;
-  const expanded = el.classList.toggle('expanded');
-  btn.textContent = expanded ? 'Show less ▴' : 'Show more ▾';
-}
 
 // ══ PROMPT CARD — ⌘↵ / Ctrl+↵ shortcut ════════════════════════════════
 (function wirePromptShortcuts() {
