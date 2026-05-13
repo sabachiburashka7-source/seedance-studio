@@ -786,14 +786,19 @@ async function handleRequest(req, res) {
     return res.end();
   }
 
-  // Health check (Render uses this)
-  if (url === '/health' || url === '/healthz') {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
+  // Strip query strings/fragments up front so messenger tracking params (?fbclid=…),
+  // UptimeRobot cache-busters (?_=12345), trailing slashes etc. don't break route matching.
+  const pathname = url.split('?')[0].split('#')[0].replace(/\/+$/, '') || '/';
+
+  // Health check (Render + UptimeRobot use this) — short-circuit before any DB / auth work
+  if (pathname === '/health' || pathname === '/healthz' || pathname === '/ping') {
+    res.writeHead(200, {
+      'Content-Type': 'text/plain',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+    });
     return res.end('ok');
   }
 
-  // Frontend — strip query strings/fragments so messenger tracking params (?fbclid= etc.) don't break it
-  const pathname = url.split('?')[0].split('#')[0];
   if (pathname === '/' || pathname === '/index.html') return serveHTML(res);
 
   if (pathname === '/logo.jpg' || pathname === '/favicon.ico') {
