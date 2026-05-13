@@ -1462,7 +1462,7 @@ async function handleRequest(req, res) {
       userContent.push({ type: 'image', source: { type: 'base64', media_type: img.mime || 'image/jpeg', data: img.base64 } });
     }
     const descText = description ? `Product description: ${description}\n\n` : '';
-    userContent.push({ type: 'text', text: `${descText}Generate one short-form ad concept for this product following your methodology. Output ONLY the CONCEPT block and SCENES list — no preamble, no rationale.` });
+    userContent.push({ type: 'text', text: `${descText}Generate ONE realistic ad idea for this product following your methodology. Output exactly the two-block format from your Output Format section ("**THE IDEA**" paragraph pitch + "**Why it works:**" two sentences). No preamble, no alternatives.` });
 
     const system = SKILL_BRIEF;
     try {
@@ -1472,7 +1472,7 @@ async function handleRequest(req, res) {
         return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
       }
       const ideaText = claudeRes.body?.content?.[0]?.text || '';
-      if (!ideaText.includes('CONCEPT') || !ideaText.includes('SCENES')) {
+      if (!/THE IDEA/i.test(ideaText) || !/Why it works/i.test(ideaText)) {
         return sendJSON(res, 502, { error: 'Claude returned unexpected format. Raw: ' + ideaText.substring(0, 200) });
       }
       user.balance = Math.round((cur - BRAINSTORM_COST) * 100) / 100;
@@ -1501,7 +1501,7 @@ async function handleRequest(req, res) {
       refSheetsText ? `\n\nREFERENCE SHEET PROMPTS (entity IDs and visual descriptions — reference entities by SUBJECT ID / ENV ID in Shot 1):\n${refSheetsText}` : '',
       startFramesText ? `\n\nSTARTING FRAME PROMPTS (the literal first frame of each scene, already generated as images — Shot 1 of each scene must match its starting frame exactly):\n${startFramesText}` : '',
     ].join('');
-    const userContent = [{ type: 'text', text: `Here is the ad concept and scene breakdown:\n\n${ideaText}${extraContext}\n\nGenerate the per-scene cinematic video prompts for Seedance 2.0. Use the per-scene output format (one self-contained document per scene with === SCENE N OF M === headers, shot timeline, effects inventory, density map, energy arc).` }];
+    const userContent = [{ type: 'text', text: `Here is the realistic ad pitch (a single 15-second video, one paragraph with embedded timestamps, plus a "Why it works" note):\n\n${ideaText}${extraContext}\n\nTreat this as a SINGLE 15-second scene. Use the per-scene output format and produce exactly ONE document with the header "=== SCENE 1 OF 1 — [short scene name] ===" followed by the shot timeline, effects inventory, density map, and energy arc. Honour the pitch's embedded beat timestamps. The video is silent (no dialogue, no voiceover) and contains no turned-on phone/laptop/tablet/TV screens.` }];
 
     try {
       const claudeRes = await claudeApiCall(anthropicKey, SKILL_SHOTS, [{ role: 'user', content: userContent }]);
@@ -1543,7 +1543,7 @@ async function handleRequest(req, res) {
     const cur = user.balance ?? 0;
     if (cur < REFS_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${REFS_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
 
-    const userMsg = `INPUT — CONCEPT + SCENES (from ad-idea-generator):\n${ideaText}\n\nGenerate the reference sheet prompts for all characters, the product, and all environments. Output ONLY the three labeled blocks (=== CHARACTER REFERENCE SHEETS ===, === PRODUCT REFERENCE SHEET ===, === ENVIRONMENT REFERENCE SHEETS ===) with no preamble.`;
+    const userMsg = `INPUT — realistic ad pitch (from realistic-ad-idea-generator). It is one paragraph describing a single 15-second video with embedded beat timestamps, followed by a "Why it works" note. Extract every distinct character, the product, and every distinct environment named or implied in the pitch.\n\n${ideaText}\n\nGenerate the reference sheet prompts for all characters, the product, and all environments. Output ONLY the three labeled blocks (=== CHARACTER REFERENCE SHEETS ===, === PRODUCT REFERENCE SHEET ===, === ENVIRONMENT REFERENCE SHEETS ===) with no preamble.`;
 
     try {
       const claudeRes = await claudeApiCall(anthropicKey, SKILL_REFS, [{ role: 'user', content: userMsg }]);
@@ -1576,7 +1576,7 @@ async function handleRequest(req, res) {
     const cur = user.balance ?? 0;
     if (cur < FRAMES_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${FRAMES_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
 
-    const userMsg = `INPUT A — CONCEPT + SCENES:\n${ideaText}\n\nINPUT B — REFERENCE SHEET PROMPTS:\n${refSheetsText}\n\nGenerate the starting frame prompts for all scenes. Output ONLY the === STARTING FRAMES === block.`;
+    const userMsg = `INPUT A — realistic ad pitch (one paragraph, single 15-second scene with embedded beat timestamps, followed by a "Why it works" note):\n${ideaText}\n\nINPUT B — REFERENCE SHEET PROMPTS:\n${refSheetsText}\n\nThis is a SINGLE scene. Generate exactly ONE starting frame prompt for it under the header "SCENE 1:". The starting frame should depict the opening 0–2s beat from the pitch. Output ONLY the === STARTING FRAMES === block.`;
 
     try {
       const claudeRes = await claudeApiCall(anthropicKey, SKILL_FRAMES, [{ role: 'user', content: userMsg }]);

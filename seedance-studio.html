@@ -1870,9 +1870,19 @@ async function createAd() {
     if (!r1.ok) throw new Error(j1.error || 'Brief failed');
     if (j1.balance !== undefined) { userBalance = j1.balance; updateCreditsDisplay(); }
     const ideaText = j1.ideaText;
-    const sceneCount = (ideaText.match(/^\d+\./gm) || []).length || 2;
+    // realistic-ad-idea-generator always produces a single 15-second scene
+    const sceneCount = 1;
     const adTitle = description ? description.replace(/\s+/g, ' ').trim().substring(0, 40) :
-      (() => { const m = ideaText.match(/CONCEPT\s*\n+([\s\S]*?)\n+SCENES/); const prose = m ? m[1] : ideaText; return prose.split(/[.,]/)[0].trim().substring(0, 40) || ('Ad — ' + new Date().toLocaleDateString()); })();
+      (() => {
+        // Pull the pitch paragraph that sits under "THE IDEA" and before "Why it works"
+        const m = ideaText.match(/THE\s+IDEA\s*\**\s*\n+([\s\S]*?)(?:\n+\**Why it works|$)/i);
+        const prose = (m ? m[1] : ideaText)
+          // strip embedded timestamps like *(0–2s)*
+          .replace(/\*\(\s*\d+\s*[–\-]\s*\d+\s*s\s*\)\*/g, '')
+          .replace(/\*+/g, '')
+          .trim();
+        return prose.split(/[.,]/)[0].trim().substring(0, 40) || ('Ad — ' + new Date().toLocaleDateString());
+      })();
     adLogUpdate(s1, `Stage 1 done: "${adTitle}" — ${sceneCount} scene(s)`, 'done');
     // Checkpoint: save ad thumbnails + stage 1 outputs
     const adThumbnails = await Promise.all(adImages.map(img => resizeDataUrlSmall(img.dataUrl)));
