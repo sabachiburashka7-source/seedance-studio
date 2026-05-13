@@ -593,9 +593,19 @@ function parseShotsOutput(text) {
   const scenes = [];
   const parts = text.split(/(?====\s*SCENE\s+\d+\s+OF\s+\d+)/);
   for (const part of parts) {
-    const hm = part.match(/===\s*SCENE\s+(\d+)\s+OF\s+\d+\s*[—–-]\s*([^\n=]+?)[\s]*===\s*\n?([\s\S]*)/);
+    // Header tolerates: "=== SCENE 1 OF 1 — Name ===", "=== SCENE 1 OF 1 - Name ===",
+    // "=== SCENE 1 OF 1: Name ===", and "=== SCENE 1 OF 1 ===" (no dash/name).
+    // Claude sometimes drops the name on single-scene outputs.
+    const hm = part.match(/===\s*SCENE\s+(\d+)\s+OF\s+\d+\s*(?:[—–\-:]\s*([^\n=]+?)\s*)?===\s*\n?([\s\S]*)/);
     if (!hm) continue;
-    scenes.push({ number: parseInt(hm[1]), name: hm[2].trim(), prompt: hm[3].trim(), duration: 15, ratio: '9:16' });
+    const num = parseInt(hm[1]);
+    scenes.push({
+      number: num,
+      name: (hm[2] || '').trim() || `Scene ${num}`,
+      prompt: hm[3].trim(),
+      duration: 15,
+      ratio: '9:16',
+    });
   }
   return scenes;
 }
@@ -1501,7 +1511,15 @@ async function handleRequest(req, res) {
       }
       const shotsText = claudeRes.body?.content?.[0]?.text || '';
       const scenes = parseShotsOutput(shotsText);
-      if (!scenes.length) console.warn('[shots] parseShotsOutput returned 0 scenes. Raw start:', shotsText.substring(0, 200));
+      if (!scenes.length) {
+        // Don't charge if we can't parse anything — fail loudly so the client
+        // surfaces the error instead of silently "completing" with 0 videos.
+        console.warn('[shots] parseShotsOutput returned 0 scenes. Raw start:', shotsText.substring(0, 400));
+        return sendJSON(res, 502, {
+          error: 'Video prompts failed to parse (Claude output did not contain any "=== SCENE N OF M ===" headers). Please retry — no charge applied.',
+          rawPreview: shotsText.substring(0, 200),
+        });
+      }
       user.balance = Math.round((cur - PROMPTS_COST) * 100) / 100;
       saveDB(db);
       return sendJSON(res, 200, { scenes, shotsText, balance: user.balance });
