@@ -3659,7 +3659,12 @@ function renderLib() {
   grid.innerHTML = '';
 
   const entries = [];
-  lib.forEach((item, i) => { if (!item.hidden && tabOf(item) === libTab) entries.push({ item, i }); });
+  const PRODUCT_REF_PROMPT = 'generate this product multi angle reference sheet image highlighting details visually';
+  lib.forEach((item, i) => {
+    if (item.hidden) return;
+    if (item.prompt === PRODUCT_REF_PROMPT) return;
+    if (tabOf(item) === libTab) entries.push({ item, i });
+  });
   const tabHasPending = jobs.some(j => (j.folder ? 'ads' : 'videos') === libTab);
 
   if (!entries.length && !tabHasPending) {
