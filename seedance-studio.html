@@ -2208,29 +2208,58 @@ async function createAd() {
 function pollAd(job) {
   return new Promise((resolve) => {
     let n = 0;
+    // BytePlus occasionally reports status=succeeded a beat before content.video_url
+    // is published on their CDN. Treating the first empty-URL success as final
+    // pushed a broken card to the library and skipped the upscaler. Keep polling
+    // for a few more cycles before declaring it a real failure.
+    let emptyUrlRetries = 0;
+    const done = (url, err) => {
+      // Run finishAd outside the polling try/catch so any exception inside it
+      // (saveLib, renderLib, R2 upload) doesn't restart polling on a job that
+      // has already been removed from jobs[]. Resolve regardless so the
+      // pipeline's outer await never hangs.
+      finishAd(job, url, err)
+        .then(stored => resolve(stored || url || null))
+        .catch(e => { console.error('[pollAd] finishAd threw:', e); resolve(url || null); });
+    };
     const run = async () => {
-      if (++n > 80) { await finishAd(job, null, 'Timed out'); resolve(null); return; }
+      if (++n > 80) { done(null, 'Timed out'); return; }
+      let d = null;
       try {
         const r = await fetch('/proxy/api/v3/contents/generations/tasks/' + job.id);
-        const d = await r.json();
-        const status = (d.status || '').toLowerCase();
-        if (status === 'succeeded' || status === 'success' || status === 'completed') {
-          const url = d.content?.video_url || d.content?.[0]?.video_url?.url || d.content?.[0]?.url
-            || d.outputs?.[0]?.url || d.output?.url || d.result?.url || '';
-          // Await finishAd so the returned URL is the permanent stored copy (R2),
-          // not the short-lived BytePlus output URL. The ads pipeline uses this
-          // returned URL as the continuity reference for the next scene.
-          const storedUrl = await finishAd(job, url, null);
-          resolve(storedUrl || url || null);
-        } else if (status === 'failed' || status === 'error' || status === 'cancelled') {
-          await finishAd(job, null, d.error?.message || d.message || 'Status: ' + d.status);
-          resolve(null);
-        } else {
+        if (!r.ok) {
+          console.warn('[pollAd]', job.id, 'HTTP', r.status, '— retrying');
           setTimeout(run, 30000);
-          renderLib();
+          return;
         }
+        d = await r.json();
       } catch(e) {
+        console.warn('[pollAd]', job.id, 'fetch/parse error:', e.message);
         setTimeout(run, 30000);
+        return;
+      }
+      const status = (d.status || '').toLowerCase();
+      if (status === 'succeeded' || status === 'success' || status === 'completed') {
+        const url = d.content?.video_url || d.content?.[0]?.video_url?.url || d.content?.[0]?.url
+          || d.outputs?.[0]?.url || d.output?.url || d.result?.url || '';
+        if (!url) {
+          if (++emptyUrlRetries < 6) {
+            console.warn('[pollAd]', job.id, 'succeeded but video_url empty, retry', emptyUrlRetries, '/ 6 — raw:', JSON.stringify(d).substring(0, 400));
+            setTimeout(run, 15000);
+            return;
+          }
+          console.error('[pollAd]', job.id, 'succeeded but video_url never populated. Last response:', JSON.stringify(d).substring(0, 600));
+          done(null, 'Video URL missing from response');
+          return;
+        }
+        // finishAd uploads to R2 and returns the permanent stored URL, which
+        // the ads pipeline uses as the continuity reference for the next scene.
+        done(url, null);
+      } else if (status === 'failed' || status === 'error' || status === 'cancelled') {
+        done(null, d.error?.message || d.message || 'Status: ' + d.status);
+      } else {
+        setTimeout(run, 30000);
+        renderLib();
       }
     };
     setTimeout(run, 8000);
