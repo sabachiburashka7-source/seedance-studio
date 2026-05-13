@@ -1973,7 +1973,8 @@ async function createAd() {
         refMap[key] = url;
         lib.unshift({ id: 'ref-' + Date.now() + '-' + ei, prompt: entity.prompt, url,
           ratio, model: useGpt ? 'gpt-image-2' : 'seedream-5-0-lite', ts: Date.now(), done: Date.now(),
-          type: 'image', folder: adTitle, label });
+          type: 'image', folder: adTitle, label,
+          hidden: entity.type === 'product' });
         saveLib(); renderLib();
         adLogUpdate(sRef, `✓ ${label}`, 'done');
       } catch(e) {
@@ -3658,7 +3659,7 @@ function renderLib() {
   grid.innerHTML = '';
 
   const entries = [];
-  lib.forEach((item, i) => { if (tabOf(item) === libTab) entries.push({ item, i }); });
+  lib.forEach((item, i) => { if (!item.hidden && tabOf(item) === libTab) entries.push({ item, i }); });
   const tabHasPending = jobs.some(j => (j.folder ? 'ads' : 'videos') === libTab);
 
   if (!entries.length && !tabHasPending) {
