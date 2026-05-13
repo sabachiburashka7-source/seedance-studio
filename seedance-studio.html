@@ -3715,10 +3715,18 @@ setInterval(() => { if (jobs.length) renderPending(); }, 1000);
 
 // ══ DOWNLOAD ═══════════════════════════════════════════════════════════
 async function dlFile(url, filename) {
-  const a = document.createElement('a');
-  a.href = `/api/dl?url=${encodeURIComponent(url)}&name=${encodeURIComponent(filename)}`;
-  a.download = filename;
-  a.click();
+  try {
+    const r = await fetch(`/api/dl?url=${encodeURIComponent(url)}&name=${encodeURIComponent(filename)}`, {
+      headers: { 'Authorization': 'Bearer ' + authToken }
+    });
+    if (!r.ok) throw new Error('http ' + r.status);
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  } catch { toast('Download failed — try right-clicking and saving manually.', 'err'); }
 }
 
 // ══ LIGHTBOX ═══════════════════════════════════════════════════════════
