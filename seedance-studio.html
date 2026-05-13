@@ -3615,7 +3615,7 @@ function makeLibCard(item, i) {
       </div>
       <div class="vid-btns">
         ${item.url
-          ? `<a href="${item.url}" download="seedance_${isImg?'img':'vid'}_${i+1}.${isImg?'jpg':'mp4'}" class="vbtn dl">⬇ Download</a>`
+          ? `<button class="vbtn dl" onclick="dlFile('${safeUrl}','seedance_${isImg?'img':'vid'}_${i+1}.${isImg?'jpg':'mp4'}')">⬇ Download</button>`
           : `<button class="vbtn" disabled style="opacity:.35">No URL</button>`}
         ${item.url && !isImg ? `<button class="vbtn" onclick="useAsReference('${safeUrl}')">↩ Use as Ref</button>` : ''}
         <button class="vbtn red" onclick="del(${i})">🗑</button>
@@ -3712,6 +3712,19 @@ initAuth().then(() => {
 setInterval(() => { if (jobs.length) renderPending(); }, 1000);
 // (removed) periodic renderLib while upscaling — pollUpscale calls renderLib
 // directly when state changes, so the periodic refresh just caused flicker.
+
+// ══ DOWNLOAD ═══════════════════════════════════════════════════════════
+async function dlFile(url, filename) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  } catch { toast('Download failed — try right-clicking and saving manually.', 'err'); }
+}
 
 // ══ LIGHTBOX ═══════════════════════════════════════════════════════════
 function openLightbox(url, isVideo) {
