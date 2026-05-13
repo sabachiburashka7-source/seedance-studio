@@ -1745,6 +1745,28 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // ── Proxy download (bypasses CORS on CDN URLs) ───────────────────────────
+  if (pathname === '/api/dl' && method === 'GET') {
+    const sess = getSession(req);
+    if (!sess) { res.writeHead(401); res.end('Not authenticated'); return; }
+    const params = new URL(req.url, 'http://x').searchParams;
+    const fileUrl = params.get('url');
+    const filename = params.get('name') || 'download';
+    if (!fileUrl || !/^https?:\/\//.test(fileUrl)) { res.writeHead(400); res.end('Bad url'); return; }
+    try {
+      const upstream = await fetch(fileUrl, { signal: AbortSignal.timeout(60000) });
+      if (!upstream.ok) { res.writeHead(502); res.end('Upstream error'); return; }
+      const ct = upstream.headers.get('content-type') || 'application/octet-stream';
+      res.writeHead(200, {
+        'Content-Type': ct,
+        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Cache-Control': 'no-store',
+      });
+      upstream.body.pipeTo(new WritableStream({ write(chunk) { res.write(chunk); }, close() { res.end(); } }));
+    } catch { res.writeHead(502); res.end('Fetch failed'); }
+    return;
+  }
+
   res.writeHead(404); res.end('Not found');
 }
 

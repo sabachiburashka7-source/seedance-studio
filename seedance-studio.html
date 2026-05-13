@@ -3715,15 +3715,10 @@ setInterval(() => { if (jobs.length) renderPending(); }, 1000);
 
 // ══ DOWNLOAD ═══════════════════════════════════════════════════════════
 async function dlFile(url, filename) {
-  try {
-    const res = await fetch(url);
-    const blob = await res.blob();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-  } catch { toast('Download failed — try right-clicking and saving manually.', 'err'); }
+  const a = document.createElement('a');
+  a.href = `/api/dl?url=${encodeURIComponent(url)}&name=${encodeURIComponent(filename)}`;
+  a.download = filename;
+  a.click();
 }
 
 // ══ LIGHTBOX ═══════════════════════════════════════════════════════════
