@@ -69,35 +69,82 @@ If the user provided a description, weight it heavily — it tells you what THEY
 
 ## Phase 1 — The Hook Engine (Unexpected Situations / Pattern Interrupts)
 
-The opening must violate expectation. Every great realistic ad hook in this style does ONE of these things in the first 1–2 seconds:
+This is the most important phase of the skill. Spend real cognitive effort here. The hook is the difference between an ad that gets scrolled past and one that stops a thumb mid-flick.
 
-### The 8 Pattern-Interrupt Hook Types
+### Step 1A — Diagnose the Product's "Expected Ad"
+
+Before you can break a pattern, you must know what pattern viewers expect. Briefly identify (silently):
+
+- **The genre cliché** — what does the average ad for this category look like? (Skincare = glowing woman in a bathrobe. Coffee = steam and morning windows. Sneakers = athletic person mid-stride.) Name it explicitly in your head.
+- **The expected character** — who normally appears in this category's ads?
+- **The expected setting** — where do these ads normally take place?
+- **The expected emotional register** — earnest? Sexy? Energetic? Cozy?
+
+Your hook will violate ONE of these expectations hard, while keeping the others realistic enough that the ad still feels native to the category.
+
+### Step 1B — Generate 5 Candidate Hooks (Internal Brainstorm)
+
+Do NOT show these to the user. Internally generate 5 different pattern-interrupt hooks for the product using the framework below. Then pick the strongest one based on the selection criteria in Step 1C.
+
+The 12 Pattern-Interrupt Hook Types:
 
 **1. Wrong Place, Right Object**
-The product appears somewhere it absolutely shouldn't. A skincare bottle on a construction site. A luxury candle in a mechanic's garage. The mismatch creates instant curiosity.
+The product appears somewhere it absolutely shouldn't. Luxury candle in a mechanic's garage. Baby formula on a poker table. The mismatch creates instant curiosity. *Best for:* products with strong category visual codes you want to escape.
 
 **2. Wrong Person, Right Object**
-The "wrong" demographic using it perfectly. A 70-year-old grandmother flawlessly executing the product ritual usually shown with 25-year-olds. A burly guy doing the dainty thing.
+The "wrong" demographic using it perfectly. A 70-year-old grandmother flawlessly executing a Gen-Z skincare ritual. A burly construction worker doing the dainty thing. *Best for:* products with narrow demographic associations you want to expand.
 
 **3. The Interrupted Ritual**
-A familiar daily moment is shown — then something tiny goes sideways. Coffee being poured, but the mug is upside down. Someone tying their shoe with one hand for no explained reason.
+A familiar daily moment is shown — then ONE tiny thing is off. Coffee being poured with the wrong hand. Someone tying their shoe with their teeth. Brain snags on the wrongness. *Best for:* everyday-use products.
 
 **4. The Inverted Scale**
-Something tiny treated as massive, or vice versa. A drop of serum filmed like an asteroid impact. A huge gym being used to lift one tiny object.
+Something tiny treated as massive, or vice versa. A drop of serum filmed like an asteroid impact with seismic sound design. A huge warehouse used to lift one tiny object. *Best for:* small products that need visual gravity.
 
 **5. The Silent Reveal**
-You think you're watching one thing. You're not. The frame slowly widens or pulls back and the actual subject is something else entirely.
+You think you're watching one thing. You're not. The frame slowly widens or pulls back and the actual subject is something else entirely. *Best for:* products with a surprising use-case or audience.
 
 **6. The Impossible Calm**
-Chaos all around — a character at the center is completely, weirdly serene doing one specific thing related to the product. The contrast IS the hook.
+Chaos all around — character at the center is weirdly serene doing one specific thing with the product. The contrast IS the hook. *Best for:* stress-relief, comfort, focus, or escape products.
 
 **7. The Unexpected Texture / Material**
-Something you assume is one substance turns out to be another. What looks like honey is the product. What looks like a stone is the packaging.
+Something you assume is one substance turns out to be another. What looks like honey is the product. What looks like a stone is the packaging. *Best for:* products with distinctive physical qualities.
 
 **8. The Misdirected Action**
-A character starts doing something we recognize (lacing skates, lighting a match, opening a letter) — and the action resolves into something completely different involving the product.
+A character starts an action we recognize (lacing skates, lighting a match, opening a letter) — it resolves into something completely different involving the product. *Best for:* products you want to associate with an unrelated emotional moment.
 
-**Pick ONE hook type.** Marry it to the product's deepest emotional territory. The hook must feel earned — not random weirdness, but a *strange specific* that pays off.
+**9. The Ritual Out of Sequence**
+The end of a process is shown first. Or the steps are performed in reverse. The viewer leans in to figure out what they're watching. *Best for:* multi-step or transformative products.
+
+**10. The Witness**
+The product isn't being used — it's being *watched*. An animal staring at it. A child observing an adult use it from the doorway. A pet sitting next to it. The watcher's gaze becomes the hook. *Best for:* emotional, gift, or comfort products.
+
+**11. The Quiet Aftermath**
+Skip the action entirely. Open on the moment *after* — disheveled bed, half-eaten cake, abandoned shoes by a door, a single chair pulled out from a table. Tells a whole story with no people. *Best for:* products tied to memorable experiences or transformations.
+
+**12. The Wrong-Genre Aesthetic**
+Shoot the product in the visual language of a completely different category. A perfume ad shot like a war documentary. A snack ad shot like a Renaissance painting. The audiovisual mismatch is the hook. *Best for:* products fighting category clichés.
+
+### Step 1C — Selection Criteria (Pick the Strongest of the 5)
+
+Rate each candidate hook silently against these:
+
+1. **Specificity** — Does it require THIS exact product, or could any competitor steal it? Generic = kill it.
+2. **Visual punch** — In the first frame alone, with sound off, does it stop a scroll?
+3. **Emotional payoff** — Does the strangeness *lead somewhere* the viewer feels in their chest? Or is it weird for weird's sake?
+4. **Filmability** — Can a real crew shoot this in one day without VFX? If no, kill it.
+5. **Tagline tension** — Does the hook set up a final on-screen line that lands with surprise or resonance?
+
+Pick the hook that scores highest across all five. If two are close, pick the one that's *most specific to this product's deepest truth* (from Phase 0).
+
+### Step 1D — Sharpen the Chosen Hook
+
+Once chosen, push it one notch further. Ask yourself:
+
+- **"What's the weirdest specific detail I can add that makes this feel real instead of contrived?"** (Not "a man on a tailgate" but "a man on a tailgate with one untied bootlace and a thermos lid balanced on his knee.")
+- **"What's the smallest human gesture that makes the hook tender instead of just clever?"** (A held breath. A thumb brushing something. A glance held one beat too long.)
+- **"What sound would make this hook unforgettable with the volume on?"** (A single radiator click. A spoon set down on porcelain. Snow falling on a steel truck bed.)
+
+The hook is ready when you can describe it in one sentence AND a friend hearing that sentence would say "wait, what?" or "okay, I'd watch that."
 
 ---
 
