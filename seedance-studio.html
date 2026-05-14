@@ -882,8 +882,8 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
   <div class="tabs">
     <button class="tab" data-page="image" onclick="goPage('image',this)">Image</button>
     <button class="tab active" id="tab-generate" data-page="generate" onclick="goPage('generate',this)">Video</button>
-    <button class="tab" data-page="library" onclick="goPage('library',this)">Library<span id="badge"></span></button>
     <button class="tab" data-page="ads" onclick="goPage('ads',this)">Ads</button>
+    <button class="tab" data-page="library" onclick="goPage('library',this)">Library</button>
   </div>
   <div style="display:flex;align-items:center;gap:8px">
     <div class="user-area" id="user-area" style="display:none">
@@ -899,8 +899,8 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
   <div class="mtab-row">
     <button class="mtab" data-page="image" onclick="goPage('image',null)">Image</button>
     <button class="mtab active" data-page="generate" onclick="goPage('generate',null)">Video</button>
-    <button class="mtab" data-page="library" onclick="goPage('library',null)">Library<span id="badge-m"></span></button>
     <button class="mtab" data-page="ads" onclick="goPage('ads',null)">Ads</button>
+    <button class="mtab" data-page="library" onclick="goPage('library',null)">Library</button>
   </div>
 </div>
 
@@ -3598,10 +3598,6 @@ function setLibTab(name) {
 }
 
 function badge() {
-  const n = lib.length + jobs.length;
-  document.getElementById('badge').textContent = n ? ` (${n})` : '';
-  const bm = document.getElementById('badge-m');
-  if (bm) bm.textContent = n ? ` (${n})` : '';
   const counts = { images: 0, videos: 0, ads: 0 };
   lib.forEach(it => { counts[tabOf(it)]++; });
   jobs.forEach(j => { counts[j.folder ? 'ads' : 'videos']++; });
