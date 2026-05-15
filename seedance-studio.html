@@ -824,6 +824,13 @@ body.mobile-mode #toasts { bottom: 70px; right: 12px; left: 12px; max-width: 100
   cursor: pointer; font-family: 'Manrope', sans-serif; transition: all 0.2s;
 }
 .logout-btn:hover { border-color: var(--red); color: var(--red); background: rgba(220,38,38,0.06); }
+#lang-toggle {
+  font-size:11px;font-weight:700;padding:4px 9px;border-radius:20px;
+  border:1px solid var(--border2);background:var(--bg2);color:var(--text3);
+  cursor:pointer;font-family:'Fira Code',monospace;letter-spacing:0.04em;
+  transition:color 0.15s,border-color 0.15s;flex-shrink:0;
+}
+#lang-toggle:hover { color:var(--text); border-color:var(--text3); }
 
 /* ─── ADS PAGE ────────────────────────────────────────────────────── */
 .ads-grid { display: grid; grid-template-columns: 1fr 380px; gap: 20px; align-items: start; }
@@ -880,16 +887,17 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <span class="logo-text">Lepton</span>
   </div>
   <div class="tabs">
-    <button class="tab" data-page="image" onclick="goPage('image',this)">Image</button>
-    <button class="tab active" id="tab-generate" data-page="generate" onclick="goPage('generate',this)">Video</button>
-    <button class="tab" data-page="ads" onclick="goPage('ads',this)">Ads</button>
-    <button class="tab" data-page="library" onclick="goPage('library',this)">Library</button>
+    <button class="tab" data-page="image" onclick="goPage('image',this)" data-i18n="nav.image">Image</button>
+    <button class="tab active" id="tab-generate" data-page="generate" onclick="goPage('generate',this)" data-i18n="nav.video">Video</button>
+    <button class="tab" data-page="ads" onclick="goPage('ads',this)" data-i18n="nav.ads">Ads</button>
+    <button class="tab" data-page="library" onclick="goPage('library',this)" data-i18n="nav.library">Library</button>
   </div>
   <div style="display:flex;align-items:center;gap:8px">
+    <button id="lang-toggle" onclick="cycleLang()">EN</button>
     <div class="user-area" id="user-area" style="display:none">
       <span id="credits-badge" style="font-size:12px;color:var(--text);font-weight:700;font-family:'Fira Code',monospace;background:var(--bg2);padding:4px 10px;border-radius:20px;border:1px solid var(--border2);white-space:nowrap"></span>
-      <button onclick="openPromoModal()" title="Redeem Promo Code" style="font-size:13px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:background 0.2s,transform 0.2s" onmouseover="this.style.background='#1f1f1f'" onmouseout="this.style.background='#0a0a0a'">+ Add Balance</button>
-      <button class="logout-btn" onclick="logout()">Sign out</button>
+      <button onclick="openPromoModal()" title="Redeem Promo Code" style="font-size:13px;font-weight:700;padding:4px 10px;border-radius:20px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:background 0.2s,transform 0.2s" onmouseover="this.style.background='#1f1f1f'" onmouseout="this.style.background='#0a0a0a'" data-i18n="nav.addBalance">+ Add Balance</button>
+      <button class="logout-btn" onclick="logout()" data-i18n="nav.signOut">Sign out</button>
     </div>
   </div>
 </nav>
@@ -897,10 +905,10 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
 <!-- MOBILE TAB STRIP (shown below nav in mobile mode) -->
 <div id="mobile-tab-strip">
   <div class="mtab-row">
-    <button class="mtab" data-page="image" onclick="goPage('image',null)">Image</button>
-    <button class="mtab active" data-page="generate" onclick="goPage('generate',null)">Video</button>
-    <button class="mtab" data-page="ads" onclick="goPage('ads',null)">Ads</button>
-    <button class="mtab" data-page="library" onclick="goPage('library',null)">Library</button>
+    <button class="mtab" data-page="image" onclick="goPage('image',null)" data-i18n="nav.image">Image</button>
+    <button class="mtab active" data-page="generate" onclick="goPage('generate',null)" data-i18n="nav.video">Video</button>
+    <button class="mtab" data-page="ads" onclick="goPage('ads',null)" data-i18n="nav.ads">Ads</button>
+    <button class="mtab" data-page="library" onclick="goPage('library',null)" data-i18n="nav.library">Library</button>
   </div>
 </div>
 
@@ -911,18 +919,18 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <!-- LEFT -->
     <div>
       <div class="panel prompt-card">
-        <textarea id="img-prompt" rows="5" placeholder="Describe the image you want to generate..."></textarea>
+        <textarea id="img-prompt" rows="5" placeholder="Describe the image you want to generate..." data-i18n-ph="img.placeholder"></textarea>
       </div>
 
       <!-- REFERENCE IMAGE (optional) -->
-      <button class="opt-add-btn" id="img-ref-toggle" onclick="showOptSection('img-ref-panel','img-ref-toggle')">+ Add reference image (optional)</button>
+      <button class="opt-add-btn" id="img-ref-toggle" onclick="showOptSection('img-ref-panel','img-ref-toggle')" data-i18n="img.addRef">+ Add reference image (optional)</button>
       <div class="panel" id="img-ref-panel" hidden>
         <button class="opt-panel-close" onclick="hideImgRefSection()" title="Remove">×</button>
-        <div class="panel-label">Reference Image</div>
+        <div class="panel-label" data-i18n="img.refLabel">Reference Image</div>
         <div class="vid-zone" id="img-ref-zone" onclick="document.getElementById('img-ref-input').click()">
           <input type="file" id="img-ref-input" accept="image/*" style="display:none" onchange="addImgRef(this)">
           <div id="img-ref-inner">
-            <div class="vid-text">Click to upload a reference image</div>
+            <div class="vid-text" data-i18n="img.clickUpload">Click to upload a reference image</div>
           </div>
           <button class="vid-del" id="img-ref-del" hidden onclick="clearImgRef(event)">×</button>
         </div>
@@ -930,11 +938,11 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
 
       <div class="panel prog-panel" id="img-prog-panel">
         <div class="prog-top">
-          <div class="prog-title">Generating...</div>
-          <span class="badge badge-run">Running</span>
+          <div class="prog-title" data-i18n="ui.generating">Generating...</div>
+          <span class="badge badge-run" data-i18n="ui.running">Running</span>
         </div>
         <div class="prog-track"><div class="prog-fill" id="img-prog-fill"></div></div>
-        <div class="prog-msg" id="img-prog-msg">Initialising...</div>
+        <div class="prog-msg" id="img-prog-msg" data-i18n="ui.initialising">Initialising...</div>
       </div>
     </div>
 
@@ -950,21 +958,21 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         </div>
 
         <div class="setting-group">
-          <span class="setting-label">Quality</span>
+          <span class="setting-label" data-i18n="img.quality">Quality</span>
           <div class="btn-group" id="img-quality-group">
-            <button class="bg-btn" data-value="low" onclick="onBtnGroup(this,'img-quality-group');calcImgCost()">Low</button>
-            <button class="bg-btn active" data-value="high" onclick="onBtnGroup(this,'img-quality-group');calcImgCost()">High</button>
+            <button class="bg-btn" data-value="low" onclick="onBtnGroup(this,'img-quality-group');calcImgCost()" data-i18n="img.low">Low</button>
+            <button class="bg-btn active" data-value="high" onclick="onBtnGroup(this,'img-quality-group');calcImgCost()" data-i18n="img.high">High</button>
           </div>
         </div>
 
         <div class="setting-group">
           <div class="ratio-grid" id="img-ratio-group">
-            <button class="ratio-btn active" data-value="9:16" onclick="onBtnGroup(this,'img-ratio-group')">9:16<span class="ratio-sub">Vertical</span></button>
-            <button class="ratio-btn" data-value="16:9" onclick="onBtnGroup(this,'img-ratio-group')">16:9<span class="ratio-sub">Wide</span></button>
-            <button class="ratio-btn" data-value="1:1" onclick="onBtnGroup(this,'img-ratio-group')">1:1<span class="ratio-sub">Square</span></button>
-            <button class="ratio-btn" data-value="4:3" onclick="onBtnGroup(this,'img-ratio-group')">4:3<span class="ratio-sub">Classic</span></button>
-            <button class="ratio-btn" data-value="3:4" onclick="onBtnGroup(this,'img-ratio-group')">3:4<span class="ratio-sub">Portrait</span></button>
-            <button class="ratio-btn" data-value="21:9" onclick="onBtnGroup(this,'img-ratio-group')">21:9<span class="ratio-sub">Ultra</span></button>
+            <button class="ratio-btn active" data-value="9:16" onclick="onBtnGroup(this,'img-ratio-group')">9:16<span class="ratio-sub" data-i18n="ratio.vertical">Vertical</span></button>
+            <button class="ratio-btn" data-value="16:9" onclick="onBtnGroup(this,'img-ratio-group')">16:9<span class="ratio-sub" data-i18n="ratio.wide">Wide</span></button>
+            <button class="ratio-btn" data-value="1:1" onclick="onBtnGroup(this,'img-ratio-group')">1:1<span class="ratio-sub" data-i18n="ratio.square">Square</span></button>
+            <button class="ratio-btn" data-value="4:3" onclick="onBtnGroup(this,'img-ratio-group')">4:3<span class="ratio-sub" data-i18n="ratio.classic">Classic</span></button>
+            <button class="ratio-btn" data-value="3:4" onclick="onBtnGroup(this,'img-ratio-group')">3:4<span class="ratio-sub" data-i18n="ratio.portrait">Portrait</span></button>
+            <button class="ratio-btn" data-value="21:9" onclick="onBtnGroup(this,'img-ratio-group')">21:9<span class="ratio-sub" data-i18n="ratio.ultra">Ultra</span></button>
           </div>
         </div>
 
@@ -972,7 +980,7 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
           <span id="img-cost-mode" style="display:none"></span>
           <div class="cost-val" id="img-cost-val">2.5 cr</div>
         </div>
-        <button class="btn-gen" id="img-gen-btn" onclick="doGenerateImage()">Generate Image</button>
+        <button class="btn-gen" id="img-gen-btn" onclick="doGenerateImage()" data-i18n="img.generate">Generate Image</button>
       </div>
     </div>
 
@@ -987,32 +995,32 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <div>
       <!-- PROMPT -->
       <div class="panel prompt-card">
-        <textarea id="prompt" rows="5" placeholder="Describe your video in detail. Reference uploaded images as 'Image 1', 'Image 2', etc."></textarea>
+        <textarea id="prompt" rows="5" placeholder="Describe your video in detail. Reference uploaded images as 'Image 1', 'Image 2', etc." data-i18n-ph="vid.placeholder"></textarea>
       </div>
 
       <!-- IMAGES (optional) -->
-      <button class="opt-add-btn" id="gen-imgs-toggle" onclick="showOptSection('gen-imgs-panel','gen-imgs-toggle')">+ Add reference images (optional)</button>
+      <button class="opt-add-btn" id="gen-imgs-toggle" onclick="showOptSection('gen-imgs-panel','gen-imgs-toggle')" data-i18n="vid.addRefImgs">+ Add reference images (optional)</button>
       <div class="panel" id="gen-imgs-panel" hidden>
         <button class="opt-panel-close" onclick="hideGenImgsSection()" title="Remove">×</button>
-        <div class="panel-label">Reference Images</div>
+        <div class="panel-label" data-i18n="vid.refImgsLabel">Reference Images</div>
         <div class="img-thumbs" id="img-thumbs"></div>
         <label class="add-img-btn">
-          <span>＋</span> Add Images
+          <span>＋</span> <span data-i18n="vid.addImages">Add Images</span>
           <input type="file" id="img-input" accept="image/*" multiple onchange="addImages(this)">
         </label>
-        <button id="clr-imgs" onclick="clearImgs()" hidden style="margin-left:8px;background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:'Manrope',sans-serif;">Clear all</button>
+        <button id="clr-imgs" onclick="clearImgs()" hidden style="margin-left:8px;background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:'Manrope',sans-serif;" data-i18n="vid.clearAll">Clear all</button>
       </div>
 
       <!-- VIDEO REF (optional) -->
-      <button class="opt-add-btn" id="gen-vid-toggle" onclick="showOptSection('gen-vid-panel','gen-vid-toggle')">+ Add reference video (optional)</button>
+      <button class="opt-add-btn" id="gen-vid-toggle" onclick="showOptSection('gen-vid-panel','gen-vid-toggle')" data-i18n="vid.addRefVid">+ Add reference video (optional)</button>
       <div class="panel" id="gen-vid-panel" hidden>
         <button class="opt-panel-close" onclick="hideGenVidSection()" title="Remove">×</button>
-        <div class="panel-label">Reference Video</div>
-        <div style="font-size:11px;color:var(--text3);margin:-4px 0 8px">Max 15 seconds. Longer videos will be rejected.</div>
+        <div class="panel-label" data-i18n="vid.refVidLabel">Reference Video</div>
+        <div style="font-size:11px;color:var(--text3);margin:-4px 0 8px" data-i18n="vid.maxDuration">Max 15 seconds. Longer videos will be rejected.</div>
         <div class="vid-zone" id="vid-zone" onclick="document.getElementById('vid-file-input').click()">
           <input type="file" id="vid-file-input" accept="video/*" style="display:none" onchange="uploadVidFile(this)">
           <div id="vid-zone-inner">
-            <div class="vid-text">Click to upload a reference video</div>
+            <div class="vid-text" data-i18n="vid.clickUploadVid">Click to upload a reference video</div>
           </div>
           <button class="vid-del" id="vid-del" hidden onclick="clearVid(event)">×</button>
         </div>
@@ -1028,11 +1036,11 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
       <!-- PROGRESS -->
       <div class="panel prog-panel" id="prog-panel">
         <div class="prog-top">
-          <div class="prog-title">Generating...</div>
-          <span class="badge badge-run">Running</span>
+          <div class="prog-title" data-i18n="ui.generating">Generating...</div>
+          <span class="badge badge-run" data-i18n="ui.running">Running</span>
         </div>
         <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
-        <div class="prog-msg" id="prog-msg">Initialising...</div>
+        <div class="prog-msg" id="prog-msg" data-i18n="ui.initialising">Initialising...</div>
       </div>
     </div>
 
@@ -1043,12 +1051,12 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         <!-- Aspect Ratio -->
         <div class="setting-group">
           <div class="ratio-grid" id="ratio-group">
-            <button class="ratio-btn active" data-value="9:16" onclick="onBtnGroup(this,'ratio-group');calcCost()">9:16<span class="ratio-sub">Vertical</span></button>
-            <button class="ratio-btn" data-value="16:9" onclick="onBtnGroup(this,'ratio-group');calcCost()">16:9<span class="ratio-sub">Wide</span></button>
-            <button class="ratio-btn" data-value="1:1" onclick="onBtnGroup(this,'ratio-group');calcCost()">1:1<span class="ratio-sub">Square</span></button>
-            <button class="ratio-btn" data-value="4:3" onclick="onBtnGroup(this,'ratio-group');calcCost()">4:3<span class="ratio-sub">Classic</span></button>
-            <button class="ratio-btn" data-value="3:4" onclick="onBtnGroup(this,'ratio-group');calcCost()">3:4<span class="ratio-sub">Portrait</span></button>
-            <button class="ratio-btn" data-value="21:9" onclick="onBtnGroup(this,'ratio-group');calcCost()">21:9<span class="ratio-sub">Ultra</span></button>
+            <button class="ratio-btn active" data-value="9:16" onclick="onBtnGroup(this,'ratio-group');calcCost()">9:16<span class="ratio-sub" data-i18n="ratio.vertical">Vertical</span></button>
+            <button class="ratio-btn" data-value="16:9" onclick="onBtnGroup(this,'ratio-group');calcCost()">16:9<span class="ratio-sub" data-i18n="ratio.wide">Wide</span></button>
+            <button class="ratio-btn" data-value="1:1" onclick="onBtnGroup(this,'ratio-group');calcCost()">1:1<span class="ratio-sub" data-i18n="ratio.square">Square</span></button>
+            <button class="ratio-btn" data-value="4:3" onclick="onBtnGroup(this,'ratio-group');calcCost()">4:3<span class="ratio-sub" data-i18n="ratio.classic">Classic</span></button>
+            <button class="ratio-btn" data-value="3:4" onclick="onBtnGroup(this,'ratio-group');calcCost()">3:4<span class="ratio-sub" data-i18n="ratio.portrait">Portrait</span></button>
+            <button class="ratio-btn" data-value="21:9" onclick="onBtnGroup(this,'ratio-group');calcCost()">21:9<span class="ratio-sub" data-i18n="ratio.ultra">Ultra</span></button>
           </div>
         </div>
 
@@ -1064,7 +1072,7 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         <!-- Options -->
         <div class="setting-group">
           <div class="opt-row">
-            <div><div class="opt-label">Audio</div></div>
+            <div><div class="opt-label" data-i18n="vid.audio">Audio</div></div>
             <label class="tog"><input type="checkbox" id="s-audio" checked><span class="tog-track"></span></label>
           </div>
         </div>
@@ -1074,7 +1082,7 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
           <span id="cost-mode" style="display:none"></span>
           <div class="cost-val" id="cost-val">—</div>
         </div>
-        <button class="btn-gen" id="gen-btn" onclick="doGenerate()">Generate Video</button>
+        <button class="btn-gen" id="gen-btn" onclick="doGenerate()" data-i18n="vid.generate">Generate Video</button>
       </div>
     </div>
 
@@ -1084,18 +1092,18 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
 <!-- ═══ LIBRARY PAGE ════════════════════════════════════════════════ -->
 <div class="page" id="page-library">
   <div class="lib-head">
-    <div class="lib-title">Library</div>
+    <div class="lib-title" data-i18n="lib.title">Library</div>
     <div class="lib-tabs" role="tablist">
-      <button class="lib-tab active" data-libtab="images" onclick="setLibTab('images')">Images <span class="lib-tab-count" id="lib-tab-count-images">0</span></button>
-      <button class="lib-tab" data-libtab="videos" onclick="setLibTab('videos')">Videos <span class="lib-tab-count" id="lib-tab-count-videos">0</span></button>
-      <button class="lib-tab" data-libtab="ads" onclick="setLibTab('ads')">Ads <span class="lib-tab-count" id="lib-tab-count-ads">0</span></button>
+      <button class="lib-tab active" data-libtab="images" onclick="setLibTab('images')"><span data-i18n="lib.images">Images</span> <span class="lib-tab-count" id="lib-tab-count-images">0</span></button>
+      <button class="lib-tab" data-libtab="videos" onclick="setLibTab('videos')"><span data-i18n="lib.videos">Videos</span> <span class="lib-tab-count" id="lib-tab-count-videos">0</span></button>
+      <button class="lib-tab" data-libtab="ads" onclick="setLibTab('ads')"><span data-i18n="lib.ads">Ads</span> <span class="lib-tab-count" id="lib-tab-count-ads">0</span></button>
     </div>
   </div>
   <div class="pend-list" id="pend-list"></div>
   <div class="vid-grid" id="vid-grid"></div>
   <div class="empty-state" id="lib-empty">
     <div class="ei"></div>
-    <p>No content yet. Generate a video or image!</p>
+    <p data-i18n="lib.empty">No content yet. Generate a video or image!</p>
   </div>
 </div>
 
@@ -1106,26 +1114,26 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <!-- LEFT: inputs -->
     <div>
       <div class="panel">
-        <div class="panel-label">Product Images</div>
-        <div style="color:var(--text3);font-size:12.5px;margin-bottom:10px">Upload photos of your product. The more angles the better.</div>
+        <div class="panel-label" data-i18n="ads.productImages">Product Images</div>
+        <div style="color:var(--text3);font-size:12.5px;margin-bottom:10px" data-i18n="ads.uploadHint">Upload photos of your product. The more angles the better.</div>
         <div class="ad-images-grid" id="ad-images-grid">
           <div class="ad-img-add" onclick="document.getElementById('ad-img-input').click()" title="Add images">+</div>
         </div>
         <input type="file" id="ad-img-input" accept="image/*" multiple style="display:none" onchange="addAdImages(this)">
       </div>
 
-      <button class="opt-add-btn" id="ad-desc-toggle" onclick="showOptSection('ad-desc-panel','ad-desc-toggle')">+ Add product description (optional)</button>
+      <button class="opt-add-btn" id="ad-desc-toggle" onclick="showOptSection('ad-desc-panel','ad-desc-toggle')" data-i18n="ads.addDesc">+ Add product description (optional)</button>
       <div class="panel prompt-card" id="ad-desc-panel" hidden>
         <button class="opt-panel-close" onclick="hideOptSection('ad-desc-panel','ad-desc-toggle','ad-description')" title="Remove">×</button>
-        <div class="panel-label">Product Description</div>
+        <div class="panel-label" data-i18n="ads.descLabel">Product Description</div>
         <textarea id="ad-description" rows="4" placeholder="Describe your product, target audience, key selling points, desired mood or tone...&#10;&#10;Example: Luxury perfume for confident women 25-40. Notes of jasmine and oud. Sleek black bottle. Mood: mysterious, sensual, powerful."></textarea>
       </div>
 
       <!-- Resume banner (shown when checkpoint exists) -->
       <div class="ad-resume-banner" id="ad-resume-banner">
-        <span>⚡ Pipeline paused — resume where you left off?</span>
-        <button class="btn-rb btn-rb-yes" onclick="resumeAdPipeline()">Resume</button>
-        <button class="btn-rb btn-rb-no" onclick="dismissAdResume()">Dismiss</button>
+        <span data-i18n="ads.resumeText">⚡ Pipeline paused — resume where you left off?</span>
+        <button class="btn-rb btn-rb-yes" onclick="resumeAdPipeline()" data-i18n="ads.resume">Resume</button>
+        <button class="btn-rb btn-rb-no" onclick="dismissAdResume()" data-i18n="ads.dismiss">Dismiss</button>
       </div>
 
       <!-- Beautiful progress bar for the ads pipeline -->
@@ -1137,17 +1145,17 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         <div class="ad-prog-track"><div class="ad-prog-fill" id="ad-prog-fill"></div></div>
         <div class="ad-prog-meta">
           <span>Elapsed <span class="ad-prog-elapsed" id="ad-prog-elapsed">00:00</span></span>
-          <span class="ad-prog-hint" id="ad-prog-hint">Usually takes 8–12 minutes</span>
+          <span class="ad-prog-hint" id="ad-prog-hint" data-i18n="ads.usuallyTakes">Usually takes 8–12 minutes</span>
         </div>
         <div class="ad-prog-chips">
-          <span class="ad-prog-chip" id="ad-prog-chip-warmup">Connect</span>
-          <span class="ad-prog-chip" id="ad-prog-chip-brief">Concept</span>
-          <span class="ad-prog-chip" id="ad-prog-chip-refsheets">Refs</span>
-          <span class="ad-prog-chip" id="ad-prog-chip-refImages">Images</span>
-          <span class="ad-prog-chip" id="ad-prog-chip-startPrompts">Frames</span>
-          <span class="ad-prog-chip" id="ad-prog-chip-startImages">Stills</span>
-          <span class="ad-prog-chip" id="ad-prog-chip-shots">Script</span>
-          <span class="ad-prog-chip" id="ad-prog-chip-video">Video</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-warmup" data-i18n="ads.connect">Connect</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-brief" data-i18n="ads.concept">Concept</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-refsheets" data-i18n="ads.refs">Refs</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-refImages" data-i18n="ads.chipImages">Images</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-startPrompts" data-i18n="ads.frames">Frames</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-startImages" data-i18n="ads.stills">Stills</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-shots" data-i18n="ads.script">Script</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-video" data-i18n="ads.chipVideo">Video</span>
         </div>
       </div>
     </div>
@@ -1155,8 +1163,8 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <!-- RIGHT: settings -->
     <div>
       <div class="panel" style="margin-bottom:0">
-        <button class="btn-gen" id="ad-gen-btn" onclick="createAd()">Create Ad</button>
-        <button class="btn-stop" id="ad-stop-btn" onclick="stopAd()" style="display:none">■ Stop Pipeline</button>
+        <button class="btn-gen" id="ad-gen-btn" onclick="createAd()" data-i18n="ads.createAd">Create Ad</button>
+        <button class="btn-stop" id="ad-stop-btn" onclick="stopAd()" style="display:none" data-i18n="ads.stopPipeline">■ Stop Pipeline</button>
       </div>
     </div>
 
@@ -1167,14 +1175,14 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
 <div id="buy-overlay" class="hidden">
   <div class="buy-card">
     <button class="buy-close" onclick="closePromoModal()">×</button>
-    <div class="buy-title">Redeem Promo Code</div>
-    <div class="buy-sub">Enter your promo code to add funds to your balance.</div>
+    <div class="buy-title" data-i18n="promo.title">Redeem Promo Code</div>
+    <div class="buy-sub" data-i18n="promo.sub">Enter your promo code to add funds to your balance.</div>
     <div style="display:flex;gap:8px;margin-top:8px">
-      <input id="promo-input" type="text" placeholder="e.g. SEED50A" autocomplete="off" style="flex:1;padding:10px 14px;border-radius:10px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-size:14px;font-family:inherit;outline:none;text-transform:uppercase" onkeydown="if(event.key==='Enter')redeemPromo()">
-      <button onclick="redeemPromo()" style="padding:10px 20px;border-radius:10px;background:var(--accent);color:#fff;border:none;font-weight:700;font-size:14px;cursor:pointer;white-space:nowrap;transition:opacity 0.15s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">Redeem</button>
+      <input id="promo-input" type="text" placeholder="e.g. SEED50A" autocomplete="off" style="flex:1;padding:10px 14px;border-radius:10px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);font-size:14px;font-family:inherit;outline:none;text-transform:uppercase" onkeydown="if(event.key==='Enter')redeemPromo()" data-i18n-ph="promo.placeholder">
+      <button onclick="redeemPromo()" style="padding:10px 20px;border-radius:10px;background:var(--accent);color:#fff;border:none;font-weight:700;font-size:14px;cursor:pointer;white-space:nowrap;transition:opacity 0.15s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'" data-i18n="promo.redeem">Redeem</button>
     </div>
     <div style="margin-top:14px;font-size:12px;color:var(--text3);line-height:1.6">
-      Available denominations: <span style="color:var(--accent2);font-weight:600">$10 · $20 · $50 · $100</span>
+      <span data-i18n="promo.denominations">Available denominations:</span> <span style="color:var(--accent2);font-weight:600">$10 · $20 · $50 · $100</span>
     </div>
     <div class="buy-err" id="buy-err"></div>
     <div id="promo-ok" style="font-size:13px;color:var(--green);margin-top:10px;min-height:18px;text-align:center;font-weight:600"></div>
@@ -1191,78 +1199,78 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <!-- SCREEN: Sign in / Sign up -->
     <div id="auth-screen-main">
       <div class="auth-tabs">
-        <button class="auth-tab active" onclick="switchAuthTab('login')">Sign in</button>
-        <button class="auth-tab" onclick="switchAuthTab('register')">Sign up</button>
+        <button class="auth-tab active" onclick="switchAuthTab('login')" data-i18n="auth.signIn">Sign in</button>
+        <button class="auth-tab" onclick="switchAuthTab('register')" data-i18n="auth.signUp">Sign up</button>
       </div>
       <input class="auth-input" id="auth-email" type="email" placeholder="Email address"
-             autocomplete="email" onkeydown="if(event.key==='Enter')document.getElementById('auth-pass').focus()">
+             autocomplete="email" onkeydown="if(event.key==='Enter')document.getElementById('auth-pass').focus()" data-i18n-ph="auth.emailPlaceholder">
       <div class="auth-pass-row">
         <input class="auth-input" id="auth-pass" type="password" placeholder="Password (min. 8 characters)"
-               autocomplete="current-password" onkeydown="authPassKey(event)">
+               autocomplete="current-password" onkeydown="authPassKey(event)" data-i18n-ph="auth.passPlaceholder">
         <button type="button" class="auth-eye" onclick="toggleEye('auth-pass',this)" title="Show/hide">○</button>
       </div>
       <div id="auth-confirm-wrap" style="display:none">
         <div class="auth-pass-row">
           <input class="auth-input" id="auth-pass2" type="password" placeholder="Confirm password"
-                 autocomplete="new-password" oninput="checkPassMatch()" onkeydown="if(event.key==='Enter')submitAuth()">
+                 autocomplete="new-password" oninput="checkPassMatch()" onkeydown="if(event.key==='Enter')submitAuth()" data-i18n-ph="auth.confirmPlaceholder">
           <button type="button" class="auth-eye" onclick="toggleEye('auth-pass2',this)" title="Show/hide">○</button>
         </div>
         <div class="auth-match" id="auth-match"></div>
       </div>
       <div class="auth-err" id="auth-err"></div>
-      <button class="auth-btn" id="auth-btn" onclick="submitAuth()">Sign in</button>
+      <button class="auth-btn" id="auth-btn" onclick="submitAuth()" data-i18n="auth.signInBtn">Sign in</button>
       <div style="text-align:center;margin-top:8px">
-        <button class="auth-link" id="auth-forgot-link" onclick="showScreen('forgot')">Forgot password?</button>
+        <button class="auth-link" id="auth-forgot-link" onclick="showScreen('forgot')" data-i18n="auth.forgotPass">Forgot password?</button>
       </div>
     </div>
 
     <!-- SCREEN: Verify email -->
     <div id="auth-screen-verify" style="display:none">
-      <div class="auth-screen-title">Check your email</div>
-      <div class="auth-screen-sub">We sent a 6-digit code to <b id="verify-email-label"></b><br>It expires in 15 minutes.</div>
+      <div class="auth-screen-title" data-i18n="auth.checkEmail">Check your email</div>
+      <div class="auth-screen-sub"><span data-i18n="auth.codeSentTo">We sent a 6-digit code to</span> <b id="verify-email-label"></b><br><span data-i18n="auth.codeExpires">It expires in 15 minutes.</span></div>
       <input class="auth-input auth-code-input" id="auth-code" type="text" inputmode="numeric"
              maxlength="6" placeholder="000000" autocomplete="one-time-code"
              onkeydown="if(event.key==='Enter')submitVerify()">
       <div class="auth-err" id="verify-err"></div>
-      <button class="auth-btn" onclick="submitVerify()">Verify Email</button>
+      <button class="auth-btn" onclick="submitVerify()" data-i18n="auth.verifyEmail">Verify Email</button>
       <div style="text-align:center;margin-top:8px">
-        <button class="auth-link" onclick="resendVerify()">Didn't get it? Resend code</button>
+        <button class="auth-link" onclick="resendVerify()" data-i18n="auth.resendCode">Didn't get it? Resend code</button>
       </div>
     </div>
 
     <!-- SCREEN: Forgot password -->
     <div id="auth-screen-forgot" style="display:none">
-      <div class="auth-screen-title">Reset password</div>
-      <div class="auth-screen-sub">Enter your email and we'll send you a reset code.</div>
+      <div class="auth-screen-title" data-i18n="auth.resetTitle">Reset password</div>
+      <div class="auth-screen-sub" data-i18n="auth.resetSub">Enter your email and we'll send you a reset code.</div>
       <input class="auth-input" id="forgot-email" type="email" placeholder="Email address"
-             autocomplete="email" onkeydown="if(event.key==='Enter')submitForgot()">
+             autocomplete="email" onkeydown="if(event.key==='Enter')submitForgot()" data-i18n-ph="auth.emailPlaceholder">
       <div class="auth-err" id="forgot-err"></div>
       <div class="auth-ok"  id="forgot-ok"></div>
-      <button class="auth-btn" onclick="submitForgot()">Send reset code</button>
+      <button class="auth-btn" onclick="submitForgot()" data-i18n="auth.sendReset">Send reset code</button>
       <div style="text-align:center;margin-top:8px">
-        <button class="auth-link" onclick="showScreen('main')">← Back to sign in</button>
+        <button class="auth-link" onclick="showScreen('main')" data-i18n="auth.backToSignIn">← Back to sign in</button>
       </div>
     </div>
 
     <!-- SCREEN: Reset password (enter code + new password) -->
     <div id="auth-screen-reset" style="display:none">
-      <div class="auth-screen-title">Set new password</div>
-      <div class="auth-screen-sub">Enter the code we sent to your email, then choose a new password.</div>
+      <div class="auth-screen-title" data-i18n="auth.setNewPass">Set new password</div>
+      <div class="auth-screen-sub" data-i18n="auth.setNewPassSub">Enter the code we sent to your email, then choose a new password.</div>
       <input class="auth-input auth-code-input" id="reset-code" type="text" inputmode="numeric"
              maxlength="6" placeholder="000000" autocomplete="one-time-code">
       <div class="auth-pass-row">
-        <input class="auth-input" id="reset-pass" type="password" placeholder="New password (min. 8 chars)" autocomplete="new-password">
+        <input class="auth-input" id="reset-pass" type="password" placeholder="New password (min. 8 chars)" autocomplete="new-password" data-i18n-ph="auth.newPassPlaceholder">
         <button type="button" class="auth-eye" onclick="toggleEye('reset-pass',this)">○</button>
       </div>
       <div class="auth-pass-row">
         <input class="auth-input" id="reset-pass2" type="password" placeholder="Confirm new password"
-               autocomplete="new-password" onkeydown="if(event.key==='Enter')submitReset()">
+               autocomplete="new-password" onkeydown="if(event.key==='Enter')submitReset()" data-i18n-ph="auth.confirmNewPassPlaceholder">
         <button type="button" class="auth-eye" onclick="toggleEye('reset-pass2',this)">○</button>
       </div>
       <div class="auth-err" id="reset-err"></div>
-      <button class="auth-btn" onclick="submitReset()">Reset password</button>
+      <button class="auth-btn" onclick="submitReset()" data-i18n="auth.resetPassBtn">Reset password</button>
       <div style="text-align:center;margin-top:8px">
-        <button class="auth-link" onclick="showScreen('forgot')">← Resend code</button>
+        <button class="auth-link" onclick="showScreen('forgot')" data-i18n="auth.resendCodeLink">← Resend code</button>
       </div>
     </div>
   </div>
@@ -2604,7 +2612,7 @@ function switchAuthTab(mode) {
   authMode = mode;
   document.querySelectorAll('.auth-tab').forEach((t, i) =>
     t.classList.toggle('active', i === (mode === 'login' ? 0 : 1)));
-  document.getElementById('auth-btn').textContent   = mode === 'login' ? 'Sign in' : 'Create account';
+  document.getElementById('auth-btn').textContent   = mode === 'login' ? t('auth.signInBtn') : t('auth.createAccountBtn');
   document.getElementById('auth-err').textContent   = '';
   document.getElementById('auth-match').textContent = '';
   document.getElementById('auth-confirm-wrap').style.display = mode === 'register' ? '' : 'none';
@@ -3052,6 +3060,148 @@ function toast(msg, type='ok', duration=5000) {
   setTimeout(() => el.remove(), duration);
 }
 
+// ══ I18N ═══════════════════════════════════════════════════════════════
+const TRANSLATIONS = {
+  en: {
+    'nav.image':'Image','nav.video':'Video','nav.ads':'Ads','nav.library':'Library',
+    'nav.addBalance':'+ Add Balance','nav.signOut':'Sign out',
+    'img.placeholder':'Describe the image you want to generate...',
+    'img.addRef':'+ Add reference image (optional)','img.refLabel':'Reference Image',
+    'img.clickUpload':'Click to upload a reference image',
+    'ui.generating':'Generating...','ui.running':'Running','ui.initialising':'Initialising...',
+    'img.quality':'Quality','img.low':'Low','img.high':'High','img.generate':'Generate Image',
+    'ratio.vertical':'Vertical','ratio.wide':'Wide','ratio.square':'Square',
+    'ratio.classic':'Classic','ratio.portrait':'Portrait','ratio.ultra':'Ultra',
+    'vid.placeholder':'Describe your video in detail. Reference uploaded images as \'Image 1\', \'Image 2\', etc.',
+    'vid.addRefImgs':'+ Add reference images (optional)','vid.refImgsLabel':'Reference Images',
+    'vid.addImages':'Add Images','vid.clearAll':'Clear all',
+    'vid.addRefVid':'+ Add reference video (optional)','vid.refVidLabel':'Reference Video',
+    'vid.maxDuration':'Max 15 seconds. Longer videos will be rejected.',
+    'vid.clickUploadVid':'Click to upload a reference video',
+    'vid.audio':'Audio','vid.generate':'Generate Video',
+    'lib.title':'Library','lib.images':'Images','lib.videos':'Videos','lib.ads':'Ads',
+    'lib.empty':'No content yet. Generate a video or image!',
+    'ads.productImages':'Product Images',
+    'ads.uploadHint':'Upload photos of your product. The more angles the better.',
+    'ads.addDesc':'+ Add product description (optional)','ads.descLabel':'Product Description',
+    'ads.resumeText':'⚡ Pipeline paused — resume where you left off?',
+    'ads.resume':'Resume','ads.dismiss':'Dismiss',
+    'ads.usuallyTakes':'Usually takes 8–12 minutes',
+    'ads.connect':'Connect','ads.concept':'Concept','ads.refs':'Refs',
+    'ads.chipImages':'Images','ads.frames':'Frames','ads.stills':'Stills',
+    'ads.script':'Script','ads.chipVideo':'Video',
+    'ads.createAd':'Create Ad','ads.stopPipeline':'■ Stop Pipeline',
+    'promo.title':'Redeem Promo Code',
+    'promo.sub':'Enter your promo code to add funds to your balance.',
+    'promo.placeholder':'e.g. SEED50A','promo.redeem':'Redeem',
+    'promo.denominations':'Available denominations:',
+    'auth.signIn':'Sign in','auth.signUp':'Sign up','auth.signInBtn':'Sign in',
+    'auth.createAccountBtn':'Create account',
+    'auth.emailPlaceholder':'Email address',
+    'auth.passPlaceholder':'Password (min. 8 characters)',
+    'auth.confirmPlaceholder':'Confirm password',
+    'auth.newPassPlaceholder':'New password (min. 8 chars)',
+    'auth.confirmNewPassPlaceholder':'Confirm new password',
+    'auth.forgotPass':'Forgot password?',
+    'auth.checkEmail':'Check your email',
+    'auth.codeSentTo':'We sent a 6-digit code to',
+    'auth.codeExpires':'It expires in 15 minutes.',
+    'auth.verifyEmail':'Verify Email','auth.resendCode':'Didn\'t get it? Resend code',
+    'auth.resetTitle':'Reset password',
+    'auth.resetSub':'Enter your email and we\'ll send you a reset code.',
+    'auth.sendReset':'Send reset code','auth.backToSignIn':'← Back to sign in',
+    'auth.setNewPass':'Set new password',
+    'auth.setNewPassSub':'Enter the code we sent to your email, then choose a new password.',
+    'auth.resetPassBtn':'Reset password','auth.resendCodeLink':'← Resend code',
+  },
+  ka: {
+    'nav.image':'სურათი','nav.video':'ვიდეო','nav.ads':'რეკლამა','nav.library':'ბიბლიოთეკა',
+    'nav.addBalance':'+ ბალანსის შევსება','nav.signOut':'გამოსვლა',
+    'img.placeholder':'აღწერეთ სურათი, რომლის შექმნაც გსურთ...',
+    'img.addRef':'+ სარეფერენციო სურათის დამატება (სურვილისამებრ)',
+    'img.refLabel':'სარეფერენციო სურათი',
+    'img.clickUpload':'სარეფერენციო სურათის ასატვირთად დააჭირეთ',
+    'ui.generating':'გენერაცია...','ui.running':'მუშაობს','ui.initialising':'ინიციალიზაცია...',
+    'img.quality':'ხარისხი','img.low':'დაბალი','img.high':'მაღალი',
+    'img.generate':'სურათის გენერაცია',
+    'ratio.vertical':'ვერტიკ.','ratio.wide':'ფართო','ratio.square':'კვადრ.',
+    'ratio.classic':'კლასიკ.','ratio.portrait':'პორტრ.','ratio.ultra':'ულტრა',
+    'vid.placeholder':'აღწერეთ ვიდეო დეტალურად. სურათებზე მიუთითეთ "სურათი 1", "სურათი 2" და ა.შ.',
+    'vid.addRefImgs':'+ სარეფერენციო სურათების დამატება (სურვილისამებრ)',
+    'vid.refImgsLabel':'სარეფერენციო სურათები',
+    'vid.addImages':'სურათების დამატება','vid.clearAll':'ყველას წაშლა',
+    'vid.addRefVid':'+ სარეფერენციო ვიდეოს დამატება (სურვილისამებრ)',
+    'vid.refVidLabel':'სარეფერენციო ვიდეო',
+    'vid.maxDuration':'მაქს 15 წამი. გრძელი ვიდეოები უარყოფილი იქნება.',
+    'vid.clickUploadVid':'სარეფერენციო ვიდეოს ასატვირთად დააჭირეთ',
+    'vid.audio':'აუდიო','vid.generate':'ვიდეოს გენერაცია',
+    'lib.title':'ბიბლიოთეკა','lib.images':'სურათები','lib.videos':'ვიდეოები','lib.ads':'რეკლამები',
+    'lib.empty':'კონტენტი ჯერ არ არის. შექმენით ვიდეო ან სურათი!',
+    'ads.productImages':'პროდუქტის სურათები',
+    'ads.uploadHint':'ატვირთეთ პროდუქტის ფოტოები. რაც მეტი კუთხე, მით უკეთესი.',
+    'ads.addDesc':'+ პროდუქტის აღწერის დამატება (სურვილისამებრ)',
+    'ads.descLabel':'პროდუქტის აღწერა',
+    'ads.resumeText':'⚡ პაიპლაინი შეჩერდა — განაახლეთ იქიდან, სადაც გაჩერდით?',
+    'ads.resume':'განახლება','ads.dismiss':'დახურვა',
+    'ads.usuallyTakes':'ჩვეულებრივ 8–12 წუთი სჭირდება',
+    'ads.connect':'კავშირი','ads.concept':'კონცეფცია','ads.refs':'სარეფ.',
+    'ads.chipImages':'სურათები','ads.frames':'კადრები','ads.stills':'სტოპ-კადრ.',
+    'ads.script':'სცენარი','ads.chipVideo':'ვიდეო',
+    'ads.createAd':'რეკლამის შექმნა','ads.stopPipeline':'■ პაიპლაინის გაჩერება',
+    'promo.title':'პრომო კოდის გამოყენება',
+    'promo.sub':'შეიყვანეთ პრომო კოდი ბალანსის შესავსებად.',
+    'promo.placeholder':'მაგ. SEED50A','promo.redeem':'გამოყენება',
+    'promo.denominations':'ხელმისაწვდომი ნომინალები:',
+    'auth.signIn':'შესვლა','auth.signUp':'რეგისტრაცია','auth.signInBtn':'შესვლა',
+    'auth.createAccountBtn':'ანგარიშის შექმნა',
+    'auth.emailPlaceholder':'ელ. ფოსტის მისამართი',
+    'auth.passPlaceholder':'პაროლი (მინ. 8 სიმბოლო)',
+    'auth.confirmPlaceholder':'პაროლის დადასტურება',
+    'auth.newPassPlaceholder':'ახალი პაროლი (მინ. 8 სიმბ.)',
+    'auth.confirmNewPassPlaceholder':'ახალი პაროლის დადასტურება',
+    'auth.forgotPass':'პაროლი დაგავიწყდათ?',
+    'auth.checkEmail':'შეამოწმეთ ელ. ფოსტა',
+    'auth.codeSentTo':'ჩვენ გავგზავნეთ 6-ნიშნა კოდი მისამართზე',
+    'auth.codeExpires':'ის ვადაგასულია 15 წუთში.',
+    'auth.verifyEmail':'ელ. ფოსტის დადასტურება',
+    'auth.resendCode':'არ მიიღეთ? კოდის ხელახლა გაგზავნა',
+    'auth.resetTitle':'პაროლის აღდგენა',
+    'auth.resetSub':'შეიყვანეთ ელ. ფოსტა და ჩვენ გამოგიგზავნით კოდს.',
+    'auth.sendReset':'კოდის გაგზავნა','auth.backToSignIn':'← შესვლამდე დაბრუნება',
+    'auth.setNewPass':'ახალი პაროლის დაყენება',
+    'auth.setNewPassSub':'შეიყვანეთ კოდი, შემდეგ ააირჩიეთ ახალი პაროლი.',
+    'auth.resetPassBtn':'პაროლის გადაყენება','auth.resendCodeLink':'← კოდის ხელახლა გაგზავნა',
+  }
+};
+
+let currentLang = localStorage.getItem('sd_lang') || 'en';
+
+function t(key) {
+  return (TRANSLATIONS[currentLang] || TRANSLATIONS.en)[key] || (TRANSLATIONS.en[key] || key);
+}
+
+function setLang(lang) {
+  currentLang = lang;
+  localStorage.setItem('sd_lang', lang);
+  const tbl = TRANSLATIONS[lang] || TRANSLATIONS.en;
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const val = tbl[el.dataset.i18n] || TRANSLATIONS.en[el.dataset.i18n];
+    if (val !== undefined) el.textContent = val;
+  });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => {
+    const val = tbl[el.dataset.i18nPh] || TRANSLATIONS.en[el.dataset.i18nPh];
+    if (val !== undefined) el.placeholder = val;
+  });
+  const toggle = document.getElementById('lang-toggle');
+  if (toggle) toggle.textContent = lang.toUpperCase();
+}
+
+function cycleLang() {
+  const langs = Object.keys(TRANSLATIONS);
+  const next = langs[(langs.indexOf(currentLang) + 1) % langs.length];
+  setLang(next);
+}
+
 // ══ MOBILE MODE ════════════════════════════════════════════════════════
 const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
   || window.innerWidth < 768;
@@ -3065,6 +3215,7 @@ function applyMobileMode() {
 
 // ══ INIT ═══════════════════════════════════════════════════════════════
 applyMobileMode();
+setLang(currentLang);
 calcCost();
 calcImgCost();
 // Sync library tab buttons to saved tab
