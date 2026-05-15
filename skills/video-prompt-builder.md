@@ -29,12 +29,12 @@ If the brief is too vague to build a full prompt (e.g. "make something cool"), a
 
 ## Output structure
 
-The output structure depends on the input shape:
+**Always use the per-scene format below**, regardless of input shape. Whether the input is a single creative brief, a paragraph with embedded timestamps, or a CONCEPT+SCENES block, always output one self-contained document per scene (or one document for a single-scene input) with the `=== SCENE [N] OF [TOTAL] ===` header. Never produce a headerless "combined document" — the downstream pipeline depends on the header to parse output.
 
-- **Single creative brief input** (a one-off video idea, a description, a reference film) → output one combined document covering the whole video, with all four sections (timeline, inventory, density, arc) computed across the entire runtime.
-- **Concept + scenes input** (a CONCEPT block followed by a numbered SCENES list, the format produced by `ad-idea-generator`, optionally with reference sheet prompts and starting frame prompts appended) → output **one self-contained document per scene**, in scene order. Each per-scene document is a complete standalone prompt with its own timeline, inventory, density map, and arc — because each scene will be sent to Seedance as a separate generation call. See the per-scene format below.
+- **Single creative brief or single-scene input** (a one-off video idea, a description, a paragraph with embedded timestamps) → treat it as a single scene and output exactly one per-scene document with header `=== SCENE 1 OF 1 — [short title] ===`.
+- **Concept + scenes input** (a CONCEPT block followed by a numbered SCENES list, the format produced by `ad-idea-generator`, optionally with reference sheet prompts and starting frame prompts appended) → output **one self-contained document per scene**, in scene order.
 
-### Per-scene output format (for concept + scenes input)
+### Per-scene output format
 
 For each scene in the input, produce a complete document with FIVE sections in this order. Repeat the full structure for every scene. Do not produce a single combined document — each scene must stand alone.
 
@@ -114,17 +114,6 @@ Per-scene only. Timestamps within the scene's 00:00–00:15 range.
 Describe this scene's internal energy arc — how the 15 seconds builds, peaks, and resolves into a state ready for the next scene. Most scenes follow a small two- or three-beat arc within their 15 seconds (setup → development → handoff). The final scene of the video is the only one whose arc must fully resolve; intermediate scenes hand off to the next.
 
 Be specific about the **emotional and energetic state** the scene leaves the viewer in. Intermediate scenes should not feel "complete" — they should land on a beat that creates appetite for the next scene to begin.
-
-### Combined output format (for a single creative brief, not concept + scenes)
-
-When the input is a single creative brief rather than concept + scenes, output one combined document with these four sections covering the whole video:
-
-1. SHOT-BY-SHOT EFFECTS TIMELINE
-2. MASTER EFFECTS INVENTORY
-3. EFFECTS DENSITY MAP
-4. ENERGY ARC
-
-The same shot-block format applies. Timestamps run continuously across the whole video. Use this combined format only when the input is not in concept + scenes shape.
 
 
 
@@ -243,14 +232,15 @@ For **concept + scenes input**, the per-scene calibration is fixed at ~15 second
 
 ## Example workflows
 
-### Example 1: Single-brief input (combined-document output)
+### Example 1: Single-brief input (single-scene output)
 
 **User says:** "I want a dramatic brand film for a trail running shoe. Mountain setting, golden hour, single runner. Make it feel epic but not over-the-top. About 15 seconds."
 
 **You do:**
 1. Read `references/effects-breakdown-reference.txt` to calibrate detail level
-2. Generate the full four-section combined output: shot-by-shot timeline (8-12 shots), master effects inventory, density map, and energy arc
-3. Present in plain text in chat
+2. Treat as a single scene — output one per-scene document beginning with `=== SCENE 1 OF 1 — Trail Run ===` (or similar short title)
+3. Four sections: shot-by-shot timeline (4-8 shots across 15 seconds), master effects inventory, density map, and energy arc
+4. Present in plain text in chat
 
 ### Example 2: Concept + scenes input (per-scene-document output)
 
