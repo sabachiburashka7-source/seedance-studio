@@ -893,9 +893,8 @@ async function adSubmitVideo(textPrompt, productRefUrl, envPrefix) {
     content.push({ type: 'image_url', image_url: { url: productRefUrl }, role: 'reference_image' });
   }
   const payload = {
-    model_name: model, content,
-    parameters: { seed: Math.floor(Math.random() * 1e9), res, aspect_ratio: ratio, duration: dur, watermark: false },
-    audio_config: { audio_switch: true, bgm_switch: false },
+    model, content,
+    generate_audio: true, aspect_ratio: ratio, duration: dur, watermark: false, resolution: res,
     audio_prompt: 'natural ambient sounds and object sounds only, no music, no vocals, no lyrics',
   };
   const submitUrl = `https://${BYTEPLUS}/api/v3/contents/generations/tasks`;
