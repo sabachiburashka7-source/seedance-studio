@@ -781,6 +781,341 @@ function proxy(req, res, bodyBuffer) {
   proxyReq.end();
 }
 
+// ── Ad background pipeline ────────────────────────────────────────────────────
+// Runs the full 4-stage Claude + image + video pipeline server-side so the
+// browser doesn't need to stay open. Job state is stored in Redis under
+// ad_job_<jobId> with a 24h TTL.
+
+const adJobCache = {}; // local-dev fallback when Redis isn't configured
+
+function adJobKey(jobId) { return 'ad_job_' + jobId; }
+
+async function getAdJob(jobId) {
+  try {
+    if (!REDIS_URL || !REDIS_TOKEN) return adJobCache[jobId] || null;
+    const r = await redisCmd(['GET', adJobKey(jobId)]);
+    if (!r || !r.result) return null;
+    return JSON.parse(r.result);
+  } catch(e) { console.error('[ad-job] getAdJob:', e.message); return null; }
+}
+
+async function setAdJob(jobId, data) {
+  try {
+    const payload = JSON.stringify(data);
+    if (!REDIS_URL || !REDIS_TOKEN) { adJobCache[jobId] = data; return; }
+    await redisCmd(['SET', adJobKey(jobId), payload, 'EX', 86400]);
+  } catch(e) { console.error('[ad-job] setAdJob:', e.message); }
+}
+
+async function updateAdJob(jobId, patch) {
+  const job = (await getAdJob(jobId)) || {};
+  await setAdJob(jobId, { ...job, ...patch, updatedAt: Date.now() });
+}
+
+function adDeductBalance(userId, amount) {
+  const db = loadDB(); const user = db.users[userId];
+  if (!user) throw new Error('User not found');
+  const cur = user.balance ?? 0;
+  if (cur < amount) throw new Error(`Insufficient balance. Need $${amount.toFixed(2)}, have $${cur.toFixed(2)}.`);
+  user.balance = Math.round((cur - amount) * 100) / 100;
+  saveDB(db);
+  return user.balance;
+}
+
+function adRefundBalance(userId, amount) {
+  try {
+    const db = loadDB(); const user = db.users[userId];
+    if (!user) return;
+    user.balance = Math.round(((user.balance ?? 0) + amount) * 100) / 100;
+    saveDB(db);
+  } catch(e) { console.warn('[ad-job] refund error:', e.message); }
+}
+
+async function adGenProductRef(userId, images) {
+  if (!OPENAI_API_KEY) throw new Error('OpenAI API key not configured');
+  const prompt = 'generate this product multi angle reference sheet image highlighting details visually';
+  const cost = 0.02;
+  adDeductBalance(userId, cost);
+
+  let gptResp;
+  if (images && images.length > 0) {
+    const form = new FormData();
+    form.append('model', 'gpt-image-2');
+    form.append('prompt', prompt);
+    form.append('size', '1024x1024');
+    form.append('quality', 'low');
+    form.append('n', '1');
+    for (let idx = 0; idx < images.length; idx++) {
+      const img = images[idx];
+      if (!img.base64) continue;
+      const imgBuf = Buffer.from(img.base64, 'base64');
+      const mime = img.mime || 'image/jpeg';
+      form.append('image[]', new Blob([imgBuf], { type: mime }), `ref${idx}.${mime === 'image/png' ? 'png' : 'jpg'}`);
+    }
+    gptResp = await fetch('https://api.openai.com/v1/images/edits', {
+      method: 'POST', headers: { 'Authorization': 'Bearer ' + OPENAI_API_KEY },
+      body: form, signal: AbortSignal.timeout(240000)
+    });
+  } else {
+    gptResp = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + OPENAI_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-image-2', prompt, size: '1024x1024', quality: 'low', output_format: 'jpeg', n: 1 }),
+      signal: AbortSignal.timeout(240000)
+    });
+  }
+  const gptJson = await gptResp.json();
+  if (!gptResp.ok) throw new Error(gptJson?.error?.message || 'GPT image failed');
+  const item = gptJson?.data?.[0];
+  const b64 = item?.b64_json; const imgUrl = item?.url;
+  if (!b64 && !imgUrl) throw new Error('No image data returned');
+  if (b64) {
+    const buf = injectAiMetadata(Buffer.from(b64, 'base64'), 'image/jpeg');
+    if (R2_ENABLED) {
+      const key = `img/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.jpg`;
+      return await uploadToR2(buf, key, 'image/jpeg');
+    }
+    return `data:image/jpeg;base64,${buf.toString('base64')}`;
+  }
+  if (R2_ENABLED) {
+    const buf = injectAiMetadata(await downloadBuffer(imgUrl), 'image/jpeg');
+    return await uploadToR2(buf, `img/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.jpg`, 'image/jpeg');
+  }
+  return imgUrl;
+}
+
+async function adSubmitVideo(textPrompt, productRefUrl, envPrefix) {
+  const ratio = '9:16'; const dur = 15; const res = '480p';
+  const model = 'dreamina-seedance-2-0-260128';
+  const fullPrompt = (envPrefix || '') + (productRefUrl ? 'Use the reference image for product fidelity. ' : '') + textPrompt;
+  const content = [{ type: 'text', text: fullPrompt }];
+  if (productRefUrl) {
+    content.push({ type: 'image_url', image_url: { url: productRefUrl }, role: 'reference_image' });
+  }
+  const payload = {
+    model_name: model, content,
+    parameters: { seed: Math.floor(Math.random() * 1e9), res, aspect_ratio: ratio, duration: dur, watermark: false },
+    audio_config: { audio_switch: true, bgm_switch: false },
+    audio_prompt: 'natural ambient sounds and object sounds only, no music, no vocals, no lyrics',
+  };
+  const submitUrl = `https://${BYTEPLUS}/api/v3/contents/generations/tasks`;
+  for (let attempt = 1; attempt <= 6; attempt++) {
+    const r = await fetch(submitUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BYTEPLUS_API_KEY}`, 'Accept-Encoding': 'identity' },
+      body: JSON.stringify(payload), signal: AbortSignal.timeout(60000),
+    });
+    const j = await r.json();
+    const taskId = j.id || j.task_id;
+    if (taskId) return taskId;
+    const errMsg = j.error?.message || JSON.stringify(j).substring(0, 200);
+    console.error(`[ad-job] BytePlus submit attempt ${attempt}:`, errMsg);
+    if (!/high demand|try again later|temporar/i.test(errMsg) || attempt === 6) throw new Error(errMsg);
+    await new Promise(r => setTimeout(r, attempt * 60000));
+  }
+  throw new Error('BytePlus submit failed after 6 attempts');
+}
+
+async function adPollVideo(taskId, onProgress) {
+  const pollUrl = `https://${BYTEPLUS}/api/v3/contents/generations/tasks/${taskId}`;
+  let n = 0; let emptyUrlRetries = 0;
+  while (n < 80) {
+    await new Promise(r => setTimeout(r, n === 0 ? 8000 : 30000));
+    n++;
+    if (onProgress) onProgress(n / 80);
+    let d;
+    try {
+      const r = await fetch(pollUrl, {
+        headers: { 'Authorization': `Bearer ${BYTEPLUS_API_KEY}`, 'Accept-Encoding': 'identity' },
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!r.ok) { console.warn('[ad-job] poll HTTP', r.status); continue; }
+      d = await r.json();
+    } catch(e) { console.warn('[ad-job] poll error:', e.message); continue; }
+    const status = (d.status || '').toLowerCase();
+    if (status === 'succeeded' || status === 'success' || status === 'completed') {
+      const videoUrl = d.content?.video_url || d.content?.[0]?.video_url?.url || d.content?.[0]?.url
+        || d.outputs?.[0]?.url || d.output?.url || d.result?.url || '';
+      if (!videoUrl) {
+        if (++emptyUrlRetries < 6) continue;
+        throw new Error('Video URL missing from BytePlus response');
+      }
+      return videoUrl;
+    }
+    if (status === 'failed' || status === 'error' || status === 'cancelled') {
+      throw new Error(d.error?.message || d.message || 'Video failed: ' + d.status);
+    }
+    console.log('[ad-job] polling', taskId, 'status:', status, 'n:', n);
+  }
+  throw new Error('Video generation timed out after 40 minutes');
+}
+
+function adDeriveTitle(ideaText, description) {
+  if (description) return description.replace(/\s+/g, ' ').trim().substring(0, 40);
+  const m = ideaText.match(/THE\s+IDEA\s*\**\s*\n+([\s\S]*?)(?:\n+\**Why it works|$)/i);
+  const prose = (m ? m[1] : ideaText).replace(/\*\(\s*\d+\s*[–\-]\s*\d+\s*s\s*\)\*/g, '').replace(/\*+/g, '').trim();
+  return prose.split(/[.,]/)[0].trim().substring(0, 40) || ('Ad — ' + new Date().toLocaleDateString());
+}
+
+async function runAdPipeline(jobId) {
+  let job = await getAdJob(jobId);
+  if (!job) { console.error('[ad-job] not found:', jobId); return; }
+  const { userId, images, description } = job;
+
+  // Strip images from Redis immediately — they're large and only needed in memory
+  await updateAdJob(jobId, { images: null, status: 'running' });
+
+  try {
+    // ── Stage 1: Brief ──────────────────────────────────────────────────
+    await updateAdJob(jobId, { stage: 'brief', stageLabel: 'Generating ad concept…', progress: 0.02 });
+    console.log('[ad-job]', jobId, 'brief start');
+    const userContent = [];
+    for (const img of (images || [])) {
+      userContent.push({ type: 'image', source: { type: 'base64', media_type: img.mime || 'image/jpeg', data: img.base64 } });
+    }
+    const descText = description ? `Product description: ${description}\n\n` : '';
+    userContent.push({ type: 'text', text: `${descText}Generate ONE realistic ad idea for this product following your methodology. Output exactly the two-block format from your Output Format section ("**THE IDEA**" paragraph pitch + "**Why it works:**" two sentences). No preamble, no alternatives.` });
+    const briefRes = await claudeApiCall(ANTHROPIC_API_KEY, SKILL_BRIEF, [{ role: 'user', content: userContent }]);
+    if (briefRes.status !== 200) throw new Error('Brief failed: ' + (briefRes.body?.error?.message || briefRes.status));
+    const ideaText = briefRes.body?.content?.[0]?.text || '';
+    if (!/THE IDEA/i.test(ideaText) || !/Why it works/i.test(ideaText)) throw new Error('Brief returned unexpected format');
+    adDeductBalance(userId, 0.15);
+    const adTitle = adDeriveTitle(ideaText, description);
+    await updateAdJob(jobId, { stageLabel: 'Ad concept ready', progress: 0.12, adTitle, ideaText });
+    console.log('[ad-job]', jobId, 'brief done — title:', adTitle);
+
+    // ── Stage 2: RefSheets ───────────────────────────────────────────────
+    await updateAdJob(jobId, { stage: 'refsheets', stageLabel: 'Designing reference sheets…', progress: 0.14 });
+    console.log('[ad-job]', jobId, 'refsheets start');
+    const refMsg = `INPUT — realistic ad pitch (from realistic-ad-idea-generator). It is one paragraph describing a single 15-second video with embedded beat timestamps, followed by a "Why it works" note. Extract every distinct character, the product, and every distinct environment named or implied in the pitch.\n\n${ideaText}\n\nGenerate the reference sheet prompts for all characters, the product, and all environments. Output ONLY the three labeled blocks (=== CHARACTER REFERENCE SHEETS ===, === PRODUCT REFERENCE SHEET ===, === ENVIRONMENT REFERENCE SHEETS ===) with no preamble.`;
+    const refsRes = await claudeApiCall(ANTHROPIC_API_KEY, SKILL_REFS, [{ role: 'user', content: refMsg }]);
+    if (refsRes.status !== 200) throw new Error('RefSheets failed: ' + (refsRes.body?.error?.message || refsRes.status));
+    const refSheetsText = refsRes.body?.content?.[0]?.text || '';
+    const entities = parseRefSheetsOutput(refSheetsText);
+    adDeductBalance(userId, 0.10);
+    await updateAdJob(jobId, { stageLabel: 'Reference sheets ready', progress: 0.22, refSheetsText, entities });
+    console.log('[ad-job]', jobId, 'refsheets done —', entities.length, 'entities');
+
+    // ── Stage 2.5: Product ref image ─────────────────────────────────────
+    await updateAdJob(jobId, { stage: 'refImages', stageLabel: 'Creating product reference image…', progress: 0.24 });
+    console.log('[ad-job]', jobId, 'product ref image start');
+    let productRefUrl = null;
+    const productEntity = entities.find(e => e.type === 'product');
+    const envEntities = entities.filter(e => e.type === 'environment');
+    if (productEntity && OPENAI_API_KEY) {
+      try {
+        productRefUrl = await adGenProductRef(userId, images);
+        const userLib = await loadUserLibrary(userId);
+        userLib.unshift({
+          id: 'ref-' + jobId + '-prod', prompt: 'product reference sheet', url: productRefUrl,
+          ratio: '1:1', model: 'gpt-image-2', ts: Date.now(), done: Date.now(),
+          type: 'image', folder: adTitle, label: productEntity.name || 'product', hidden: true,
+        });
+        await saveUserLibrary(userId, userLib);
+        console.log('[ad-job]', jobId, 'product ref done');
+      } catch(e) {
+        console.warn('[ad-job]', jobId, 'product ref failed (continuing):', e.message);
+      }
+    }
+    const envPrefix = envEntities.length > 0
+      ? envEntities.map(e => `Environment — ${e.name}: ${e.prompt}`).join('\n\n') + '\n\n'
+      : '';
+    await updateAdJob(jobId, { stageLabel: 'Reference image ready', progress: 0.35, productRefUrl, envPrefix });
+
+    // ── Stage 4: Shots ───────────────────────────────────────────────────
+    await updateAdJob(jobId, { stage: 'shots', stageLabel: 'Writing cinematic shot prompts…', progress: 0.37 });
+    console.log('[ad-job]', jobId, 'shots start');
+    const shotsMsg = `Here is the realistic ad pitch (a single 15-second video, one paragraph with embedded timestamps, plus a "Why it works" note):\n\n${ideaText}\n\nTreat this as a SINGLE 15-second scene. Use the per-scene output format and produce exactly ONE document with the header "=== SCENE 1 OF 1 — [short scene name] ===" followed by the shot timeline, effects inventory, density map, and energy arc. Honour the pitch's embedded beat timestamps. The video is silent (no dialogue, no voiceover) and contains no turned-on phone/laptop/tablet/TV screens.`;
+    const shotsRes = await claudeApiCall(ANTHROPIC_API_KEY, SKILL_SHOTS, [{ role: 'user', content: [{ type: 'text', text: shotsMsg }] }]);
+    if (shotsRes.status !== 200) throw new Error('Shots failed: ' + (shotsRes.body?.error?.message || shotsRes.status));
+    const shotsText = shotsRes.body?.content?.[0]?.text || '';
+    const scenes = parseShotsOutput(shotsText);
+    if (!scenes.length) throw new Error('Shot prompts failed to parse — please retry');
+    adDeductBalance(userId, 0.15);
+    await updateAdJob(jobId, { stageLabel: 'Shot prompts ready', progress: 0.45, scenes });
+    console.log('[ad-job]', jobId, 'shots done —', scenes.length, 'scene(s)');
+
+    // ── Stage 5: Video generation ────────────────────────────────────────
+    const scene = scenes[0];
+    const dur = Math.max(5, Math.min(15, scene.duration || 15));
+    const rawPrompt = (scene.prompt || 'Scene 1').replace(/\b(logo|trademark|brand name|registered mark)\b/gi, 'emblem');
+    const videoCost = Math.round(dur * 480 * 864 * 24 / 1024 * 7.0e-6 * 1.3 * 100) / 100;
+    adDeductBalance(userId, videoCost);
+    await updateAdJob(jobId, { stage: 'video', stageLabel: 'Submitting to video generation…', progress: 0.46 });
+    console.log('[ad-job]', jobId, 'video submit start');
+    const taskId = await adSubmitVideo(rawPrompt, productRefUrl, envPrefix);
+    await updateAdJob(jobId, { taskId, stageLabel: 'Video generating (5–15 min)…', progress: 0.48 });
+    console.log('[ad-job]', jobId, 'video task:', taskId);
+
+    const videoStartTs = Date.now();
+    const progressTimer = setInterval(async () => {
+      try {
+        const elapsed = (Date.now() - videoStartTs) / 1000;
+        const p = 0.48 + Math.min(0.40, (elapsed / (8 * 60)) * 0.40);
+        await updateAdJob(jobId, { progress: p });
+      } catch(_) {}
+    }, 60000);
+
+    let rawVideoUrl;
+    try {
+      rawVideoUrl = await adPollVideo(taskId);
+    } catch(e) {
+      adRefundBalance(userId, videoCost);
+      throw e;
+    } finally {
+      clearInterval(progressTimer);
+    }
+    await updateAdJob(jobId, { stageLabel: 'Saving video…', progress: 0.90 });
+
+    let storedUrl = rawVideoUrl;
+    if (R2_ENABLED) {
+      try {
+        const buf = await downloadBuffer(rawVideoUrl);
+        const key = `vid/${Date.now()}-${crypto.randomBytes(4).toString('hex')}.mp4`;
+        storedUrl = await uploadToR2(buf, key, 'video/mp4');
+        console.log('[ad-job]', jobId, 'video stored to R2');
+      } catch(e) { console.warn('[ad-job] R2 store failed:', e.message); }
+    }
+
+    // Save video to user's library
+    const libItem = {
+      id: 'ad-' + jobId, prompt: rawPrompt, url: storedUrl,
+      res: '480p', ratio: '9:16', dur, audio: false,
+      model: 'dreamina-seedance-2-0-260128', ts: job.createdAt || Date.now(), done: Date.now(),
+      folder: adTitle, label: 'Scene 1 video', sceneIndex: 0, upscaling: !!storedUrl,
+    };
+    const userLib2 = await loadUserLibrary(userId);
+    userLib2.unshift(libItem);
+    await saveUserLibrary(userId, userLib2);
+
+    await updateAdJob(jobId, { status: 'done', stage: 'done', stageLabel: 'Done!', progress: 1, videoUrl: storedUrl, libItemId: libItem.id });
+    console.log('[ad-job]', jobId, 'complete:', storedUrl?.substring(0, 80));
+
+    // Upscale (fire-and-forget)
+    if (FAL_KEY && storedUrl) {
+      falRequest('POST', '/fal-ai/topaz/upscale/video', { video_url: storedUrl, upscale_factor: 2, H264_output: true })
+        .then(async falResult => {
+          const requestId = falResult.body?.request_id;
+          if (!requestId) return;
+          const userLib3 = await loadUserLibrary(userId);
+          const idx = userLib3.findIndex(i => i.id === libItem.id);
+          if (idx >= 0) {
+            userLib3[idx].upscaleRequestId = requestId;
+            userLib3[idx].upscaleStatusUrl = falResult.body?.status_url || null;
+            userLib3[idx].upscaleResponseUrl = falResult.body?.response_url || null;
+            await saveUserLibrary(userId, userLib3);
+          }
+          console.log('[ad-job]', jobId, 'upscale submitted:', requestId);
+        })
+        .catch(e => console.warn('[ad-job] upscale submit failed:', e.message));
+    }
+
+  } catch(e) {
+    console.error('[ad-job]', jobId, 'pipeline error:', e.message);
+    try { await updateAdJob(jobId, { status: 'failed', error: e.message, stageLabel: 'Failed: ' + e.message }); } catch(_) {}
+  }
+}
+
 // ── Main request handler ──────────────────────────────────────────────────────
 async function handleRequest(req, res) {
   const { method, url } = req;
@@ -1598,6 +1933,45 @@ async function handleRequest(req, res) {
     } catch(e) {
       return sendJSON(res, 502, { error: 'Start frames failed: ' + e.message });
     }
+  }
+
+  // ── Ad background job: start full pipeline ───────────────────────────────────
+  if (url === '/api/gen/ad-run' && method === 'POST') {
+    const { images, description } = await readBody(req);
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
+    if (!images || !images.length) return sendJSON(res, 400, { error: 'Upload at least one product image.' });
+    if (!ANTHROPIC_API_KEY) return sendJSON(res, 503, { error: 'Anthropic API key not configured.' });
+    if (!BYTEPLUS_API_KEY) return sendJSON(res, 503, { error: 'BytePlus API key not configured.' });
+    const db = loadDB(); const user = db.users[sess.userId];
+    if (!user) return sendJSON(res, 401, { error: 'User not found.' });
+    if ((user.balance ?? 0) < 0.50) return sendJSON(res, 402, { error: `Insufficient balance. Need at least $0.50 to start an ad pipeline.` });
+    const jobId = crypto.randomBytes(8).toString('hex');
+    await setAdJob(jobId, {
+      jobId, userId: sess.userId, status: 'pending', stage: 'pending',
+      stageLabel: 'Starting…', progress: 0, images, description: description || '',
+      adTitle: null, videoUrl: null, createdAt: Date.now(), updatedAt: Date.now(),
+    });
+    runAdPipeline(jobId).catch(e => console.error('[ad-job] unhandled error for', jobId, ':', e.message));
+    return sendJSON(res, 200, { jobId });
+  }
+
+  // ── Ad background job: poll status ───────────────────────────────────────────
+  if (url.startsWith('/api/gen/ad-job') && method === 'GET') {
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
+    const params = new URL('http://x' + url).searchParams;
+    const jobId = params.get('id');
+    if (!jobId) return sendJSON(res, 400, { error: 'id required' });
+    const job = await getAdJob(jobId);
+    if (!job) return sendJSON(res, 404, { error: 'Job not found or expired' });
+    if (job.userId !== sess.userId) return sendJSON(res, 403, { error: 'Forbidden' });
+    // Stale detection: if running but not updated in 45 min, mark failed
+    if (job.status === 'running' && job.updatedAt && (Date.now() - job.updatedAt) > 45 * 60 * 1000) {
+      job.status = 'failed'; job.error = 'Pipeline stalled — please try again';
+    }
+    const { images: _, ...safeJob } = job; // don't send image data back
+    return sendJSON(res, 200, safeJob);
   }
 
   // ── Fal.ai upscale: submit ───────────────────────────────────────────────────
