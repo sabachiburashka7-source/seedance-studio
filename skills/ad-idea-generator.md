@@ -148,17 +148,89 @@ The hook is ready when you can describe it in one sentence AND a friend hearing 
 
 ---
 
-## Phase 2 — Build the Idea Around the Hook
+## Phase 2 — Build the Middle and the End (Equal Weight to the Hook)
 
-Once you have the hook, design the rest of the ad backwards from it:
+The hook gets the scroll-stop. The middle earns the watch-through. The ending burns the brand in. All three matter equally. Spend real cognitive effort on the middle and ending — do NOT let them drift into "and then they smile."
 
-- **Setting** — specific, sensory, real. Not "a kitchen" but "a kitchen at 5:47am, frost on the window, one bare bulb on the stove hood."
-- **Character(s)** — caucasian-looking, described with body language and energy, NOT just demographics. Their state of mind matters more than their face.
-- **The Mid-Beat** — the second visual moment that earns the hook. The thing the camera lingers on. Often a sensory close-up.
-- **The Product Moment** — when and how the product enters/is revealed. It should feel inevitable in hindsight, surprising in the moment.
-- **The Closing Frame** — the last image burned into the viewer's memory. The "phone wallpaper" of the ad.
-- **Sound** — what we hear (diegetic only — footsteps, fabric, liquid, breath, wind, a single rising musical note). NO dialogue.
-- **On-screen text** — if any, ONE short line at the end. Product name + 3–6 word line. That's it.
+This phase has three sub-engines.
+
+---
+
+### 2A — The Setting & Character Layer (Foundation)
+
+Before designing the middle, lock these in with rich detail:
+
+- **Setting** — specific, sensory, real. Not "a kitchen" but "a galley kitchen at 5:47am, frost spidering the window, one bare bulb under the range hood, a kettle just starting to whine."
+- **Character(s)** — caucasian-looking, described with body language and *micro-state* (post-cry calm, mid-thought, half-asleep, hungover-but-trying), distinguishing features (a scar, paint under nails, a silver chain), specific clothing (fabric + fit + condition), and what their hands are doing.
+- **Sound bed** — what we hear throughout (diegetic only — footsteps, fabric, liquid, breath, wind, radiator tick, one held musical note). NO dialogue.
+
+---
+
+### 2B — The Middle Engine (The "Earn" Phase)
+
+The middle is where most ads die. The hook bought you the attention; the middle has to convert it into *investment*. The middle is NOT just "more of the hook" — it must do specific structural work.
+
+**The middle must do at least TWO of these four jobs:**
+
+**1. Deepen the Mystery**
+The hook raised a question. The middle should make the viewer lean in *further*, not start answering yet. Add one new detail that recontextualizes what we saw. (We thought he was alone — a small shadow moves in the next room. We thought it was morning — the clock on the wall says 11pm.)
+
+**2. Reveal the Stakes**
+Show why this moment matters to this character. NOT through exposition — through a single charged object or gesture. A wedding ring set on the counter. A hospital bracelet half-hidden by a sleeve. A child's drawing taped to the fridge. Stakes turn a clever ad into one that *means* something.
+
+**3. Sensory Crescendo**
+Push the texture and sensory detail HARDER than the hook. If the hook was visual, make the middle tactile or auditory. The middle is where you film the steam curling, the fabric pulling tight, the single drop hanging before it falls. This is the "ASMR moment" that makes people watch twice.
+
+**4. The Quiet Tension**
+Introduce one small physical tension that creates anticipation for the product moment. A held breath. A hand hovering. A clock ticking too loud. A door slightly ajar. The viewer's nervous system *needs* the next beat to resolve it.
+
+**The Middle Trap to Avoid:**
+Do NOT use the middle to "explain" the hook. Resist the urge to clarify. The middle should make the viewer feel they're falling deeper into something, not being walked through it. If your middle starts with "we see that actually…" — rewrite it.
+
+---
+
+### 2C — The Product Moment & Ending Engine (The "Burn-In" Phase)
+
+This is the most undervalued part of an ad. A weak ending is the difference between "cute ad" and "I'm buying that." Two sub-decisions:
+
+**The Product Moment** — how the product enters the frame matters more than its appearance.
+
+Pick ONE of these entry modes:
+
+- **The Inevitable Entry** — the product appears as if it *had* to. The whole setup retroactively demanded it. (The man on the tailgate has been holding the bear the whole time — we just see it now.)
+- **The Discovered Entry** — the camera or character finds the product mid-action, like stumbling on it. Casual, almost accidental. Feels real because it's not announced.
+- **The Substitution Entry** — the product replaces something we expected to see. We expect a coffee; she lifts the product instead. We expect a kiss; he hands her the product instead.
+- **The Tactile Entry** — we see hands on the product before we see the product itself. Texture-first reveal.
+- **The Silent Witness Entry** — the product has been in frame the whole time. We just hadn't noticed. The reveal is the viewer realizing it was always there.
+
+NEVER: a slow product spin on a white background. NEVER: a character holding the product up to camera like a QVC demo. NEVER: the product floating in mid-air with sparkle effects.
+
+**The Closing Frame** — the last 2–4 seconds must do ALL of these jobs simultaneously:
+
+1. **Earn an exhale.** The tension built in the middle must release. Not through resolution — through a single quiet image that gives the viewer permission to feel something.
+2. **Be screenshot-able.** If a viewer paused on the final frame, would they want to keep that image? Would it work as a phone wallpaper, a poster, a print ad still?
+3. **Recontextualize the hook.** The final frame should make the opening hook feel inevitable in hindsight — as if the whole ad was always heading exactly here.
+4. **Leave one thing unresolved.** A great ending hands the viewer ONE thing to keep thinking about. A character's expression that's slightly ambiguous. An object in the frame that hints at a larger story. A door we never see open. The viewer should walk away mentally finishing the ad themselves.
+
+**The Closing Frame Toolkit — pick ONE:**
+
+- **The Held Gesture** — character frozen in one small action that says everything (a thumb on a wedding ring, a hand pressed flat to a window, a single eye closed).
+- **The Empty Frame** — character has just left frame. The space they occupied still feels them. The product remains.
+- **The Wide Pullback** — camera reveals the larger context the whole ad lived inside. We were never seeing the full picture until now.
+- **The Match Cut to Elsewhere** — last frame transitions visually to a place or person the ad never mentioned, suggesting a bigger world.
+- **The Sound-Drop** — all ambient sound cuts. The final frame plays in total silence. The tagline appears. We exhale.
+- **The Return** — the final frame mirrors the very first frame, but ONE thing has changed. The viewer's eye finds the change.
+
+**On-screen text — strict rules:**
+
+- Appears ONLY in the final 2–3 seconds, never earlier.
+- Maximum one line. Maximum 6 words. Plus product name on a separate line below it.
+- The line is NOT a slogan that explains the product. It's a *resonance line* — something the ad earned the right to say. ("For whoever needs one." "Quiet wins." "Made for the third try.")
+- The line should make sense ONLY after watching the ad. Out of context, it should feel cryptic. In context, it should feel inevitable.
+- Typography: clean, minimal, never animated with effects. Fades in. Holds. Cuts to black or product still.
+
+**The Ending Trap to Avoid:**
+The two deadliest endings: (1) the character looking at camera and smiling, (2) a slogan that summarizes what we just watched. Both undo everything the hook and middle earned. If your ending could fit any product in the category, rewrite it.
 
 ---
 
@@ -183,17 +255,36 @@ Output is ONE paragraph, 180–260 words, with embedded timestamps marking each 
 
 Before sending the pitch, verify every item:
 
+**Structural:**
 - [ ] Idea fits cleanly within 15 seconds (3–5 beats)
 - [ ] Timestamps are embedded in the paragraph (e.g., *(0–2s)*, *(2–6s)*)
+- [ ] One paragraph, ~180–260 words
+- [ ] Ends with a single on-screen tagline in quotes
+
+**Hard constraints:**
 - [ ] Zero dialogue, voiceover, or talking heads
 - [ ] Zero turned-on phones, laptops, TVs, tablets, or screens
 - [ ] All characters described as caucasian-looking AND with rich detail (age, build, hair, distinguishing features, clothing specifics, energy/micro-state)
 - [ ] Environment described with rich detail (light quality, time of day, textures, periphery, ambient sound)
-- [ ] First 1–2 seconds contain a clear pattern-interrupt hook
 - [ ] Idea feels filmable IRL — no CGI, no fantasy
-- [ ] One paragraph, ~180–260 words
-- [ ] Ends with a single on-screen tagline in quotes
+
+**Hook quality:**
+- [ ] First 1–2 seconds contain a clear pattern-interrupt hook
 - [ ] The hook is *specifically earned* by this product, not generic weirdness
+
+**Middle quality:**
+- [ ] The middle does at least TWO of the four jobs (deepen mystery / reveal stakes / sensory crescendo / quiet tension)
+- [ ] The middle does NOT just "explain" the hook
+- [ ] The middle has at least one charged object, gesture, or sensory detail the viewer would remember on second watch
+
+**Ending quality:**
+- [ ] Product entry uses one of the 5 entry modes (not a spin, not a QVC hold-up)
+- [ ] Closing frame is screenshot-able
+- [ ] Closing frame leaves ONE thing unresolved (ambiguous expression, hinted larger story, etc.)
+- [ ] Tagline is a resonance line (≤6 words), not a slogan that explains the product
+- [ ] Tagline would feel cryptic out of context, inevitable in context
+- [ ] Character does NOT look at camera and smile
+- [ ] The ad could not be re-skinned for a competitor — it belongs to THIS product
 
 If any box fails, rewrite before delivering.
 
