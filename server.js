@@ -607,6 +607,11 @@ function parseShotsOutput(text) {
       ratio: '9:16',
     });
   }
+  // Fallback: if Claude used the combined-document format (no === SCENE === headers),
+  // treat the whole output as a single scene so the pipeline doesn't hard-fail.
+  if (!scenes.length && text.trim()) {
+    scenes.push({ number: 1, name: 'Scene 1', prompt: text.trim(), duration: 15, ratio: '9:16' });
+  }
   return scenes;
 }
 
@@ -1024,7 +1029,7 @@ async function runAdPipeline(jobId) {
     // ── Stage 4: Shots ───────────────────────────────────────────────────
     await updateAdJob(jobId, { stage: 'shots', stageLabel: 'Writing cinematic shot prompts…', progress: 0.37 });
     console.log('[ad-job]', jobId, 'shots start');
-    const shotsMsg = `Here is the realistic ad pitch (a single 15-second video, one paragraph with embedded timestamps, plus a "Why it works" note):\n\n${ideaText}\n\nTreat this as a SINGLE 15-second scene. Use the per-scene output format and produce exactly ONE document with the header "=== SCENE 1 OF 1 — [short scene name] ===" followed by the shot timeline, effects inventory, density map, and energy arc. Honour the pitch's embedded beat timestamps. The video is silent (no dialogue, no voiceover) and contains no turned-on phone/laptop/tablet/TV screens.`;
+    const shotsMsg = `CONCEPT\n${ideaText}\n\nSCENES\n1. Full 15-second ad — translate the entire CONCEPT paragraph above into a single per-scene cinematic document. Honour the embedded beat timestamps exactly. The video is silent (no dialogue, no voiceover) and contains no turned-on phone, laptop, tablet, or TV screens.`;
     const shotsRes = await claudeApiCall(ANTHROPIC_API_KEY, SKILL_SHOTS, [{ role: 'user', content: [{ type: 'text', text: shotsMsg }] }]);
     if (shotsRes.status !== 200) throw new Error('Shots failed: ' + (shotsRes.body?.error?.message || shotsRes.status));
     const shotsText = shotsRes.body?.content?.[0]?.text || '';
