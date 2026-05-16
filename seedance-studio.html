@@ -1384,6 +1384,26 @@ function watchAdJob(jobId) {
       if (job.status === 'done') {
         localStorage.removeItem(AD_BG_JOB_KEY); adProgFinish(); cleanup();
         await loadLib(currentUser?.userId);
+        // Defensive recovery: if the server-side lib save failed (Redis hiccup,
+        // cold restart, etc.) the video could be missing from `lib` even though
+        // the pipeline succeeded. Rebuild the lib item from the job state so the
+        // user always sees their video — saveLib then pushes it back to Redis.
+        if (job.videoUrl && job.libItemId && !lib.some(it => it && it.id === job.libItemId)) {
+          console.warn('[watchAdJob] video missing from lib after loadLib — recovering from job state');
+          lib.unshift({
+            id: job.libItemId,
+            prompt: 'Ad pipeline scene',
+            url: job.videoUrl,
+            res: '480p', ratio: '9:16', dur: 15, audio: false,
+            model: 'dreamina-seedance-2-0-260128',
+            ts: job.createdAt || Date.now(),
+            done: Date.now(),
+            folder: job.adTitle || ('Ad — ' + new Date().toLocaleDateString()),
+            label: 'Scene 1 video',
+            sceneIndex: 0,
+          });
+          saveLib();
+        }
         goPage('library', document.querySelector('.tab[data-page="library"]'));
         setLibTab('ads');
         toast('Ad pipeline complete! Your video is in the Library.', 'ok', 7000); return;
