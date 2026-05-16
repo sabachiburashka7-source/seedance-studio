@@ -87,6 +87,7 @@ ByteDance runs a real-person classifier on every input image. Even clearly AI-ge
 
 **Selective application** — the disruption pipeline is only applied where it earns its keep:
 - **Manual T2V/I2V flow (`fileToDataUrl`)** — runs `hasFace(img)` (browser `FaceDetector` API) before processing. Images containing a face → full disruption pipeline. Images without (products, environments, scenery) → pass through with the original FileReader bytes, completely unchanged. When `FaceDetector` is not available in the browser (most desktop Chrome on Windows/Linux, Firefox, Safari), `hasFace` defaults to `true` so face images are still protected.
+- **Manual V2V flow (`uploadVidFile` → `disruptVideoFile`)** — same pipeline applied per-frame. Probes the first frame for a face; if present, plays the video through a canvas + `MediaRecorder` and runs `disruptFrameInPlace` on every frame. Output is **WebM** (vp9 preferred, vp8 fallback) at ~0.1 bits/pixel/sec (clamped 4–12 Mbps), renamed `<original>.webm`. No face → file passes through raw. Any failure (codec, decode, recorder) → falls back to raw upload. Real-time processing: a 15s clip takes ~15–20s to encode.
 - **Ads pipeline (`urlToDataUrl`)** — disruption pipeline is **NOT applied at all**. Refs go through `letterboxToAspect(img, '9:16')` for clean letterboxing to 9:16 + JPEG at 0.95 quality, no tone grade, no downscale/upscale, no grain. Character refs (`SUBJECT_*`) are filtered out at the call site instead — they would trip the classifier regardless of how heavy the disruption was.
 
 **Disruption pipeline (`processForVideo`, face images only):**
@@ -102,10 +103,12 @@ All steps operate on high-frequency texture only. Face landmarks (eye/nose/mouth
 Output looks like a real person photographed and lightly graded for a documentary or film. No cartoon/illustration look.
 
 Helpers (`seedance-studio.html`):
-- `processForVideo(img)` — disruption pipeline only (no aspect arg anymore).
+- `disruptFrameInPlace(ctx, w, h)` — shared in-place pass over a 2D context. Single source of truth for the disruption parameters; called by both image and video paths.
+- `processForVideo(img)` — single-image entry. Draws to a canvas, calls `disruptFrameInPlace`, returns a JPEG data URL at 0.78.
+- `disruptVideoFile(file, onProgress)` — video entry. Probes first frame for a face, then per-frame canvas + `MediaRecorder` re-encode to WebM. Returns original file unchanged if no face. Progress callback receives 0..1.
 - `letterboxToAspect(img, targetAspect)` — clean letterbox to target aspect at JPEG 0.95. Used by `urlToDataUrl`.
 - `hasFace(img)` — async, uses `window.FaceDetector` if available, else returns `true`.
-- `fileToDataUrl(file)` — manual flow. Runs `hasFace` and routes accordingly.
+- `fileToDataUrl(file)` — manual image flow. Runs `hasFace` and routes accordingly.
 - `urlToDataUrl(urlOrDataUrl, targetAspect)` — ads pipeline. Always letterbox-only, never disruption.
 
 **Ads pipeline character handling unchanged:** `createAd` and `resumeAd` filter `refMap` entries where the key starts with `SUBJECT_` before sending to BytePlus. The character is described in the per-scene text prompt; the starting frame still encodes the character visually but is letterboxed only (no disruption).

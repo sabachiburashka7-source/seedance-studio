@@ -1861,15 +1861,35 @@ async function uploadVidFile(inp) {
   const inner = document.getElementById('vid-zone-inner');
   const st = document.getElementById('vid-url-status');
   zone.classList.add('filled');
-  inner.innerHTML = `<div class="vid-text">Uploading ${file.name}…</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${(file.size/1024/1024).toFixed(1)} MB — please wait</div>`;
   document.getElementById('vid-del').hidden = false;
+
+  let uploadFile = file;
+  try {
+    inner.innerHTML = `<div class="vid-text">Processing ${file.name}…</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Disrupting frames to bypass real-person classifier</div>`;
+    st.style.color = 'var(--text3)'; st.textContent = 'Processing video frames… 0%';
+    uploadFile = await disruptVideoFile(file, (p) => {
+      st.textContent = `Processing video frames… ${Math.round(p * 100)}%`;
+    });
+    if (uploadFile !== file) {
+      console.log('[uploadVidFile] disrupted',
+        (file.size/1024/1024).toFixed(1), 'MB ->',
+        (uploadFile.size/1024/1024).toFixed(1), 'MB');
+    } else {
+      console.log('[uploadVidFile] no face detected — uploading raw file');
+    }
+  } catch (e) {
+    console.warn('[uploadVidFile] disruption failed, uploading raw:', e.message);
+    uploadFile = file;
+  }
+
+  inner.innerHTML = `<div class="vid-text">Uploading ${uploadFile.name}…</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${(uploadFile.size/1024/1024).toFixed(1)} MB — please wait</div>`;
   st.style.color = 'var(--text3)'; st.textContent = 'Uploading to temporary host…';
 
   try {
-    const r = await fetch('/upload-temp?name=' + encodeURIComponent(file.name), {
+    const r = await fetch('/upload-temp?name=' + encodeURIComponent(uploadFile.name), {
       method: 'POST',
-      headers: { 'Content-Type': file.type || 'video/mp4' },
-      body: file
+      headers: { 'Content-Type': uploadFile.type || 'video/mp4' },
+      body: uploadFile
     });
     const j = await r.json();
     if (!j.url) throw new Error(j.error || 'No URL returned');
@@ -2010,9 +2030,10 @@ function resizeDataUrl(dataUrl, maxPx = 1024) {
 // hair outline) sit in the LOW-frequency channel which the video model
 // reads — none of this pipeline touches it. The person in the output
 // video still looks like the reference image.
-function processForVideo(img) {
-  const w = img.naturalWidth, h = img.naturalHeight;
-
+// Shared disruption pass — operates in-place on a 2D context that
+// already contains the source frame at (0,0). Used by both
+// processForVideo (single image) and disruptVideoFile (per frame).
+function disruptFrameInPlace(ctx, w, h) {
   const dw = Math.max(1, Math.round(w * 0.62));
   const dh = Math.max(1, Math.round(h * 0.62));
   const small = document.createElement('canvas');
@@ -2021,19 +2042,15 @@ function processForVideo(img) {
   sctx.imageSmoothingEnabled = true;
   sctx.imageSmoothingQuality = 'high';
   sctx.filter = 'contrast(1.08) saturate(1.05) brightness(1.02)';
-  sctx.drawImage(img, 0, 0, dw, dh);
+  sctx.drawImage(ctx.canvas, 0, 0, dw, dh);
   sctx.filter = 'none';
 
-  const big = document.createElement('canvas');
-  big.width = w; big.height = h;
-  const bctx = big.getContext('2d');
-  bctx.imageSmoothingEnabled = true;
-  bctx.imageSmoothingQuality = 'high';
-  bctx.filter = 'blur(1.1px)';
-  bctx.drawImage(small, 0, 0, w, h);
-  bctx.filter = 'none';
+  ctx.filter = 'blur(1.1px)';
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(small, 0, 0, w, h);
+  ctx.filter = 'none';
 
-  const idata = bctx.getImageData(0, 0, w, h);
+  const idata = ctx.getImageData(0, 0, w, h);
   const d = idata.data;
   const orig = new Uint8ClampedArray(d);
   // ~0.15% of width, clamped to [1, 2]px — enough to register as lens
@@ -2042,7 +2059,6 @@ function processForVideo(img) {
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4;
-      // R shifted slightly left, B slightly right — green channel stays put.
       const iR = (y * w + Math.max(0, x - off)) * 4;
       const iB = (y * w + Math.min(w - 1, x + off)) * 4;
       const R = orig[iR];
@@ -2062,9 +2078,117 @@ function processForVideo(img) {
       d[i+2] = Math.max(0, Math.min(255, B2));
     }
   }
-  bctx.putImageData(idata, 0, 0);
+  ctx.putImageData(idata, 0, 0);
+}
 
+function processForVideo(img) {
+  const w = img.naturalWidth, h = img.naturalHeight;
+  const big = document.createElement('canvas');
+  big.width = w; big.height = h;
+  const bctx = big.getContext('2d');
+  bctx.imageSmoothingEnabled = true;
+  bctx.imageSmoothingQuality = 'high';
+  bctx.drawImage(img, 0, 0);
+  disruptFrameInPlace(bctx, w, h);
   return big.toDataURL('image/jpeg', 0.78);
+}
+
+// Video equivalent of processForVideo. Plays the source file through a
+// canvas + MediaRecorder pipeline, applying disruptFrameInPlace to every
+// frame. Output is a WebM File (MediaRecorder's only format in-browser).
+// Returns the original file unchanged if the first frame contains no face.
+// onProgress(0..1) is called periodically while encoding.
+async function disruptVideoFile(file, onProgress) {
+  if (typeof MediaRecorder === 'undefined') {
+    console.warn('[disruptVideoFile] MediaRecorder unavailable — passing through unchanged');
+    return file;
+  }
+  const objUrl = URL.createObjectURL(file);
+  try {
+    const video = document.createElement('video');
+    video.src = objUrl;
+    video.muted = true;
+    video.playsInline = true;
+    video.crossOrigin = 'anonymous';
+    await new Promise((resolve, reject) => {
+      video.onloadedmetadata = resolve;
+      video.onerror = () => reject(new Error('Could not decode video'));
+    });
+    const w = video.videoWidth, h = video.videoHeight;
+    if (!w || !h) throw new Error('Video has no dimensions');
+
+    video.currentTime = 0;
+    await new Promise((resolve) => { video.onseeked = resolve; });
+    const probe = document.createElement('canvas');
+    probe.width = w; probe.height = h;
+    probe.getContext('2d').drawImage(video, 0, 0);
+    const probeImg = new Image();
+    await new Promise((resolve, reject) => {
+      probeImg.onload = resolve;
+      probeImg.onerror = () => reject(new Error('probe decode failed'));
+      probeImg.src = probe.toDataURL('image/jpeg', 0.8);
+    });
+    const face = await hasFace(probeImg);
+    if (!face) {
+      console.log('[disruptVideoFile] no face detected — passing through unchanged');
+      return file;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    const mimes = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+    const mime = mimes.find(m => MediaRecorder.isTypeSupported(m));
+    if (!mime) throw new Error('No supported WebM codec');
+
+    const stream = canvas.captureStream(30);
+    const bits = Math.max(4_000_000, Math.min(12_000_000, Math.round(w * h * 30 * 0.1)));
+    const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bits });
+    const chunks = [];
+    recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
+    const stopped = new Promise(r => { recorder.onstop = r; });
+    recorder.start();
+
+    const duration = video.duration || 0;
+    video.currentTime = 0;
+    await new Promise((resolve) => { video.onseeked = resolve; });
+
+    await new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      video.onended = finish;
+      video.onerror = finish;
+      const loop = () => {
+        if (done) return;
+        if (video.ended || video.paused) { finish(); return; }
+        try {
+          ctx.drawImage(video, 0, 0, w, h);
+          disruptFrameInPlace(ctx, w, h);
+        } catch (e) {
+          console.warn('[disruptVideoFile] frame error:', e.message);
+        }
+        if (onProgress && duration) onProgress(Math.min(1, video.currentTime / duration));
+        requestAnimationFrame(loop);
+      };
+      video.play().catch(finish);
+      loop();
+    });
+
+    await new Promise(r => setTimeout(r, 250));
+    if (recorder.state !== 'inactive') recorder.stop();
+    await stopped;
+
+    if (!chunks.length) throw new Error('Recorder produced no data');
+    const blob = new Blob(chunks, { type: mime });
+    const newName = file.name.replace(/\.[^.]+$/, '') + '.webm';
+    if (onProgress) onProgress(1);
+    return new File([blob], newName, { type: mime });
+  } finally {
+    URL.revokeObjectURL(objUrl);
+  }
 }
 
 // Clean letterbox to a target aspect (e.g. '9:16') — black bars + JPEG.
