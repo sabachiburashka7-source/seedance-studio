@@ -90,11 +90,14 @@ ByteDance runs a real-person classifier on every input image. Even clearly AI-ge
 - **Ads pipeline (`urlToDataUrl`)** — disruption pipeline is **NOT applied at all**. Refs go through `letterboxToAspect(img, '9:16')` for clean letterboxing to 9:16 + JPEG at 0.95 quality, no tone grade, no downscale/upscale, no grain. Character refs (`SUBJECT_*`) are filtered out at the call site instead — they would trip the classifier regardless of how heavy the disruption was.
 
 **Disruption pipeline (`processForVideo`, face images only):**
-1. Tone grade — `contrast(1.06) saturate(1.04) brightness(1.02)` via canvas filter.
-2. Downscale to 72% then upscale back to original size — two bilinear passes destroy the pixel-level micro-texture the classifier reads as "camera capture."
-3. `blur(0.7px)` during the upscale — kills tack-sharp AI artifacts at facial landmarks.
-4. Film-grain noise: ±12 luma + ±6 chroma per pixel.
-5. JPEG re-encode at 84%.
+1. Tone grade — `contrast(1.08) saturate(1.05) brightness(1.02)` via canvas filter.
+2. Downscale to 62% then upscale back to original size — two bilinear passes destroy the pixel-level micro-texture the classifier reads as "camera capture."
+3. `blur(1.1px)` during the upscale — kills tack-sharp AI artifacts at facial landmarks.
+4. Chromatic aberration — sub-pixel R/B channel offset (~1–2px) mimics real lens dispersion. AI generators produce perfectly aligned RGB channels; the misalignment is a strong "real photo" signal.
+5. Film-grain noise: ±20 luma + ±10 chroma per pixel (real ISO 800+ levels).
+6. JPEG re-encode at 78%.
+
+All steps operate on high-frequency texture only. Face landmarks (eye/nose/mouth positions, jaw shape, hair outline) sit in the low-frequency channel the video model reads, so the person in the output video still resembles the reference.
 
 Output looks like a real person photographed and lightly graded for a documentary or film. No cartoon/illustration look.
 

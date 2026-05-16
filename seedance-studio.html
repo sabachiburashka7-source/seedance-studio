@@ -1995,23 +1995,32 @@ function resizeDataUrl(dataUrl, maxPx = 1024) {
 // Ad refs go through letterboxToAspect only — clean letterbox + JPEG.
 //
 // Pipeline:
-//   1. Tone grade — slight contrast/saturation/brightness lift.
-//   2. 72% downscale → upscale back — two bilinear passes destroy the
+//   1. Tone grade — camera-style contrast/saturation/brightness lift.
+//   2. 62% downscale → upscale back — two bilinear passes destroy the
 //      pixel-level micro-texture the classifier reads as "camera capture."
-//   3. 0.7px blur during the upscale — kills tack-sharp AI artifacts.
-//   4. Film-grain noise: ±12 luma + ±6 chroma per pixel.
-//   5. JPEG re-encode at 84%.
+//   3. 1.1px blur during the upscale — kills tack-sharp AI artifacts.
+//   4. Chromatic aberration — sub-pixel R/B channel shift mimics real lens
+//      dispersion. AI generators produce perfectly aligned RGB channels;
+//      a slight misalignment is a strong "real photo" signal.
+//   5. Film-grain noise: ±20 luma + ±10 chroma per pixel (real ISO 800+).
+//   6. JPEG re-encode at 78%.
+//
+// Identity preservation: every step here operates on high-frequency
+// texture only. Face landmarks (eye/nose/mouth positions, jaw shape,
+// hair outline) sit in the LOW-frequency channel which the video model
+// reads — none of this pipeline touches it. The person in the output
+// video still looks like the reference image.
 function processForVideo(img) {
   const w = img.naturalWidth, h = img.naturalHeight;
 
-  const dw = Math.max(1, Math.round(w * 0.72));
-  const dh = Math.max(1, Math.round(h * 0.72));
+  const dw = Math.max(1, Math.round(w * 0.62));
+  const dh = Math.max(1, Math.round(h * 0.62));
   const small = document.createElement('canvas');
   small.width = dw; small.height = dh;
   const sctx = small.getContext('2d');
   sctx.imageSmoothingEnabled = true;
   sctx.imageSmoothingQuality = 'high';
-  sctx.filter = 'contrast(1.06) saturate(1.04) brightness(1.02)';
+  sctx.filter = 'contrast(1.08) saturate(1.05) brightness(1.02)';
   sctx.drawImage(img, 0, 0, dw, dh);
   sctx.filter = 'none';
 
@@ -2020,30 +2029,42 @@ function processForVideo(img) {
   const bctx = big.getContext('2d');
   bctx.imageSmoothingEnabled = true;
   bctx.imageSmoothingQuality = 'high';
-  bctx.filter = 'blur(0.7px)';
+  bctx.filter = 'blur(1.1px)';
   bctx.drawImage(small, 0, 0, w, h);
   bctx.filter = 'none';
 
   const idata = bctx.getImageData(0, 0, w, h);
   const d = idata.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const R = d[i], G = d[i+1], B = d[i+2];
-    const Y  =  0.299    * R + 0.587    * G + 0.114    * B;
-    const Cb = -0.168736 * R - 0.331264 * G + 0.5      * B + 128;
-    const Cr =  0.5      * R - 0.418688 * G - 0.081312 * B + 128;
-    const Y2  = Y  + (Math.random() - 0.5) * 24;
-    const Cb2 = Cb + (Math.random() - 0.5) * 12;
-    const Cr2 = Cr + (Math.random() - 0.5) * 12;
-    const R2 = Y2 + 1.402    * (Cr2 - 128);
-    const G2 = Y2 - 0.344136 * (Cb2 - 128) - 0.714136 * (Cr2 - 128);
-    const B2 = Y2 + 1.772    * (Cb2 - 128);
-    d[i]   = Math.max(0, Math.min(255, R2));
-    d[i+1] = Math.max(0, Math.min(255, G2));
-    d[i+2] = Math.max(0, Math.min(255, B2));
+  const orig = new Uint8ClampedArray(d);
+  // ~0.15% of width, clamped to [1, 2]px — enough to register as lens
+  // dispersion without smearing face features.
+  const off = Math.max(1, Math.min(2, Math.round(w * 0.0015)));
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      // R shifted slightly left, B slightly right — green channel stays put.
+      const iR = (y * w + Math.max(0, x - off)) * 4;
+      const iB = (y * w + Math.min(w - 1, x + off)) * 4;
+      const R = orig[iR];
+      const G = orig[i + 1];
+      const B = orig[iB + 2];
+      const Y  =  0.299    * R + 0.587    * G + 0.114    * B;
+      const Cb = -0.168736 * R - 0.331264 * G + 0.5      * B + 128;
+      const Cr =  0.5      * R - 0.418688 * G - 0.081312 * B + 128;
+      const Y2  = Y  + (Math.random() - 0.5) * 40;
+      const Cb2 = Cb + (Math.random() - 0.5) * 20;
+      const Cr2 = Cr + (Math.random() - 0.5) * 20;
+      const R2 = Y2 + 1.402    * (Cr2 - 128);
+      const G2 = Y2 - 0.344136 * (Cb2 - 128) - 0.714136 * (Cr2 - 128);
+      const B2 = Y2 + 1.772    * (Cb2 - 128);
+      d[i]   = Math.max(0, Math.min(255, R2));
+      d[i+1] = Math.max(0, Math.min(255, G2));
+      d[i+2] = Math.max(0, Math.min(255, B2));
+    }
   }
   bctx.putImageData(idata, 0, 0);
 
-  return big.toDataURL('image/jpeg', 0.84);
+  return big.toDataURL('image/jpeg', 0.78);
 }
 
 // Clean letterbox to a target aspect (e.g. '9:16') — black bars + JPEG.
