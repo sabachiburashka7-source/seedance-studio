@@ -115,39 +115,34 @@ Helpers (`seedance-studio.html`):
 
 History: 5-pass heavy → invisible chroma-only (cabda04) → two-mode normal/aggressive → single-pass disruption on every image (every flow) → **selective face-only disruption in manual flow + zero disruption in ads** (current). Ads pipeline previously ran every ref through `processForVideo` with letterboxing; testing showed the disruption was not load-bearing once character refs were dropped, so the pipeline was cleaned out and only the aspect-enforcing letterbox kept.
 
-## Ads pipeline (4-stage Claude → image gen → video gen)
-User uploads product photos + optional description → `createAd()` runs the full pipeline.
+## Ads pipeline (3-stage: idea → product ref → video)
+User uploads product photos + optional description → `createAd()` POSTs to `/api/gen/ad-run` → server runs `runAdPipeline(jobId)` async, frontend polls `/api/gen/ad-job?id=…`.
 
-**Stage order:**
-1. `POST /api/gen/brief` — product images + description → Claude (`ad-idea-generator` skill) → free-text concept + scene list (`ideaText`)
-2. `POST /api/gen/shots` — `ideaText` → Claude (`video-prompt-builder` skill) → per-scene cinematic documents with `=== SCENE N OF M — name ===` headers (`shotsText`, parsed into `scenes[]`)
-3. `POST /api/gen/refsheets` — `ideaText + shotsText` → Claude (`ref-sheet-generator` skill) → reference sheet prompts for characters / product / environments (`refSheetsText`, parsed into `entities[]` with `subjectId` / `envId` fields)
-4. `POST /api/gen/startframes` — `ideaText + shotsText + refSheetsText` → Claude (`starting-frame-generator` skill) → one starting-frame prompt per scene (parsed into `startFrames[]` with `subjectIds` / `envIds` referencing entity IDs)
+**Stage order (all inside `runAdPipeline`):**
+1. **Idea** — product images + description → Claude (`organic-tiktok-ad-generator` skill) → single paragraph 15-second TikTok-style ad pitch with embedded `(0–2s)`, `(2–6s)`, `(6–11s)`, `(11–15s)` beats. Cost $0.15. `extractIdeaParagraph()` strips the `**THE IDEA**` header so the paragraph can be fed straight to BytePlus.
+2. **Product reference image** — user's uploaded product photos → `adGenProductRef()` → OpenAI `gpt-image-2` at `quality: 'low'`, `size: 1024x1024` → product reference sheet image (1 image). Cost $0.02. Stored to R2 if configured, hidden lib item kept for reference.
+3. **Video** — `adSubmitVideo(ideaParagraph, productRefUrl, '')` → BytePlus Seedance 2.0 task, 15s, 9:16, 480p. Product ref URL attached as `role: 'reference_image'` (not first-frame). Video cost computed from pixel volume.
 
-**Then per-scene image + video generation:**
-- 3.5: For each entity, call `/api/generate-image` (product entity attaches the user's uploaded photos as refs, resized to 1024px). **Product and environment refs are generated with `gpt-image-2` at `quality: 'low'`** (cheap, fast, good enough for the downstream video task). Character refs (when not skipped) fall through to the default Seedream model. When `SKIP_CHARACTER_REFS = true` (default), `SUBJECT_*` entities are skipped entirely — those refs would be discarded at the video step anyway.
-- 4.5: For each scene, call `/api/generate-image` with the starting-frame prompt + the matching `SUBJECT_xxx` / `ENV_xxx` / `product` ref images (each resized to 1024px — full-res ref sheets are 3–8MB and silently get dropped otherwise)
-- 5: Submit BytePlus video task with starting frame as first reference, then **only non-character refs** (env + product — `SUBJECT_*` entries are filtered out). Character refs are skipped because BytePlus's real-person classifier rejects AI-generated portraits even after heavy image disruption; the character is described in the per-scene text prompt instead. The pipeline now produces **exactly one 15-second scene** (the `ad-idea-generator` skill enforces single-scene single-15s output with all four F.A.T.E. elements time-budgeted within those 15 seconds), so the previous-scene-video continuity reference is no longer used. Output is 9:16, fixed 15s. Frontend `pollAd(job)` and `finishAd(job, url, err)` save items into the `folder: adTitle` group. The scene-loop and prev-video-ref code paths in `createAd`/`resumeAdPipeline` remain in place defensively — they iterate once and never fire the prev-video branch when N=1.
+**Frontend ↔ server stages** (both must agree): `idea` → `productRef` → `video` → `done`. `adProgUpdateFromJob` maps these to chip IDs `idea`, `productRef`, `video`.
 
-**Costs (USD, charged on top of per-image / per-video gen):** brief $0.15, shots $0.15, refsheets $0.10, startframes $0.05.
+**Single 15s output, 9:16.** Final video saved to `lib` with `folder: adTitle` (title derived from description or the first sentence of the idea paragraph). Fal Topaz upscale fired and forgotten.
 
-**`claudeApiCall(apiKey, system, messages)` helper** — uses `ANTHROPIC_API_KEY` env var, model `claude-sonnet-4-6`, 240s timeout (large outputs need it).
+**`claudeApiCall(apiKey, system, messages)` helper** — uses `ANTHROPIC_API_KEY` env var, model `claude-sonnet-4-6`, 240s timeout.
 
-**`readBody` is called FIRST in every `/api/gen/*` handler**, before any auth checks — prevents "Failed to fetch" client errors when the server rejects mid-upload of a large image body.
-
-**Output parsers (all in server.js):** `parseShotsOutput`, `parseRefSheetsOutput`, `parseStartFramesOutput` — split text by `=== SECTION ===` headers and per-block regexes. No JSON involved (Claude unreliably embeds literal newlines / unescaped quotes inside JSON strings, breaking `JSON.parse` with no good repair). Plain-text format with delimiters is robust.
+**Endpoints (only two now):**
+- `POST /api/gen/ad-run` — kicks off the pipeline, returns `{ jobId }`. `readBody` called FIRST (before auth) to avoid "Failed to fetch" on large image uploads.
+- `GET  /api/gen/ad-job?id=<jobId>` — polled by frontend, returns full job state (stage, stageLabel, progress 0..1, adTitle, videoUrl, error).
 
 **⚠️ Ad-blocker naming rule — NEVER use `/ads/` in any API endpoint path.**
-Browser ad blockers (uBlock Origin, EasyList, AdGuard, etc.) match URL paths containing `/ads/`, `/ad-`, `ads.` etc. and silently kill the fetch before it leaves the browser. Symptoms: instant "Failed to fetch", Render logs show nothing at all. Renamed to `/api/gen/{brief,shots,refsheets,startframes}` to dodge this. Use neutral words (`gen`, `create`, `pipeline`, `brief`, `shots`) for any new endpoint touching ads/campaigns/promotions.
+Browser ad blockers (uBlock Origin, EasyList, AdGuard, etc.) match URL paths containing `/ads/`, `/ad-`, `ads.` etc. and silently kill the fetch before it leaves the browser. Symptoms: instant "Failed to fetch", Render logs show nothing at all. Renamed to `/api/gen/{ad-run,ad-job}` to dodge this. Use neutral words (`gen`, `run`, `job`) for any new endpoint touching ads/campaigns/promotions.
 
-**Skill files** are plain `.md` (with YAML frontmatter that gets stripped at load): `ad-idea-generator.md`, `video-prompt-builder.md`, `ref-sheet-generator.md`, `starting-frame-generator.md`. Read at boot via `fs.readFileSync` — server fails to start if any are missing.
+**Skill file** is plain `.md` (YAML frontmatter stripped at load): `skills/organic-tiktok-ad-generator.md` → `SKILL_IDEA` constant. Read at boot via `fs.readFileSync` — server fails to start if missing.
 
 **Frontend (Ads page):**
 - `adImages[]` — `{file, dataUrl}` for uploaded product photos
 - `addAdImages` / `removeAdImage` / `renderAdImages` — multi-image upload grid with × buttons
-- `adLog(msg, type)` / `adLogUpdate(step, msg, type)` / `adLogClear()` — step-by-step progress log panel
-- `genImage(prompt, ratio, inputImages, label)` inside `createAd()` — image-gen with retry/backoff for 429/5xx/timeout
-- `refMap` keyed by `SUBJECT_xxx` / `ENV_xxx` / `product` — built during stage 3.5, consumed by stage 4.5 and stage 5
+- `createAd()` — resizes images via `resizeForClaude`, POSTs to `/api/gen/ad-run`, stores `jobId` in `localStorage.ad_bg_job`, then `watchAdJob(jobId)` polls until done/failed
+- `adProg*` family — animated progress bar + chips, driven by `adProgUpdateFromJob(job)` from each poll response
 
 ## Library
 - `lib` items: `{ id, prompt, url, ratio, model, ts, done, type?, folder?, label?, upscaling?, upscaleRequestId?, upscaleStatusUrl?, upscaleResponseUrl? }`

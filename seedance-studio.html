@@ -1149,12 +1149,8 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         </div>
         <div class="ad-prog-chips">
           <span class="ad-prog-chip" id="ad-prog-chip-warmup" data-i18n="ads.connect">Connect</span>
-          <span class="ad-prog-chip" id="ad-prog-chip-brief" data-i18n="ads.concept">Concept</span>
-          <span class="ad-prog-chip" id="ad-prog-chip-refsheets" data-i18n="ads.refs">Refs</span>
-          <span class="ad-prog-chip" id="ad-prog-chip-refImages" data-i18n="ads.chipImages">Images</span>
-          <span class="ad-prog-chip" id="ad-prog-chip-startPrompts" data-i18n="ads.frames">Frames</span>
-          <span class="ad-prog-chip" id="ad-prog-chip-startImages" data-i18n="ads.stills">Stills</span>
-          <span class="ad-prog-chip" id="ad-prog-chip-shots" data-i18n="ads.script">Script</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-idea" data-i18n="ads.idea">Idea</span>
+          <span class="ad-prog-chip" id="ad-prog-chip-productRef" data-i18n="ads.product">Product</span>
           <span class="ad-prog-chip" id="ad-prog-chip-video" data-i18n="ads.chipVideo">Video</span>
         </div>
       </div>
@@ -1424,11 +1420,9 @@ function watchAdJob(jobId) {
 function adProgUpdateFromJob(job) {
   if (!adProg) return;
   const stageToChip = {
-    brief: 'brief', brief_done: 'brief',
-    refsheets: 'refsheets', refsheets_done: 'refsheets',
-    refImages: 'refImages', refImages_done: 'refImages',
-    shots: 'shots', shots_done: 'shots',
-    video: 'video', video_polling: 'video', storing: 'video', done: 'video',
+    idea: 'idea',
+    productRef: 'productRef',
+    video: 'video', done: 'video',
   };
   const chip = stageToChip[job.stage];
   if (chip && chip !== adProg.currentStage) adProgEnter(chip);
@@ -1494,20 +1488,15 @@ function adLogClear() {}
 // ─── Ads pipeline progress bar ────────────────────────────────────────
 // Stages are weighted by their typical wall-clock cost. Video gen is the
 // dominant chunk (~85% of total time), so it gets the lion's share.
-const AD_STAGE_ORDER = ['warmup','brief','refsheets','refImages','startPrompts','startImages','shots','video'];
+const AD_STAGE_ORDER = ['warmup','idea','productRef','video'];
 const AD_STAGE_WEIGHTS = {
-  warmup: 1, brief: 4, refsheets: 3, refImages: 5,
-  startPrompts: 3, startImages: 5, shots: 3, video: 76,
+  warmup: 1, idea: 8, productRef: 6, video: 85,
 };
 const AD_STAGE_LABELS = {
-  warmup:       'Connecting to server',
-  brief:        'Brainstorming ad concept',
-  refsheets:    'Designing reference sheets',
-  refImages:    'Creating reference images',
-  startPrompts: 'Writing starting frame prompts',
-  startImages:  'Painting starting frames',
-  shots:        'Writing cinematic shot prompts',
-  video:        'Rendering video (this is the slow part)',
+  warmup:     'Connecting to server',
+  idea:       'Generating ad idea',
+  productRef: 'Creating product reference image',
+  video:      'Rendering video (this is the slow part)',
 };
 const AD_VIDEO_ETA_SEC = 8 * 60; // ~8 min — the video sub-progress eases toward 92% over this
 
@@ -3259,9 +3248,7 @@ const TRANSLATIONS = {
     'ads.resumeText':'⚡ Pipeline paused — resume where you left off?',
     'ads.resume':'Resume','ads.dismiss':'Dismiss',
     'ads.usuallyTakes':'Usually takes 8–12 minutes',
-    'ads.connect':'Connect','ads.concept':'Concept','ads.refs':'Refs',
-    'ads.chipImages':'Images','ads.frames':'Frames','ads.stills':'Stills',
-    'ads.script':'Script','ads.chipVideo':'Video',
+    'ads.connect':'Connect','ads.idea':'Idea','ads.product':'Product','ads.chipVideo':'Video',
     'ads.createAd':'Create Ad','ads.stopPipeline':'■ Stop Pipeline',
     'promo.title':'Redeem Promo Code',
     'promo.sub':'Enter your promo code to add funds to your balance.',
@@ -3316,9 +3303,7 @@ const TRANSLATIONS = {
     'ads.resumeText':'⚡ პაიპლაინი შეჩერდა — განაახლეთ იქიდან, სადაც გაჩერდით?',
     'ads.resume':'განახლება','ads.dismiss':'დახურვა',
     'ads.usuallyTakes':'ჩვეულებრივ 8–12 წუთი სჭირდება',
-    'ads.connect':'კავშირი','ads.concept':'კონცეფცია','ads.refs':'სარეფ.',
-    'ads.chipImages':'სურათები','ads.frames':'კადრები','ads.stills':'სტოპ-კადრ.',
-    'ads.script':'სცენარი','ads.chipVideo':'ვიდეო',
+    'ads.connect':'კავშირი','ads.idea':'იდეა','ads.product':'პროდუქტი','ads.chipVideo':'ვიდეო',
     'ads.createAd':'რეკლამის შექმნა','ads.stopPipeline':'■ პაიპლაინის გაჩერება',
     'promo.title':'პრომო კოდის გამოყენება',
     'promo.sub':'შეიყვანეთ პრომო კოდი ბალანსის შესავსებად.',

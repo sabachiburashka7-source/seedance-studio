@@ -582,82 +582,8 @@ function claudeApiCall(apiKey, system, messages, maxTokens = 8192, timeoutMs = 2
   });
 }
 
-// ── Ad pipeline skill prompts ──────────────────────────────────────────────
-const SKILL_BRIEF   = fs.readFileSync(path.join(__dirname, 'skills/ad-idea-generator.md'), 'utf8').replace(/^---[\s\S]*?---\s*/m, '').trim();
-const SKILL_SHOTS   = fs.readFileSync(path.join(__dirname, 'skills/video-prompt-builder.md'), 'utf8').replace(/^---[\s\S]*?---\s*/m, '').trim();
-const SKILL_REFS    = fs.readFileSync(path.join(__dirname, 'skills/ref-sheet-generator.md'), 'utf8').replace(/^---[\s\S]*?---\s*/m, '').trim();
-const SKILL_FRAMES  = fs.readFileSync(path.join(__dirname, 'skills/starting-frame-generator.md'), 'utf8').replace(/^---[\s\S]*?---\s*/m, '').trim();
-
-// ── Ad pipeline output parsers ─────────────────────────────────────────────
-function parseShotsOutput(text) {
-  const scenes = [];
-  const parts = text.split(/(?====\s*SCENE\s+\d+\s+OF\s+\d+)/);
-  for (const part of parts) {
-    // Header tolerates: "=== SCENE 1 OF 1 — Name ===", "=== SCENE 1 OF 1 - Name ===",
-    // "=== SCENE 1 OF 1: Name ===", and "=== SCENE 1 OF 1 ===" (no dash/name).
-    // Claude sometimes drops the name on single-scene outputs.
-    const hm = part.match(/===\s*SCENE\s+(\d+)\s+OF\s+\d+\s*(?:[—–\-:]\s*([^\n=]+?)\s*)?===\s*\n?([\s\S]*)/);
-    if (!hm) continue;
-    const num = parseInt(hm[1]);
-    scenes.push({
-      number: num,
-      name: (hm[2] || '').trim() || `Scene ${num}`,
-      prompt: hm[3].trim(),
-      duration: 15,
-      ratio: '9:16',
-    });
-  }
-  // Fallback: if Claude used the combined-document format (no === SCENE === headers),
-  // treat the whole output as a single scene so the pipeline doesn't hard-fail.
-  if (!scenes.length && text.trim()) {
-    scenes.push({ number: 1, name: 'Scene 1', prompt: text.trim(), duration: 15, ratio: '9:16' });
-  }
-  return scenes;
-}
-
-function parseRefSheetsOutput(text) {
-  const entities = [];
-  const charSec = (text.match(/===\s*CHARACTER REFERENCE SHEETS\s*===([\s\S]*?)(?====\s*PRODUCT)/) || [])[1] || '';
-  charSec.split(/(?=^CHARACTER:)/m).filter(b => b.trim().startsWith('CHARACTER:')).forEach(block => {
-    const nm = block.match(/^CHARACTER:\s*(.+)/m);
-    const id = block.match(/SUBJECT ID:\s*(\d{3})/i);
-    if (nm) entities.push({ type: 'character', name: nm[1].trim(), subjectId: id ? id[1] : null, prompt: block.replace(/^CHARACTER:[^\n]+\n?/, '').trim() });
-  });
-  const prodSec = (text.match(/===\s*PRODUCT REFERENCE SHEET\s*===([\s\S]*?)(?====\s*ENVIRONMENT)/) || [])[1] || '';
-  const pnm = prodSec.match(/^PRODUCT:\s*(.+)/m);
-  if (pnm) entities.push({ type: 'product', name: pnm[1].trim(), subjectId: null, prompt: 'generate this product multi angle reference sheet image highlighting details visually' });
-  const envSec = (text.match(/===\s*ENVIRONMENT REFERENCE SHEETS\s*===([\s\S]*)$/) || [])[1] || '';
-  envSec.split(/(?=^ENVIRONMENT:)/m).filter(b => b.trim().startsWith('ENVIRONMENT:')).forEach(block => {
-    const nm = block.match(/^ENVIRONMENT:\s*(.+)/m);
-    const id = block.match(/ENV ID:\s*(\d{3})/i);
-    if (nm) entities.push({ type: 'environment', name: nm[1].trim(), envId: id ? id[1] : null, prompt: block.replace(/^ENVIRONMENT:[^\n]+\n?/, '').trim() });
-  });
-  return entities;
-}
-
-function parseStartFramesOutput(text, productName) {
-  const frames = [];
-  const section = (text.match(/===\s*STARTING FRAMES\s*===([\s\S]*)/) || [])[1] || text;
-  // Build a product-mention regex from the actual product name, since the
-  // skill instructs Claude to name the product directly (e.g. "the plush bear")
-  // rather than write the literal word "product".
-  const escRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const cleanName = (productName || '').replace(/^the\s+/i, '').trim();
-  const productRe = cleanName ? new RegExp(`\\b${escRe(cleanName)}\\b`, 'i') : null;
-  section.split(/\n(?=SCENE\s+\d+:\s*\n)/).forEach(block => {
-    const m = block.match(/^SCENE\s+(\d+):\s*\n([\s\S]+)/);
-    if (!m) return;
-    const prompt = m[2].trim();
-    const hasProduct = /\bproduct\b/i.test(prompt) || (productRe ? productRe.test(prompt) : false);
-    frames.push({
-      scene: parseInt(m[1]), prompt,
-      subjectIds: [...prompt.matchAll(/SUBJECT ID:\s*(\d{3})/g)].map(x => x[1]),
-      envIds:     [...prompt.matchAll(/ENV ID:\s*(\d{3})/g)].map(x => x[1]),
-      hasProduct
-    });
-  });
-  return frames;
-}
+// ── Ad pipeline skill prompt ───────────────────────────────────────────────
+const SKILL_IDEA = fs.readFileSync(path.join(__dirname, 'skills/organic-tiktok-ad-generator.md'), 'utf8').replace(/^---[\s\S]*?---\s*/m, '').trim();
 
 // ── Fal.ai helper ─────────────────────────────────────────────────────────────
 function falRequest(method, falPath, body) {
@@ -979,82 +905,49 @@ async function runAdPipeline(jobId) {
   await updateAdJob(jobId, { images: null, status: 'running' });
 
   try {
-    // ── Stage 1: Brief ──────────────────────────────────────────────────
-    await updateAdJob(jobId, { stage: 'brief', stageLabel: 'Generating ad concept…', progress: 0.02 });
-    console.log('[ad-job]', jobId, 'brief start');
+    // ── Stage 1: Idea (organic-tiktok-ad-generator skill) ─────────────────
+    await updateAdJob(jobId, { stage: 'idea', stageLabel: 'Generating ad idea…', progress: 0.04 });
+    console.log('[ad-job]', jobId, 'idea start');
     const userContent = [];
     for (const img of (images || [])) {
       userContent.push({ type: 'image', source: { type: 'base64', media_type: img.mime || 'image/jpeg', data: img.base64 } });
     }
     const descText = description ? `Product description: ${description}\n\n` : '';
-    userContent.push({ type: 'text', text: `${descText}Generate ONE organic-feeling TikTok ad idea for this product following your methodology. Output exactly the format from your Output Format section: "**THE IDEA**" header followed by ONE paragraph (180–260 words) with embedded beat timestamps (0–2s), (2–6s), (6–11s), (11–15s). No preamble, no alternatives, no "Why it works" block, nothing after the paragraph.` });
-    const briefRes = await claudeApiCall(ANTHROPIC_API_KEY, SKILL_BRIEF, [{ role: 'user', content: userContent }]);
-    if (briefRes.status !== 200) throw new Error('Brief failed: ' + (briefRes.body?.error?.message || briefRes.status));
-    const ideaText = briefRes.body?.content?.[0]?.text || '';
-    if (!/THE IDEA/i.test(ideaText)) throw new Error('Brief returned unexpected format');
+    userContent.push({ type: 'text', text: `${descText}Generate ONE organic-feeling TikTok ad idea for this product following your methodology. Output exactly the format from your Output Format section: "**THE IDEA**" header followed by ONE paragraph (180–260 words) with embedded beat timestamps (0–2s), (2–6s), (6–11s), (11–15s). No preamble, no alternatives, nothing after the paragraph.` });
+    const ideaRes = await claudeApiCall(ANTHROPIC_API_KEY, SKILL_IDEA, [{ role: 'user', content: userContent }]);
+    if (ideaRes.status !== 200) throw new Error('Idea failed: ' + (ideaRes.body?.error?.message || ideaRes.status));
+    const ideaText = ideaRes.body?.content?.[0]?.text || '';
+    if (!/THE IDEA/i.test(ideaText)) throw new Error('Idea returned unexpected format');
     adDeductBalance(userId, 0.15);
     const adTitle = adDeriveTitle(ideaText, description);
-    await updateAdJob(jobId, { stageLabel: 'Ad concept ready', progress: 0.12, adTitle, ideaText });
-    console.log('[ad-job]', jobId, 'brief done — title:', adTitle);
-
-    // ── Stage 2: RefSheets ───────────────────────────────────────────────
-    await updateAdJob(jobId, { stage: 'refsheets', stageLabel: 'Designing reference sheets…', progress: 0.14 });
-    console.log('[ad-job]', jobId, 'refsheets start');
-    const refMsg = `INPUT — organic TikTok ad pitch (from organic-tiktok-ad-generator). It is ONE paragraph describing a single 15-second video with embedded beat timestamps (0–2s), (2–6s), (6–11s), (11–15s). Extract every distinct character, the product, and every distinct environment named or implied in the pitch.\n\n${ideaText}\n\nGenerate the reference sheet prompts for all characters, the product, and all environments. Output ONLY the three labeled blocks (=== CHARACTER REFERENCE SHEETS ===, === PRODUCT REFERENCE SHEET ===, === ENVIRONMENT REFERENCE SHEETS ===) with no preamble.`;
-    const refsRes = await claudeApiCall(ANTHROPIC_API_KEY, SKILL_REFS, [{ role: 'user', content: refMsg }]);
-    if (refsRes.status !== 200) throw new Error('RefSheets failed: ' + (refsRes.body?.error?.message || refsRes.status));
-    const refSheetsText = refsRes.body?.content?.[0]?.text || '';
-    const entities = parseRefSheetsOutput(refSheetsText);
-    adDeductBalance(userId, 0.10);
-    await updateAdJob(jobId, { stageLabel: 'Reference sheets ready', progress: 0.22, refSheetsText, entities });
-    console.log('[ad-job]', jobId, 'refsheets done —', entities.length, 'entities');
-
-    // ── Stage 2.5: Product ref image ─────────────────────────────────────
-    await updateAdJob(jobId, { stage: 'refImages', stageLabel: 'Creating product reference image…', progress: 0.24 });
-    console.log('[ad-job]', jobId, 'product ref image start');
-    let productRefUrl = null;
-    const productEntity = entities.find(e => e.type === 'product');
-    const envEntities = entities.filter(e => e.type === 'environment');
-    if (productEntity && OPENAI_API_KEY) {
-      try {
-        productRefUrl = await adGenProductRef(userId, images);
-        const userLib = await loadUserLibrary(userId);
-        userLib.unshift({
-          id: 'ref-' + jobId + '-prod', prompt: 'product reference sheet', url: productRefUrl,
-          ratio: '1:1', model: 'gpt-image-2', ts: Date.now(), done: Date.now(),
-          type: 'image', folder: adTitle, label: productEntity.name || 'product', hidden: true,
-        });
-        await saveUserLibrary(userId, userLib);
-        console.log('[ad-job]', jobId, 'product ref done');
-      } catch(e) {
-        console.warn('[ad-job]', jobId, 'product ref failed (continuing):', e.message);
-      }
-    }
-    const envPrefix = envEntities.length > 0
-      ? envEntities.map(e => `Environment — ${e.name}: ${e.prompt}`).join('\n\n') + '\n\n'
-      : '';
-    await updateAdJob(jobId, { stageLabel: 'Reference image ready', progress: 0.35, productRefUrl, envPrefix });
-
-    // ── Stage 4: Idea paragraph → video prompt ───────────────────────────
-    // The organic-tiktok-ad-generator skill produces a single paragraph that is
-    // already shot-by-shot specific with embedded beat timestamps — we feed it
-    // straight to BytePlus as the video text prompt, skipping the legacy
-    // video-prompt-builder skill entirely.
     const ideaParagraph = extractIdeaParagraph(ideaText);
-    if (!ideaParagraph) throw new Error('Could not extract idea paragraph from brief output');
-    const scenes = [{ number: 1, name: 'Scene 1', prompt: ideaParagraph, duration: 15, ratio: '9:16' }];
-    await updateAdJob(jobId, { stageLabel: 'Video prompt ready', progress: 0.45, scenes });
-    console.log('[ad-job]', jobId, 'idea paragraph extracted —', ideaParagraph.length, 'chars');
+    if (!ideaParagraph) throw new Error('Could not extract idea paragraph');
+    await updateAdJob(jobId, { stageLabel: 'Ad idea ready', progress: 0.20, adTitle, ideaText });
+    console.log('[ad-job]', jobId, 'idea done — title:', adTitle);
 
-    // ── Stage 5: Video generation ────────────────────────────────────────
-    const scene = scenes[0];
-    const dur = Math.max(5, Math.min(15, scene.duration || 15));
-    const rawPrompt = (scene.prompt || 'Scene 1').replace(/\b(logo|trademark|brand name|registered mark)\b/gi, 'emblem');
+    // ── Stage 2: Product reference image (gpt-image-2 low quality) ────────
+    await updateAdJob(jobId, { stage: 'productRef', stageLabel: 'Creating product reference image…', progress: 0.22 });
+    console.log('[ad-job]', jobId, 'product ref start');
+    if (!OPENAI_API_KEY) throw new Error('OpenAI API key not configured — cannot create product reference image');
+    const productRefUrl = await adGenProductRef(userId, images);
+    const userLib = await loadUserLibrary(userId);
+    userLib.unshift({
+      id: 'ref-' + jobId + '-prod', prompt: 'product reference sheet', url: productRefUrl,
+      ratio: '1:1', model: 'gpt-image-2', ts: Date.now(), done: Date.now(),
+      type: 'image', folder: adTitle, label: 'product reference', hidden: true,
+    });
+    await saveUserLibrary(userId, userLib);
+    await updateAdJob(jobId, { stageLabel: 'Product reference ready', progress: 0.35, productRefUrl });
+    console.log('[ad-job]', jobId, 'product ref done');
+
+    // ── Stage 3: Video generation (BytePlus Seedance) ─────────────────────
+    const dur = 15;
+    const rawPrompt = ideaParagraph.replace(/\b(logo|trademark|brand name|registered mark)\b/gi, 'emblem');
     const videoCost = Math.round(dur * 480 * 864 * 24 / 1024 * 7.0e-6 * 1.3 * 100) / 100;
     adDeductBalance(userId, videoCost);
     await updateAdJob(jobId, { stage: 'video', stageLabel: 'Submitting to video generation…', progress: 0.46 });
     console.log('[ad-job]', jobId, 'video submit start');
-    const taskId = await adSubmitVideo(rawPrompt, productRefUrl, envPrefix);
+    const taskId = await adSubmitVideo(rawPrompt, productRefUrl, '');
     await updateAdJob(jobId, { taskId, stageLabel: 'Video generating (5–15 min)…', progress: 0.48 });
     console.log('[ad-job]', jobId, 'video task:', taskId);
 
@@ -1786,163 +1679,6 @@ async function handleRequest(req, res) {
         }
         return endImg({ error: 'Seedream request failed: ' + e.message });
       }
-    }
-  }
-
-  // ── Ads: Claude brainstorm ────────────────────────────────────────────────
-  if (url === '/api/gen/brief' && method === 'POST') {
-    const { images, description } = await readBody(req);
-    const anthropicKey = ANTHROPIC_API_KEY;
-    if (!anthropicKey) return sendJSON(res, 503, { error: 'Anthropic API key not configured on server (ANTHROPIC_API_KEY missing).' });
-    const sess = getSession(req);
-    if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
-    if (!images || !images.length) return sendJSON(res, 400, { error: 'Upload at least one product image.' });
-
-    const BRAINSTORM_COST = 0.15;
-    const db = loadDB(); const user = db.users[sess.userId];
-    const cur = user.balance ?? 0;
-    if (cur < BRAINSTORM_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${BRAINSTORM_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
-
-    const userContent = [];
-    for (const img of images) {
-      userContent.push({ type: 'image', source: { type: 'base64', media_type: img.mime || 'image/jpeg', data: img.base64 } });
-    }
-    const descText = description ? `Product description: ${description}\n\n` : '';
-    userContent.push({ type: 'text', text: `${descText}Generate ONE organic-feeling TikTok ad idea for this product following your methodology. Output exactly the format from your Output Format section: "**THE IDEA**" header followed by ONE paragraph (180–260 words) with embedded beat timestamps (0–2s), (2–6s), (6–11s), (11–15s). No preamble, no alternatives, no "Why it works" block, nothing after the paragraph.` });
-
-    const system = SKILL_BRIEF;
-    try {
-      const claudeRes = await claudeApiCall(anthropicKey, system, [{ role: 'user', content: userContent }]);
-      if (claudeRes.status !== 200) {
-        const msg = claudeRes.body?.error?.message || JSON.stringify(claudeRes.body).substring(0, 300);
-        return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
-      }
-      const ideaText = claudeRes.body?.content?.[0]?.text || '';
-      if (!/THE IDEA/i.test(ideaText)) {
-        return sendJSON(res, 502, { error: 'Claude returned unexpected format. Raw: ' + ideaText.substring(0, 200) });
-      }
-      user.balance = Math.round((cur - BRAINSTORM_COST) * 100) / 100;
-      saveDB(db);
-      return sendJSON(res, 200, { ideaText, balance: user.balance });
-    } catch(e) {
-      return sendJSON(res, 502, { error: 'Brief failed: ' + e.message });
-    }
-  }
-
-  // ── Ads: Stage 2 — video prompts (video-prompt-builder skill) ─────────────
-  if (url === '/api/gen/shots' && method === 'POST') {
-    const { ideaText, refSheetsText, startFramesText } = await readBody(req);
-    const anthropicKey = ANTHROPIC_API_KEY;
-    if (!anthropicKey) return sendJSON(res, 503, { error: 'Anthropic API key not configured.' });
-    const sess = getSession(req);
-    if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
-    if (!ideaText) return sendJSON(res, 400, { error: 'ideaText required.' });
-
-    const PROMPTS_COST = 0.15;
-    const db = loadDB(); const user = db.users[sess.userId];
-    const cur = user.balance ?? 0;
-    if (cur < PROMPTS_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${PROMPTS_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
-
-    const extraContext = [
-      refSheetsText ? `\n\nREFERENCE SHEET PROMPTS (entity IDs and visual descriptions — reference entities by SUBJECT ID / ENV ID in Shot 1):\n${refSheetsText}` : '',
-      startFramesText ? `\n\nSTARTING FRAME PROMPTS (the literal first frame of each scene, already generated as images — Shot 1 of each scene must match its starting frame exactly):\n${startFramesText}` : '',
-    ].join('');
-    const userContent = [{ type: 'text', text: `Here is the realistic ad pitch (a single 15-second video, one paragraph with embedded timestamps, plus a "Why it works" note):\n\n${ideaText}${extraContext}\n\nTreat this as a SINGLE 15-second scene. Use the per-scene output format and produce exactly ONE document with the header "=== SCENE 1 OF 1 — [short scene name] ===" followed by the shot timeline, effects inventory, density map, and energy arc. Honour the pitch's embedded beat timestamps. The video is silent (no dialogue, no voiceover) and contains no turned-on phone/laptop/tablet/TV screens.` }];
-
-    try {
-      const claudeRes = await claudeApiCall(anthropicKey, SKILL_SHOTS, [{ role: 'user', content: userContent }]);
-      if (claudeRes.status !== 200) {
-        const msg = claudeRes.body?.error?.message || JSON.stringify(claudeRes.body).substring(0, 300);
-        return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
-      }
-      const shotsText = claudeRes.body?.content?.[0]?.text || '';
-      const scenes = parseShotsOutput(shotsText);
-      if (!scenes.length) {
-        // Don't charge if we can't parse anything — fail loudly so the client
-        // surfaces the error instead of silently "completing" with 0 videos.
-        console.warn('[shots] parseShotsOutput returned 0 scenes. Raw start:', shotsText.substring(0, 400));
-        return sendJSON(res, 502, {
-          error: 'Video prompts failed to parse (Claude output did not contain any "=== SCENE N OF M ===" headers). Please retry — no charge applied.',
-          rawPreview: shotsText.substring(0, 200),
-        });
-      }
-      user.balance = Math.round((cur - PROMPTS_COST) * 100) / 100;
-      saveDB(db);
-      return sendJSON(res, 200, { scenes, shotsText, balance: user.balance });
-    } catch(e) {
-      return sendJSON(res, 502, { error: 'Video prompts failed: ' + e.message });
-    }
-  }
-
-
-  // ── Ads: Stage 2 — reference sheet prompts (ref-sheet-generator skill) ─────
-  if (url === '/api/gen/refsheets' && method === 'POST') {
-    const { ideaText } = await readBody(req);
-    const anthropicKey = ANTHROPIC_API_KEY;
-    if (!anthropicKey) return sendJSON(res, 503, { error: 'Anthropic API key not configured.' });
-    const sess = getSession(req);
-    if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
-    if (!ideaText) return sendJSON(res, 400, { error: 'ideaText required.' });
-
-    const REFS_COST = 0.10;
-    const db = loadDB(); const user = db.users[sess.userId];
-    const cur = user.balance ?? 0;
-    if (cur < REFS_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${REFS_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
-
-    const userMsg = `INPUT — organic TikTok ad pitch (from organic-tiktok-ad-generator). It is ONE paragraph describing a single 15-second video with embedded beat timestamps (0–2s), (2–6s), (6–11s), (11–15s). Extract every distinct character, the product, and every distinct environment named or implied in the pitch.\n\n${ideaText}\n\nGenerate the reference sheet prompts for all characters, the product, and all environments. Output ONLY the three labeled blocks (=== CHARACTER REFERENCE SHEETS ===, === PRODUCT REFERENCE SHEET ===, === ENVIRONMENT REFERENCE SHEETS ===) with no preamble.`;
-
-    try {
-      const claudeRes = await claudeApiCall(anthropicKey, SKILL_REFS, [{ role: 'user', content: userMsg }]);
-      if (claudeRes.status !== 200) {
-        const msg = claudeRes.body?.error?.message || JSON.stringify(claudeRes.body).substring(0, 300);
-        return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
-      }
-      const refSheetsText = claudeRes.body?.content?.[0]?.text || '';
-      const entities = parseRefSheetsOutput(refSheetsText);
-      if (!entities.length) console.warn('[refsheets] parseRefSheetsOutput returned 0 entities. Raw start:', refSheetsText.substring(0, 200));
-      user.balance = Math.round((cur - REFS_COST) * 100) / 100;
-      saveDB(db);
-      return sendJSON(res, 200, { entities, refSheetsText, balance: user.balance });
-    } catch(e) {
-      return sendJSON(res, 502, { error: 'Ref sheets failed: ' + e.message });
-    }
-  }
-
-  // ── Ads: Stage 3 — starting frame prompts (starting-frame-generator skill) ──
-  if (url === '/api/gen/startframes' && method === 'POST') {
-    const { ideaText, refSheetsText } = await readBody(req);
-    const anthropicKey = ANTHROPIC_API_KEY;
-    if (!anthropicKey) return sendJSON(res, 503, { error: 'Anthropic API key not configured.' });
-    const sess = getSession(req);
-    if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
-    if (!ideaText || !refSheetsText) return sendJSON(res, 400, { error: 'ideaText and refSheetsText required.' });
-
-    const FRAMES_COST = 0.05;
-    const db = loadDB(); const user = db.users[sess.userId];
-    const cur = user.balance ?? 0;
-    if (cur < FRAMES_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${FRAMES_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
-
-    const userMsg = `INPUT A — organic TikTok ad pitch (ONE paragraph, single 15-second scene with embedded beat timestamps (0–2s), (2–6s), (6–11s), (11–15s)):\n${ideaText}\n\nINPUT B — REFERENCE SHEET PROMPTS:\n${refSheetsText}\n\nThis is a SINGLE scene. Generate exactly ONE starting frame prompt for it under the header "SCENE 1:". The starting frame should depict the opening 0–2s beat from the pitch. Output ONLY the === STARTING FRAMES === block.`;
-
-    try {
-      const claudeRes = await claudeApiCall(anthropicKey, SKILL_FRAMES, [{ role: 'user', content: userMsg }]);
-      if (claudeRes.status !== 200) {
-        const msg = claudeRes.body?.error?.message || JSON.stringify(claudeRes.body).substring(0, 300);
-        return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
-      }
-      const framesText = claudeRes.body?.content?.[0]?.text || '';
-      // Pull the product name out of the refsheets so we can detect product mentions
-      // even when the skill (correctly) names the product directly instead of using
-      // the literal word "product".
-      const prodMatch = (refSheetsText || '').match(/===\s*PRODUCT REFERENCE SHEET\s*===[\s\S]*?^PRODUCT:\s*([^\n]+)/m);
-      const productName = prodMatch ? prodMatch[1].trim() : '';
-      const startFrames = parseStartFramesOutput(framesText, productName);
-      if (!startFrames.length) console.warn('[startframes] parseStartFramesOutput returned 0 frames. Raw start:', framesText.substring(0, 200));
-      user.balance = Math.round((cur - FRAMES_COST) * 100) / 100;
-      saveDB(db);
-      return sendJSON(res, 200, { startFrames, startFramesText: framesText, balance: user.balance });
-    } catch(e) {
-      return sendJSON(res, 502, { error: 'Start frames failed: ' + e.message });
     }
   }
 
