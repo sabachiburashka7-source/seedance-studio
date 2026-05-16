@@ -2126,7 +2126,7 @@ async function hasFace(img) {
 // with a human face go through the disruption pipeline; images without
 // (products, environments, etc.) pass through with only a clean JPEG
 // re-encode so quality is preserved.
-function fileToDataUrl(file) {
+function fileToDataUrl(file, targetAspect) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Failed to read file: ' + file.name));
@@ -2135,14 +2135,21 @@ function fileToDataUrl(file) {
       img.onerror = () => reject(new Error('Failed to decode image: ' + file.name));
       img.onload = async () => {
         try {
+          let dataUrl;
           const face = await hasFace(img);
           if (face) {
             console.log('[fileToDataUrl] face detected — running disruption pipeline:', file.name);
-            resolve(processForVideo(img));
+            dataUrl = processForVideo(img);
           } else {
             console.log('[fileToDataUrl] no face detected — passing through unchanged:', file.name);
-            resolve(reader.result);
+            dataUrl = reader.result;
           }
+          if (targetAspect) {
+            const img2 = new Image();
+            await new Promise(r => { img2.onload = r; img2.src = dataUrl; });
+            dataUrl = letterboxToAspect(img2, targetAspect);
+          }
+          resolve(dataUrl);
         } catch (_) {
           resolve(reader.result);
         }
@@ -2231,7 +2238,7 @@ async function doGenerate() {
 
     for (let i = 0; i < imgs.length; i++) {
       showProg(`Reading image ${i+1}/${imgs.length}...`);
-      const dataUrl = await fileToDataUrl(imgs[i]);
+      const dataUrl = await fileToDataUrl(imgs[i], ratio);
       content.push({ type: 'image_url', image_url: { url: dataUrl }, role: 'reference_image' });
     }
     if (vidUrl.trim().startsWith('http')) {
