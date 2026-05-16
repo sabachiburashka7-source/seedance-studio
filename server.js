@@ -956,9 +956,18 @@ async function adPollVideo(taskId, onProgress) {
 
 function adDeriveTitle(ideaText, description) {
   if (description) return description.replace(/\s+/g, ' ').trim().substring(0, 40);
-  const m = ideaText.match(/THE\s+IDEA\s*\**\s*\n+([\s\S]*?)(?:\n+\**Why it works|$)/i);
-  const prose = (m ? m[1] : ideaText).replace(/\*\(\s*\d+\s*[–\-]\s*\d+\s*s\s*\)\*/g, '').replace(/\*+/g, '').trim();
+  const m = ideaText.match(/THE\s+IDEA\s*\**\s*\n+([\s\S]*)/i);
+  const prose = (m ? m[1] : ideaText).replace(/\*?\(\s*\d+\s*[–\-]\s*\d+\s*s\s*\)\*?/g, '').replace(/\*+/g, '').trim();
   return prose.split(/[.,]/)[0].trim().substring(0, 40) || ('Ad — ' + new Date().toLocaleDateString());
+}
+
+// Extract the paragraph portion of a "**THE IDEA**\n\n[paragraph]" output.
+// Strips the heading and surrounding markdown bold so the result can be fed
+// directly to BytePlus as the video text prompt.
+function extractIdeaParagraph(ideaText) {
+  const m = (ideaText || '').match(/\*{0,2}\s*THE\s+IDEA\s*\*{0,2}\s*\n+([\s\S]+)/i);
+  const body = (m ? m[1] : (ideaText || '')).trim();
+  return body.replace(/^\*+|\*+$/g, '').trim();
 }
 
 async function runAdPipeline(jobId) {
@@ -978,11 +987,11 @@ async function runAdPipeline(jobId) {
       userContent.push({ type: 'image', source: { type: 'base64', media_type: img.mime || 'image/jpeg', data: img.base64 } });
     }
     const descText = description ? `Product description: ${description}\n\n` : '';
-    userContent.push({ type: 'text', text: `${descText}Generate ONE realistic ad idea for this product following your methodology. Output exactly the two-block format from your Output Format section ("**THE IDEA**" paragraph pitch + "**Why it works:**" two sentences). No preamble, no alternatives.` });
+    userContent.push({ type: 'text', text: `${descText}Generate ONE organic-feeling TikTok ad idea for this product following your methodology. Output exactly the format from your Output Format section: "**THE IDEA**" header followed by ONE paragraph (180–260 words) with embedded beat timestamps (0–2s), (2–6s), (6–11s), (11–15s). No preamble, no alternatives, no "Why it works" block, nothing after the paragraph.` });
     const briefRes = await claudeApiCall(ANTHROPIC_API_KEY, SKILL_BRIEF, [{ role: 'user', content: userContent }]);
     if (briefRes.status !== 200) throw new Error('Brief failed: ' + (briefRes.body?.error?.message || briefRes.status));
     const ideaText = briefRes.body?.content?.[0]?.text || '';
-    if (!/THE IDEA/i.test(ideaText) || !/Why it works/i.test(ideaText)) throw new Error('Brief returned unexpected format');
+    if (!/THE IDEA/i.test(ideaText)) throw new Error('Brief returned unexpected format');
     adDeductBalance(userId, 0.15);
     const adTitle = adDeriveTitle(ideaText, description);
     await updateAdJob(jobId, { stageLabel: 'Ad concept ready', progress: 0.12, adTitle, ideaText });
@@ -991,7 +1000,7 @@ async function runAdPipeline(jobId) {
     // ── Stage 2: RefSheets ───────────────────────────────────────────────
     await updateAdJob(jobId, { stage: 'refsheets', stageLabel: 'Designing reference sheets…', progress: 0.14 });
     console.log('[ad-job]', jobId, 'refsheets start');
-    const refMsg = `INPUT — realistic ad pitch (from realistic-ad-idea-generator). It is one paragraph describing a single 15-second video with embedded beat timestamps, followed by a "Why it works" note. Extract every distinct character, the product, and every distinct environment named or implied in the pitch.\n\n${ideaText}\n\nGenerate the reference sheet prompts for all characters, the product, and all environments. Output ONLY the three labeled blocks (=== CHARACTER REFERENCE SHEETS ===, === PRODUCT REFERENCE SHEET ===, === ENVIRONMENT REFERENCE SHEETS ===) with no preamble.`;
+    const refMsg = `INPUT — organic TikTok ad pitch (from organic-tiktok-ad-generator). It is ONE paragraph describing a single 15-second video with embedded beat timestamps (0–2s), (2–6s), (6–11s), (11–15s). Extract every distinct character, the product, and every distinct environment named or implied in the pitch.\n\n${ideaText}\n\nGenerate the reference sheet prompts for all characters, the product, and all environments. Output ONLY the three labeled blocks (=== CHARACTER REFERENCE SHEETS ===, === PRODUCT REFERENCE SHEET ===, === ENVIRONMENT REFERENCE SHEETS ===) with no preamble.`;
     const refsRes = await claudeApiCall(ANTHROPIC_API_KEY, SKILL_REFS, [{ role: 'user', content: refMsg }]);
     if (refsRes.status !== 200) throw new Error('RefSheets failed: ' + (refsRes.body?.error?.message || refsRes.status));
     const refSheetsText = refsRes.body?.content?.[0]?.text || '';
@@ -1026,18 +1035,16 @@ async function runAdPipeline(jobId) {
       : '';
     await updateAdJob(jobId, { stageLabel: 'Reference image ready', progress: 0.35, productRefUrl, envPrefix });
 
-    // ── Stage 4: Shots ───────────────────────────────────────────────────
-    await updateAdJob(jobId, { stage: 'shots', stageLabel: 'Writing cinematic shot prompts…', progress: 0.37 });
-    console.log('[ad-job]', jobId, 'shots start');
-    const shotsMsg = `CONCEPT\n${ideaText}\n\nSCENES\n1. Full 15-second ad — translate the entire CONCEPT paragraph above into a single per-scene cinematic document. Honour the embedded beat timestamps exactly. The video is silent (no dialogue, no voiceover) and contains no turned-on phone, laptop, tablet, or TV screens.`;
-    const shotsRes = await claudeApiCall(ANTHROPIC_API_KEY, SKILL_SHOTS, [{ role: 'user', content: [{ type: 'text', text: shotsMsg }] }]);
-    if (shotsRes.status !== 200) throw new Error('Shots failed: ' + (shotsRes.body?.error?.message || shotsRes.status));
-    const shotsText = shotsRes.body?.content?.[0]?.text || '';
-    const scenes = parseShotsOutput(shotsText);
-    if (!scenes.length) throw new Error('Shot prompts failed to parse — please retry');
-    adDeductBalance(userId, 0.15);
-    await updateAdJob(jobId, { stageLabel: 'Shot prompts ready', progress: 0.45, scenes });
-    console.log('[ad-job]', jobId, 'shots done —', scenes.length, 'scene(s)');
+    // ── Stage 4: Idea paragraph → video prompt ───────────────────────────
+    // The organic-tiktok-ad-generator skill produces a single paragraph that is
+    // already shot-by-shot specific with embedded beat timestamps — we feed it
+    // straight to BytePlus as the video text prompt, skipping the legacy
+    // video-prompt-builder skill entirely.
+    const ideaParagraph = extractIdeaParagraph(ideaText);
+    if (!ideaParagraph) throw new Error('Could not extract idea paragraph from brief output');
+    const scenes = [{ number: 1, name: 'Scene 1', prompt: ideaParagraph, duration: 15, ratio: '9:16' }];
+    await updateAdJob(jobId, { stageLabel: 'Video prompt ready', progress: 0.45, scenes });
+    console.log('[ad-job]', jobId, 'idea paragraph extracted —', ideaParagraph.length, 'chars');
 
     // ── Stage 5: Video generation ────────────────────────────────────────
     const scene = scenes[0];
@@ -1801,7 +1808,7 @@ async function handleRequest(req, res) {
       userContent.push({ type: 'image', source: { type: 'base64', media_type: img.mime || 'image/jpeg', data: img.base64 } });
     }
     const descText = description ? `Product description: ${description}\n\n` : '';
-    userContent.push({ type: 'text', text: `${descText}Generate ONE realistic ad idea for this product following your methodology. Output exactly the two-block format from your Output Format section ("**THE IDEA**" paragraph pitch + "**Why it works:**" two sentences). No preamble, no alternatives.` });
+    userContent.push({ type: 'text', text: `${descText}Generate ONE organic-feeling TikTok ad idea for this product following your methodology. Output exactly the format from your Output Format section: "**THE IDEA**" header followed by ONE paragraph (180–260 words) with embedded beat timestamps (0–2s), (2–6s), (6–11s), (11–15s). No preamble, no alternatives, no "Why it works" block, nothing after the paragraph.` });
 
     const system = SKILL_BRIEF;
     try {
@@ -1811,7 +1818,7 @@ async function handleRequest(req, res) {
         return sendJSON(res, claudeRes.status >= 400 ? claudeRes.status : 502, { error: 'Claude error: ' + msg });
       }
       const ideaText = claudeRes.body?.content?.[0]?.text || '';
-      if (!/THE IDEA/i.test(ideaText) || !/Why it works/i.test(ideaText)) {
+      if (!/THE IDEA/i.test(ideaText)) {
         return sendJSON(res, 502, { error: 'Claude returned unexpected format. Raw: ' + ideaText.substring(0, 200) });
       }
       user.balance = Math.round((cur - BRAINSTORM_COST) * 100) / 100;
@@ -1882,7 +1889,7 @@ async function handleRequest(req, res) {
     const cur = user.balance ?? 0;
     if (cur < REFS_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${REFS_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
 
-    const userMsg = `INPUT — realistic ad pitch (from realistic-ad-idea-generator). It is one paragraph describing a single 15-second video with embedded beat timestamps, followed by a "Why it works" note. Extract every distinct character, the product, and every distinct environment named or implied in the pitch.\n\n${ideaText}\n\nGenerate the reference sheet prompts for all characters, the product, and all environments. Output ONLY the three labeled blocks (=== CHARACTER REFERENCE SHEETS ===, === PRODUCT REFERENCE SHEET ===, === ENVIRONMENT REFERENCE SHEETS ===) with no preamble.`;
+    const userMsg = `INPUT — organic TikTok ad pitch (from organic-tiktok-ad-generator). It is ONE paragraph describing a single 15-second video with embedded beat timestamps (0–2s), (2–6s), (6–11s), (11–15s). Extract every distinct character, the product, and every distinct environment named or implied in the pitch.\n\n${ideaText}\n\nGenerate the reference sheet prompts for all characters, the product, and all environments. Output ONLY the three labeled blocks (=== CHARACTER REFERENCE SHEETS ===, === PRODUCT REFERENCE SHEET ===, === ENVIRONMENT REFERENCE SHEETS ===) with no preamble.`;
 
     try {
       const claudeRes = await claudeApiCall(anthropicKey, SKILL_REFS, [{ role: 'user', content: userMsg }]);
@@ -1915,7 +1922,7 @@ async function handleRequest(req, res) {
     const cur = user.balance ?? 0;
     if (cur < FRAMES_COST) return sendJSON(res, 402, { error: `Insufficient balance. Need $${FRAMES_COST.toFixed(2)}, have $${cur.toFixed(2)}.` });
 
-    const userMsg = `INPUT A — realistic ad pitch (one paragraph, single 15-second scene with embedded beat timestamps, followed by a "Why it works" note):\n${ideaText}\n\nINPUT B — REFERENCE SHEET PROMPTS:\n${refSheetsText}\n\nThis is a SINGLE scene. Generate exactly ONE starting frame prompt for it under the header "SCENE 1:". The starting frame should depict the opening 0–2s beat from the pitch. Output ONLY the === STARTING FRAMES === block.`;
+    const userMsg = `INPUT A — organic TikTok ad pitch (ONE paragraph, single 15-second scene with embedded beat timestamps (0–2s), (2–6s), (6–11s), (11–15s)):\n${ideaText}\n\nINPUT B — REFERENCE SHEET PROMPTS:\n${refSheetsText}\n\nThis is a SINGLE scene. Generate exactly ONE starting frame prompt for it under the header "SCENE 1:". The starting frame should depict the opening 0–2s beat from the pitch. Output ONLY the === STARTING FRAMES === block.`;
 
     try {
       const claudeRes = await claudeApiCall(anthropicKey, SKILL_FRAMES, [{ role: 'user', content: userMsg }]);
