@@ -11,9 +11,8 @@ AI video + image + ad generation app using BytePlus ModelArk (Seedance 2.0 video
 
 ## Deployment
 - **GitHub**: `sabachiburashka7-source/seedance-studio` (main branch)
-- **Render**: auto-deploys on push, runs `node server.js`
-- **Render env vars**: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `APP_URL`, `BYTEPLUS_API_KEY`, `ANTHROPIC_API_KEY`, `FAL_API_KEY` (optional, for upscale)
-- **UptimeRobot**: pings `/health` every 5 min to prevent Render free tier from sleeping
+- **Vercel**: auto-deploys on push (moved here after the Render account was suspended)
+- **Vercel env vars**: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `APP_URL`, `BYTEPLUS_API_KEY`, `ANTHROPIC_API_KEY`, `FAL_API_KEY` (optional, for upscale)
 
 ## Backend key details
 - BytePlus API host: `ark.ap-southeast.bytepluses.com`
@@ -27,7 +26,7 @@ AI video + image + ad generation app using BytePlus ModelArk (Seedance 2.0 video
 - Email: Brevo REST API (primary), Resend fallback (`api.resend.com`)
 - `EMAIL_ENABLED` constant gates verification/forgot-password/login-block on either provider being configured (was previously gated only on `RESEND_KEY` — silently disabled verification on Brevo-only deployments)
 - Temp video upload: litterbox.catbox.moe → tmpfiles.org fallback
-- Server listens on `0.0.0.0` (required for Render)
+- Server listens on `0.0.0.0`
 - Root route strips query params (`?fbclid=` etc.) before matching `/`
 - Health check at `/health` and `/healthz` returns `ok`
 - Server only starts listening AFTER `initDB()` completes (no race on cold start)
@@ -68,52 +67,19 @@ There is no Stripe integration — payments live entirely on promo codes.
 - `safeJson(r)` — wraps `r.json()` so empty / non-JSON server responses produce a useful error string
 - `saveLib()` is serialized + coalesced: only one POST `/library` in flight; concurrent saves collapse into one trailing POST (prevented ads-pipeline items vanishing after refresh)
 
-## Cold start / session handling
-- Render free tier sleeps after 15 min of inactivity → cold start ~30s
-- `initAuth()` retries up to 8 times on network errors or 5xx (5s, 8s, 11s…)
-- 401/403 retried 3 times early (Redis may not have loaded yet) before clearing token
-- `#wakeup-banner` div shown during retries
-- On exhausted retries: token preserved, warn toast, ask user to refresh
-- UptimeRobot ping every 5 min keeps the dyno warm
-
 ## Known BytePlus limitations
 - Real people in images rejected by content policy (see canvas softening below)
 - `file://` scheme rejected for `video_url` (must be public HTTPS URL)
 - `draft` parameter not supported on Seedance 2.0
 - `OutputAudioSensitiveContentDetected` is non-deterministic — frontend refunds and tells user to retry
 
-## Canvas softening (real-person classifier bypass — selective, face-only)
-ByteDance runs a real-person classifier on every input image. Even clearly AI-generated photorealistic portraits trigger it. There is no API parameter to declare an image as AI-generated.
+## Canvas softening (real-person classifier bypass)
+BytePlus rejects images its real-person classifier flags, even AI-generated portraits. To get around this, face images go through a disruption pipeline (`disruptFrameInPlace` in `seedance-studio.html`) that adds tone grade, downscale+upscale, sub-pixel chromatic aberration, film grain, and a JPEG re-encode. Output still looks like the same person — only the high-frequency texture is touched.
 
-**Selective application** — the disruption pipeline is only applied where it earns its keep:
-- **Manual T2V/I2V flow (`fileToDataUrl`)** — runs `hasFace(img)` (browser `FaceDetector` API) before processing. Images containing a face → full disruption pipeline. Images without (products, environments, scenery) → pass through with the original FileReader bytes, completely unchanged. When `FaceDetector` is not available in the browser (most desktop Chrome on Windows/Linux, Firefox, Safari), `hasFace` defaults to `true` so face images are still protected.
-- **Manual V2V flow (`uploadVidFile` → `disruptVideoFile`)** — same pipeline applied per-frame. Probes the first frame for a face; if present, plays the video through a canvas + `MediaRecorder` and runs `disruptFrameInPlace` on every frame. Output is **WebM** (vp9 preferred, vp8 fallback) at ~0.1 bits/pixel/sec (clamped 4–12 Mbps), renamed `<original>.webm`. No face → file passes through raw. Any failure (codec, decode, recorder) → falls back to raw upload. Real-time processing: a 15s clip takes ~15–20s to encode.
-- **Ads pipeline (`urlToDataUrl`)** — disruption pipeline is **NOT applied at all**. Refs go through `letterboxToAspect(img, '9:16')` for clean letterboxing to 9:16 + JPEG at 0.95 quality, no tone grade, no downscale/upscale, no grain. Character refs (`SUBJECT_*`) are filtered out at the call site instead — they would trip the classifier regardless of how heavy the disruption was.
-
-**Disruption pipeline (`processForVideo`, face images only):**
-1. Tone grade — `contrast(1.08) saturate(1.05) brightness(1.02)` via canvas filter.
-2. Downscale to 62% then upscale back to original size — two bilinear passes destroy the pixel-level micro-texture the classifier reads as "camera capture."
-3. `blur(1.1px)` during the upscale — kills tack-sharp AI artifacts at facial landmarks.
-4. Chromatic aberration — sub-pixel R/B channel offset (~1–2px) mimics real lens dispersion. AI generators produce perfectly aligned RGB channels; the misalignment is a strong "real photo" signal.
-5. Film-grain noise: ±20 luma + ±10 chroma per pixel (real ISO 800+ levels).
-6. JPEG re-encode at 78%.
-
-All steps operate on high-frequency texture only. Face landmarks (eye/nose/mouth positions, jaw shape, hair outline) sit in the low-frequency channel the video model reads, so the person in the output video still resembles the reference.
-
-Output looks like a real person photographed and lightly graded for a documentary or film. No cartoon/illustration look.
-
-Helpers (`seedance-studio.html`):
-- `disruptFrameInPlace(ctx, w, h)` — shared in-place pass over a 2D context. Single source of truth for the disruption parameters; called by both image and video paths.
-- `processForVideo(img)` — single-image entry. Draws to a canvas, calls `disruptFrameInPlace`, returns a JPEG data URL at 0.78.
-- `disruptVideoFile(file, onProgress)` — video entry. Probes first frame for a face, then per-frame canvas + `MediaRecorder` re-encode to WebM. Returns original file unchanged if no face. Progress callback receives 0..1.
-- `letterboxToAspect(img, targetAspect)` — clean letterbox to target aspect at JPEG 0.95. Used by `urlToDataUrl`.
-- `hasFace(img)` — async, uses `window.FaceDetector` if available, else returns `true`.
-- `fileToDataUrl(file)` — manual image flow. Runs `hasFace` and routes accordingly.
-- `urlToDataUrl(urlOrDataUrl, targetAspect)` — ads pipeline. Always letterbox-only, never disruption.
-
-**Ads pipeline character handling unchanged:** `createAd` and `resumeAd` filter `refMap` entries where the key starts with `SUBJECT_` before sending to BytePlus. The character is described in the per-scene text prompt; the starting frame still encodes the character visually but is letterboxed only (no disruption).
-
-History: 5-pass heavy → invisible chroma-only (cabda04) → two-mode normal/aggressive → single-pass disruption on every image (every flow) → **selective face-only disruption in manual flow + zero disruption in ads** (current). Ads pipeline previously ran every ref through `processForVideo` with letterboxing; testing showed the disruption was not load-bearing once character refs were dropped, so the pipeline was cleaned out and only the aspect-enforcing letterbox kept.
+Selective application:
+- **Manual T2V/I2V (`fileToDataUrl`)** — `hasFace(img)` routes face images through `processForVideo`; non-face images pass through unchanged. If `FaceDetector` is unavailable, `hasFace` defaults to `true`.
+- **Manual V2V (`disruptVideoFile`)** — per-frame disruption via canvas + `MediaRecorder`, output WebM (vp9 → vp8 fallback). No face or any failure → original file passes through.
+- **Ads pipeline (`urlToDataUrl`)** — no disruption. Refs go through `letterboxToAspect(img, '9:16')` only. Character refs (`SUBJECT_*`) are filtered out by `createAd`/`resumeAd` before being sent to BytePlus.
 
 ## Ads pipeline (3-stage: idea → product ref → video)
 User uploads product photos + optional description → `createAd()` POSTs to `/api/gen/ad-run` → server runs `runAdPipeline(jobId)` async, frontend polls `/api/gen/ad-job?id=…`.
@@ -134,7 +100,7 @@ User uploads product photos + optional description → `createAd()` POSTs to `/a
 - `GET  /api/gen/ad-job?id=<jobId>` — polled by frontend, returns full job state (stage, stageLabel, progress 0..1, adTitle, videoUrl, error).
 
 **⚠️ Ad-blocker naming rule — NEVER use `/ads/` in any API endpoint path.**
-Browser ad blockers (uBlock Origin, EasyList, AdGuard, etc.) match URL paths containing `/ads/`, `/ad-`, `ads.` etc. and silently kill the fetch before it leaves the browser. Symptoms: instant "Failed to fetch", Render logs show nothing at all. Renamed to `/api/gen/{ad-run,ad-job}` to dodge this. Use neutral words (`gen`, `run`, `job`) for any new endpoint touching ads/campaigns/promotions.
+Browser ad blockers (uBlock Origin, EasyList, AdGuard, etc.) match URL paths containing `/ads/`, `/ad-`, `ads.` etc. and silently kill the fetch before it leaves the browser. Symptoms: instant "Failed to fetch", server logs show nothing at all. Renamed to `/api/gen/{ad-run,ad-job}` to dodge this. Use neutral words (`gen`, `run`, `job`) for any new endpoint touching ads/campaigns/promotions.
 
 **Skill file** is plain `.md` (YAML frontmatter stripped at load): `skills/organic-tiktok-ad-generator.md` → `SKILL_IDEA` constant. Read at boot via `fs.readFileSync` — server fails to start if missing.
 
@@ -152,5 +118,5 @@ Browser ad blockers (uBlock Origin, EasyList, AdGuard, etc.) match URL paths con
 
 ## Workflow
 - After every code change: `git add <files> && git commit && git push origin main`
-- Render auto-deploys on push — no manual deploy step needed
+- Vercel auto-deploys on push — no manual deploy step needed
 - Always deploy automatically after finishing a change, without waiting for the user to ask
