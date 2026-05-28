@@ -505,10 +505,11 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 .vid-preview-play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.18); opacity: 0; transition: opacity 0.18s; pointer-events: none; }
 .vid-preview:hover .vid-preview-play { opacity: 1; }
 .vid-preview-play span { font-size: 38px; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5)); }
-.upscale-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: rgba(0,0,0,0.55); pointer-events: auto; }
-.upscale-overlay span { font-size: 12px; color: #fff; opacity: .85; letter-spacing: .04em; }
-.upscale-overlay .skip-btn { font-size: 11px; padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.35); background: rgba(0,0,0,0.45); color: #fff; cursor: pointer; letter-spacing: .03em; }
-.upscale-overlay .skip-btn:hover { background: rgba(255,255,255,0.12); }
+.upscale-badge { position: absolute; top: 8px; left: 8px; display: flex; align-items: center; gap: 6px; padding: 4px 9px 4px 7px; border-radius: 999px; background: rgba(0,0,0,0.62); backdrop-filter: blur(4px); pointer-events: none; z-index: 2; }
+.upscale-badge .spin { width: 10px; height: 10px; border-width: 2px; }
+.upscale-badge span { font-size: 10px; color: #fff; opacity: .92; letter-spacing: .03em; }
+.upscale-skip-btn { position: absolute; top: 8px; right: 8px; font-size: 10px; padding: 4px 9px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.28); background: rgba(0,0,0,0.55); color: #fff; cursor: pointer; letter-spacing: .03em; z-index: 3; }
+.upscale-skip-btn:hover { background: rgba(255,255,255,0.12); }
 .vid-no-url { width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text3);font-size:12px;gap:6px;padding:12px;text-align:center; }
 .vid-body { padding: 14px; }
 
@@ -2898,15 +2899,16 @@ function makeLibCard(item, i) {
   const card  = document.createElement('div'); card.className = 'vid-card';
   const safeUrl = (item.url || '').replace(/"/g, '&quot;');
   card.innerHTML = `
-    <div class="vid-preview ${cls}" onclick="${item.upscaling ? '' : `openLightbox('${safeUrl}',${!isImg})`}">
+    <div class="vid-preview ${cls}" onclick="${item.url ? `openLightbox('${safeUrl}',${!isImg})` : ''}">
       ${item.url
         ? (isImg
             ? `<img src="${item.url}" alt="">`
             : `<video src="${item.url}" preload="metadata"></video>`)
         : `<div class="vid-no-url">No URL returned<br><small style="font-size:10px;opacity:.6">${item.id?.substring(0,20)}...</small></div>`}
-      ${item.upscaling
-        ? `<div class="upscale-overlay" onclick="event.stopPropagation()"><div class="spin"></div><span>Upscaling…</span>${item.url ? `<button class="skip-btn" onclick="event.stopPropagation();cancelUpscale('${item.id}')">Use original</button>` : ''}</div>`
-        : (item.url ? `<div class="vid-preview-play"><span>${isImg ? '🔍' : '▶'}</span></div>` : '')}
+      ${item.upscaling && item.url
+        ? `<div class="upscale-badge"><div class="spin"></div><span>Upscaling…</span></div><button class="upscale-skip-btn" onclick="event.stopPropagation();cancelUpscale('${item.id}')">Skip</button>`
+        : ''}
+      ${item.url ? `<div class="vid-preview-play"><span>${isImg ? '🔍' : '▶'}</span></div>` : ''}
     </div>
     <div class="vid-body">
       <div class="vid-btns">
