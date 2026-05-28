@@ -773,7 +773,7 @@ async function adGenProductRef(userId, images) {
     const form = new FormData();
     form.append('model', 'gpt-image-2');
     form.append('prompt', prompt);
-    form.append('size', '1024x1024');
+    form.append('size', '1024x1536');
     form.append('quality', 'low');
     form.append('n', '1');
     for (let idx = 0; idx < images.length; idx++) {
@@ -791,7 +791,7 @@ async function adGenProductRef(userId, images) {
     gptResp = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + OPENAI_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'gpt-image-2', prompt, size: '1024x1024', quality: 'low', output_format: 'jpeg', n: 1 }),
+      body: JSON.stringify({ model: 'gpt-image-2', prompt, size: '1024x1536', quality: 'low', output_format: 'jpeg', n: 1 }),
       signal: AbortSignal.timeout(240000)
     });
   }
@@ -933,7 +933,7 @@ async function runAdPipeline(jobId) {
     const userLib = await loadUserLibrary(userId);
     userLib.unshift({
       id: 'ref-' + jobId + '-prod', prompt: 'product reference sheet', url: productRefUrl,
-      ratio: '1:1', model: 'gpt-image-2', ts: Date.now(), done: Date.now(),
+      ratio: '9:16', model: 'gpt-image-2', ts: Date.now(), done: Date.now(),
       type: 'image', folder: adTitle, label: 'product reference', hidden: true,
     });
     await saveUserLibrary(userId, userLib);
