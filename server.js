@@ -981,12 +981,14 @@ async function runAdPipeline(jobId) {
       } catch(e) { console.warn('[ad-job] R2 store failed:', e.message); }
     }
 
+    const willUpscale = FAL_KEY && storedUrl && !job.skipUpscale;
+
     // Save video to user's library
     const libItem = {
       id: 'ad-' + jobId, prompt: rawPrompt, url: storedUrl,
       res: '480p', ratio: '9:16', dur, audio: false,
       model: 'dreamina-seedance-2-0-260128', ts: job.createdAt || Date.now(), done: Date.now(),
-      folder: adTitle, label: 'Scene 1 video', sceneIndex: 0, upscaling: !!storedUrl,
+      folder: adTitle, label: 'Scene 1 video', sceneIndex: 0, upscaling: !!willUpscale,
     };
     const userLib2 = await loadUserLibrary(userId);
     userLib2.unshift(libItem);
@@ -995,8 +997,10 @@ async function runAdPipeline(jobId) {
     await updateAdJob(jobId, { status: 'done', stage: 'done', stageLabel: 'Done!', progress: 1, videoUrl: storedUrl, libItemId: libItem.id });
     console.log('[ad-job]', jobId, 'complete:', storedUrl?.substring(0, 80));
 
-    // Upscale (fire-and-forget)
-    if (FAL_KEY && storedUrl) {
+    if (job.skipUpscale) {
+      console.log('[ad-job]', jobId, 'upscale skipped (test mode)');
+    } else if (willUpscale) {
+      // Upscale (fire-and-forget)
       falRequest('POST', '/fal-ai/topaz/upscale/video', { video_url: storedUrl, upscale_factor: 2, H264_output: true })
         .then(async falResult => {
           const requestId = falResult.body?.request_id;
@@ -1684,7 +1688,7 @@ async function handleRequest(req, res) {
 
   // ── Ad background job: start full pipeline ───────────────────────────────────
   if (url === '/api/gen/ad-run' && method === 'POST') {
-    const { images, description } = await readBody(req);
+    const { images, description, skipUpscale } = await readBody(req);
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
     if (!images || !images.length) return sendJSON(res, 400, { error: 'Upload at least one product image.' });
@@ -1697,6 +1701,7 @@ async function handleRequest(req, res) {
     await setAdJob(jobId, {
       jobId, userId: sess.userId, status: 'pending', stage: 'pending',
       stageLabel: 'Starting…', progress: 0, images, description: description || '',
+      skipUpscale: !!skipUpscale,
       adTitle: null, videoUrl: null, createdAt: Date.now(), updatedAt: Date.now(),
     });
     runAdPipeline(jobId).catch(e => console.error('[ad-job] unhandled error for', jobId, ':', e.message));

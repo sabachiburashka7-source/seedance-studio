@@ -1159,6 +1159,10 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <!-- RIGHT: settings -->
     <div>
       <div class="panel" style="margin-bottom:0">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;opacity:0.75;margin-bottom:10px;cursor:pointer">
+          <input type="checkbox" id="ad-skip-upscale" style="margin:0">
+          <span>Skip upscaling (test mode)</span>
+        </label>
         <button class="btn-gen" id="ad-gen-btn" onclick="createAd()" data-i18n="ads.createAd">Create Ad</button>
         <button class="btn-stop" id="ad-stop-btn" onclick="stopAd()" style="display:none" data-i18n="ads.stopPipeline">■ Stop Pipeline</button>
       </div>
@@ -1649,10 +1653,11 @@ async function createAd() {
       const comma = processed.indexOf(',');
       return { base64: processed.substring(comma + 1), mime: 'image/jpeg' };
     }));
+    const skipUpscale = !!document.getElementById('ad-skip-upscale')?.checked;
     const r1 = await fetch('/api/gen/ad-run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-      body: JSON.stringify({ images: imagesPayload, description })
+      body: JSON.stringify({ images: imagesPayload, description, skipUpscale })
     });
     const j1 = await r1.json();
     if (!r1.ok) throw new Error(j1.error || 'Failed to start pipeline');
