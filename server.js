@@ -818,7 +818,7 @@ async function adGenProductRef(userId, images) {
 async function adSubmitVideo(textPrompt, productRefUrl, envPrefix) {
   const ratio = '9:16'; const dur = 15; const res = '480p';
   const model = 'dreamina-seedance-2-0-260128';
-  const fullPrompt = (envPrefix || '') + (productRefUrl ? 'Use the reference image for product fidelity. ' : '') + textPrompt;
+  const fullPrompt = (envPrefix || '') + textPrompt;
   const content = [{ type: 'text', text: fullPrompt }];
   if (productRefUrl) {
     content.push({ type: 'image_url', image_url: { url: productRefUrl }, role: 'reference_image' });
