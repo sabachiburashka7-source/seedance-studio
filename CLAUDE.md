@@ -68,18 +68,13 @@ There is no Stripe integration — payments live entirely on promo codes.
 - `saveLib()` is serialized + coalesced: only one POST `/library` in flight; concurrent saves collapse into one trailing POST (prevented ads-pipeline items vanishing after refresh)
 
 ## Known BytePlus limitations
-- Real people in images rejected by content policy (see canvas softening below)
+- Real people in images rejected by content policy
 - `file://` scheme rejected for `video_url` (must be public HTTPS URL)
 - `draft` parameter not supported on Seedance 2.0
 - `OutputAudioSensitiveContentDetected` is non-deterministic — frontend refunds and tells user to retry
 
-## Canvas softening (real-person classifier bypass)
-BytePlus rejects images its real-person classifier flags, even AI-generated portraits. To get around this, face images go through a disruption pipeline (`disruptFrameInPlace` in `seedance-studio.html`) that adds tone grade, downscale+upscale, sub-pixel chromatic aberration, film grain, and a JPEG re-encode. Output still looks like the same person — only the high-frequency texture is touched.
-
-Selective application:
-- **Manual T2V/I2V (`fileToDataUrl`)** — `hasFace(img)` routes face images through `processForVideo`; non-face images pass through unchanged. If `FaceDetector` is unavailable, `hasFace` defaults to `true`.
-- **Manual V2V (`disruptVideoFile`)** — per-frame disruption via canvas + `MediaRecorder`, output WebM (vp9 → vp8 fallback). No face or any failure → original file passes through.
-- **Ads pipeline (`urlToDataUrl`)** — no disruption. Refs go through `letterboxToAspect(img, '9:16')` only. Character refs (`SUBJECT_*`) are filtered out by `createAd`/`resumeAd` before being sent to BytePlus.
+## Image handling
+Reference images and videos are uploaded as-is — no classifier-bypass disruption. `fileToDataUrl` (manual T2V/I2V) reads the raw file, optionally letterboxing to a target aspect ratio. `urlToDataUrl` (ads pipeline) letterboxes to `9:16`. Videos uploaded for V2V (`uploadVidFile`) go straight to the temp host.
 
 ## Ads pipeline (3-stage: idea → product ref → video)
 User uploads product photos + optional description → `createAd()` POSTs to `/api/gen/ad-run` → server runs `runAdPipeline(jobId)` async, frontend polls `/api/gen/ad-job?id=…`.

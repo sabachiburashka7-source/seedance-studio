@@ -1872,25 +1872,7 @@ async function uploadVidFile(inp) {
   zone.classList.add('filled');
   document.getElementById('vid-del').hidden = false;
 
-  let uploadFile = file;
-  try {
-    inner.innerHTML = `<div class="vid-text">Processing ${file.name}…</div><div style="font-size:11px;color:var(--text3);margin-top:4px">Disrupting frames to bypass real-person classifier</div>`;
-    st.style.color = 'var(--text3)'; st.textContent = 'Processing video frames… 0%';
-    uploadFile = await disruptVideoFile(file, (p) => {
-      st.textContent = `Processing video frames… ${Math.round(p * 100)}%`;
-    });
-    if (uploadFile !== file) {
-      console.log('[uploadVidFile] disrupted',
-        (file.size/1024/1024).toFixed(1), 'MB ->',
-        (uploadFile.size/1024/1024).toFixed(1), 'MB');
-    } else {
-      console.log('[uploadVidFile] no face detected — uploading raw file');
-    }
-  } catch (e) {
-    console.warn('[uploadVidFile] disruption failed, uploading raw:', e.message);
-    uploadFile = file;
-  }
-
+  const uploadFile = file;
   inner.innerHTML = `<div class="vid-text">Uploading ${uploadFile.name}…</div><div style="font-size:11px;color:var(--text3);margin-top:4px">${(uploadFile.size/1024/1024).toFixed(1)} MB — please wait</div>`;
   st.style.color = 'var(--text3)'; st.textContent = 'Uploading to temporary host…';
 
@@ -2008,198 +1990,6 @@ function resizeDataUrl(dataUrl, maxPx = 1024) {
   });
 }
 
-// ══ PROCESS IMAGE FOR BYTEPLUS VIDEO (real-person classifier bypass) ══
-// Disruption pipeline applied ONLY to manual-flow images that contain a
-// human face. Goal: shift the image away from the "raw camera capture"
-// signature ByteDance's real-person classifier locks onto, while keeping
-// the person clearly recognizable so Seedance still produces a photoreal
-// character in the output video.
-//
-// Non-face images (products, environments, scenery, abstract refs) pass
-// through unchanged — the classifier only flags faces, so there's no
-// reason to degrade everything else.
-//
-// The ads pipeline does NOT use this pipeline at all (it skips character
-// refs entirely and lets the per-scene text prompt describe the subject).
-// Ad refs go through letterboxToAspect only — clean letterbox + JPEG.
-//
-// Pipeline:
-//   1. Tone grade — camera-style contrast/saturation/brightness lift.
-//   2. 62% downscale → upscale back — two bilinear passes destroy the
-//      pixel-level micro-texture the classifier reads as "camera capture."
-//   3. 1.1px blur during the upscale — kills tack-sharp AI artifacts.
-//   4. Chromatic aberration — sub-pixel R/B channel shift mimics real lens
-//      dispersion. AI generators produce perfectly aligned RGB channels;
-//      a slight misalignment is a strong "real photo" signal.
-//   5. Film-grain noise: ±20 luma + ±10 chroma per pixel (real ISO 800+).
-//   6. JPEG re-encode at 78%.
-//
-// Identity preservation: every step here operates on high-frequency
-// texture only. Face landmarks (eye/nose/mouth positions, jaw shape,
-// hair outline) sit in the LOW-frequency channel which the video model
-// reads — none of this pipeline touches it. The person in the output
-// video still looks like the reference image.
-// Shared disruption pass — operates in-place on a 2D context that
-// already contains the source frame at (0,0). Used by both
-// processForVideo (single image) and disruptVideoFile (per frame).
-function disruptFrameInPlace(ctx, w, h) {
-  const dw = Math.max(1, Math.round(w * 0.62));
-  const dh = Math.max(1, Math.round(h * 0.62));
-  const small = document.createElement('canvas');
-  small.width = dw; small.height = dh;
-  const sctx = small.getContext('2d');
-  sctx.imageSmoothingEnabled = true;
-  sctx.imageSmoothingQuality = 'high';
-  sctx.filter = 'contrast(1.08) saturate(1.05) brightness(1.02)';
-  sctx.drawImage(ctx.canvas, 0, 0, dw, dh);
-  sctx.filter = 'none';
-
-  ctx.filter = 'blur(1.1px)';
-  ctx.clearRect(0, 0, w, h);
-  ctx.drawImage(small, 0, 0, w, h);
-  ctx.filter = 'none';
-
-  const idata = ctx.getImageData(0, 0, w, h);
-  const d = idata.data;
-  const orig = new Uint8ClampedArray(d);
-  // ~0.15% of width, clamped to [1, 2]px — enough to register as lens
-  // dispersion without smearing face features.
-  const off = Math.max(1, Math.min(2, Math.round(w * 0.0015)));
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4;
-      const iR = (y * w + Math.max(0, x - off)) * 4;
-      const iB = (y * w + Math.min(w - 1, x + off)) * 4;
-      const R = orig[iR];
-      const G = orig[i + 1];
-      const B = orig[iB + 2];
-      const Y  =  0.299    * R + 0.587    * G + 0.114    * B;
-      const Cb = -0.168736 * R - 0.331264 * G + 0.5      * B + 128;
-      const Cr =  0.5      * R - 0.418688 * G - 0.081312 * B + 128;
-      const Y2  = Y  + (Math.random() - 0.5) * 40;
-      const Cb2 = Cb + (Math.random() - 0.5) * 20;
-      const Cr2 = Cr + (Math.random() - 0.5) * 20;
-      const R2 = Y2 + 1.402    * (Cr2 - 128);
-      const G2 = Y2 - 0.344136 * (Cb2 - 128) - 0.714136 * (Cr2 - 128);
-      const B2 = Y2 + 1.772    * (Cb2 - 128);
-      d[i]   = Math.max(0, Math.min(255, R2));
-      d[i+1] = Math.max(0, Math.min(255, G2));
-      d[i+2] = Math.max(0, Math.min(255, B2));
-    }
-  }
-  ctx.putImageData(idata, 0, 0);
-}
-
-function processForVideo(img) {
-  const w = img.naturalWidth, h = img.naturalHeight;
-  const big = document.createElement('canvas');
-  big.width = w; big.height = h;
-  const bctx = big.getContext('2d');
-  bctx.imageSmoothingEnabled = true;
-  bctx.imageSmoothingQuality = 'high';
-  bctx.drawImage(img, 0, 0);
-  disruptFrameInPlace(bctx, w, h);
-  return big.toDataURL('image/jpeg', 0.78);
-}
-
-// Video equivalent of processForVideo. Plays the source file through a
-// canvas + MediaRecorder pipeline, applying disruptFrameInPlace to every
-// frame. Output is a WebM File (MediaRecorder's only format in-browser).
-// Returns the original file unchanged if the first frame contains no face.
-// onProgress(0..1) is called periodically while encoding.
-async function disruptVideoFile(file, onProgress) {
-  if (typeof MediaRecorder === 'undefined') {
-    console.warn('[disruptVideoFile] MediaRecorder unavailable — passing through unchanged');
-    return file;
-  }
-  const objUrl = URL.createObjectURL(file);
-  try {
-    const video = document.createElement('video');
-    video.src = objUrl;
-    video.muted = true;
-    video.playsInline = true;
-    video.crossOrigin = 'anonymous';
-    await new Promise((resolve, reject) => {
-      video.onloadedmetadata = resolve;
-      video.onerror = () => reject(new Error('Could not decode video'));
-    });
-    const w = video.videoWidth, h = video.videoHeight;
-    if (!w || !h) throw new Error('Video has no dimensions');
-
-    video.currentTime = 0;
-    await new Promise((resolve) => { video.onseeked = resolve; });
-    const probe = document.createElement('canvas');
-    probe.width = w; probe.height = h;
-    probe.getContext('2d').drawImage(video, 0, 0);
-    const probeImg = new Image();
-    await new Promise((resolve, reject) => {
-      probeImg.onload = resolve;
-      probeImg.onerror = () => reject(new Error('probe decode failed'));
-      probeImg.src = probe.toDataURL('image/jpeg', 0.8);
-    });
-    const face = await hasFace(probeImg);
-    if (!face) {
-      console.log('[disruptVideoFile] no face detected — passing through unchanged');
-      return file;
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-
-    const mimes = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
-    const mime = mimes.find(m => MediaRecorder.isTypeSupported(m));
-    if (!mime) throw new Error('No supported WebM codec');
-
-    const stream = canvas.captureStream(30);
-    const bits = Math.max(4_000_000, Math.min(12_000_000, Math.round(w * h * 30 * 0.1)));
-    const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bits });
-    const chunks = [];
-    recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
-    const stopped = new Promise(r => { recorder.onstop = r; });
-    recorder.start();
-
-    const duration = video.duration || 0;
-    video.currentTime = 0;
-    await new Promise((resolve) => { video.onseeked = resolve; });
-
-    await new Promise((resolve) => {
-      let done = false;
-      const finish = () => { if (!done) { done = true; resolve(); } };
-      video.onended = finish;
-      video.onerror = finish;
-      const loop = () => {
-        if (done) return;
-        if (video.ended || video.paused) { finish(); return; }
-        try {
-          ctx.drawImage(video, 0, 0, w, h);
-          disruptFrameInPlace(ctx, w, h);
-        } catch (e) {
-          console.warn('[disruptVideoFile] frame error:', e.message);
-        }
-        if (onProgress && duration) onProgress(Math.min(1, video.currentTime / duration));
-        requestAnimationFrame(loop);
-      };
-      video.play().catch(finish);
-      loop();
-    });
-
-    await new Promise(r => setTimeout(r, 250));
-    if (recorder.state !== 'inactive') recorder.stop();
-    await stopped;
-
-    if (!chunks.length) throw new Error('Recorder produced no data');
-    const blob = new Blob(chunks, { type: mime });
-    const newName = file.name.replace(/\.[^.]+$/, '') + '.webm';
-    if (onProgress) onProgress(1);
-    return new File([blob], newName, { type: mime });
-  } finally {
-    URL.revokeObjectURL(objUrl);
-  }
-}
-
 // Clean letterbox to a target aspect (e.g. '9:16') — black bars + JPEG.
 // No disruption. Used by the ads pipeline to force a uniform aspect on
 // every reference image so Seedance produces 9:16 video output (it
@@ -2234,55 +2024,19 @@ function letterboxToAspect(img, targetAspect) {
   return padded.toDataURL('image/jpeg', 0.95);
 }
 
-// Detect whether an image contains a human face. Uses the browser's
-// FaceDetector (Shape Detection API) when available. If FaceDetector
-// is not supported in the current browser (most desktop Chrome on
-// Windows/Linux, Firefox, Safari), we default to TRUE so the image
-// still goes through the disruption pipeline — better to over-process
-// than to leak a raw AI face through and get rejected by BytePlus.
-async function hasFace(img) {
-  if (typeof window.FaceDetector !== 'function') {
-    console.warn('[hasFace] FaceDetector API not available — defaulting to face-present');
-    return true;
-  }
-  try {
-    const detector = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
-    const faces = await detector.detect(img);
-    return Array.isArray(faces) && faces.length > 0;
-  } catch (e) {
-    console.warn('[hasFace] detection failed, defaulting to face-present:', e.message);
-    return true;
-  }
-}
-
-// File → data URL (manual T2V/I2V flow). Runs face detection: images
-// with a human face go through the disruption pipeline; images without
-// (products, environments, etc.) pass through with only a clean JPEG
-// re-encode so quality is preserved.
+// File → data URL (manual T2V/I2V flow). Optional letterbox to a target
+// aspect ratio; otherwise the file's raw bytes pass through unchanged.
 function fileToDataUrl(file, targetAspect) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Failed to read file: ' + file.name));
     reader.onload = () => {
+      if (!targetAspect) { resolve(reader.result); return; }
       const img = new Image();
-      img.onerror = () => reject(new Error('Failed to decode image: ' + file.name));
-      img.onload = async () => {
+      img.onerror = () => resolve(reader.result);
+      img.onload = () => {
         try {
-          let dataUrl;
-          const face = await hasFace(img);
-          if (face) {
-            console.log('[fileToDataUrl] face detected — running disruption pipeline:', file.name);
-            dataUrl = processForVideo(img);
-          } else {
-            console.log('[fileToDataUrl] no face detected — passing through unchanged:', file.name);
-            dataUrl = reader.result;
-          }
-          if (targetAspect) {
-            const img2 = new Image();
-            await new Promise(r => { img2.onload = r; img2.src = dataUrl; });
-            dataUrl = letterboxToAspect(img2, targetAspect);
-          }
-          resolve(dataUrl);
+          resolve(letterboxToAspect(img, targetAspect));
         } catch (_) {
           resolve(reader.result);
         }
