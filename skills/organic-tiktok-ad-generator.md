@@ -42,6 +42,8 @@ A good 15-second TikTok beat structure:
 
 The whole point of this skill is that the ad **must not feel like an ad**. The FATE model is the load-bearing structure underneath — but if the viewer can see the structure, it has failed. Every line of the output paragraph should read like a slice of someone's real day that happens to feature the product. Engineered psychology, organic surface.
 
+**Default emotional baseline: positive, curious, or playful — NOT depleted.** Organic does not mean depressing. The character should look like a real person having a real moment, not a worn-out person at their worst hour. Tired/messy/wrecked openings are a *specific tool* for products that address a problem state (acne treatment, deep cleaner, recovery drink, stain remover, sleep aid). For everything else — food, drink, fashion, lifestyle, home, tech, hobby gear — the character starts in a good, neutral, or curious state. Real life has more "small private smile while making coffee" energy than "sobbing on the bathroom floor" energy, and the ad should reflect that. Realism ≠ misery. The grit is in the *texture* of real life (lived-in rooms, available light, hands that look like real hands, ambient sound) — not in the character's mood.
+
 The four FATE levers map onto TikTok content like this (use them silently — never label them in the output):
 
 ### F — FOCUS (the scroll-stopper) — THIS IS THE MOST IMPORTANT PILLAR
@@ -68,7 +70,7 @@ The four FATE levers map onto TikTok content like this (use them silently — ne
 
 4. **THE BLURT** — a single uncensored sentence said aloud in the first second, often to no one, often slightly unhinged. "I think i'm gonna throw up." "He just texted me." "This is my villain origin story." "Don't tell my mom." Said flat, not performed. Then the visual answers what the line means.
 
-5. **THE BEFORE/AFTER IN FIRST SECOND** — open on the chaos, the aftermath, the destruction, the mess, the worst-version-of-the-moment FIRST. Mascara streaked down a face. A sink full of dishes. A bedroom destroyed. A bathroom counter covered in failed products. The hook is the wreckage; the product becomes the turn.
+5. **THE BEFORE/AFTER IN FIRST SECOND** *(use only when the product directly fixes a problem state — cleaner, stain remover, skincare for breakouts, recovery drink, sleep aid)* — open on the chaos, the aftermath, the mess FIRST. A sink full of dishes. A counter covered in flour. A red-stain spill on a white shirt. The hook is the mess; the product becomes the turn. Do NOT use this hook for food, drink, fashion, lifestyle, hobby, or tech products — it makes them feel grimy for no reason.
 
 6. **PHYSICAL TRANSFORMATION MID-FRAME** — something is visibly changing color, texture, shape, state. Foam rising, ice melting, hair drying, skin reacting, paint dripping, makeup smearing under tears, dough rising in fast motion, a product changing color when touched.
 
@@ -76,9 +78,13 @@ The four FATE levers map onto TikTok content like this (use them silently — ne
 
 8. **THE WHISPER-CONFESSION** — a single short line muttered out loud (not to camera, to themselves or under their breath) that lands like an unfiltered confession in the first second. "i can't believe i'm doing this again." "okay don't tell anyone." "day three." "my mom would kill me." "i look insane right now." Said flat, half to self, while the visual stays mundane on purpose. The voice is the hook; the visual builds intrigue around it. (This replaces the "on-screen text claim" hook that would normally exist — text is banned in this skill because AI video generators render it badly and it kills organic feel.)
 
-9. **PHYSICAL DISCOMFORT / BODY HORROR (mild)** — visible sweat, a stress rash, a popped pimple about to be addressed, dry cracked hands, a sunburn line, smudged makeup, a hangover face. Bodies-being-bodies hooks. The viewer recognizes the state instantly.
+9. **PHYSICAL DISCOMFORT (mild)** *(use only when the product directly addresses the discomfort — skincare for breakouts, hand cream for dry hands, hangover remedy, sunscreen-after-burn)* — visible sweat after a workout, dry cracked hands in winter, a sunburn line. Bodies-being-bodies hooks. The viewer recognizes the state instantly. Do NOT use this hook as a default — only when the product is the actual answer to the discomfort shown.
 
-10. **THE INTERRUPTED MOMENT** — they're in the middle of something *intimate or chaotic* when the camera "catches" them. Crying in their car. Eating in their closet. Talking to themselves in the mirror. Mid-argument with no one. The viewer feels like they walked in on something.
+10. **THE INTERRUPTED MOMENT** — they're in the middle of something *private and unguarded* when the camera "catches" them. Dancing alone in the kitchen. Singing along badly to a song in the car. Doing a little fist pump after nailing something. Mid-laugh at their own joke. Talking to themselves in the mirror while getting ready. The viewer feels like they walked in on something real. Default to *unguarded joyful* or *unguarded focused* moments over distressed ones — that's the more universal, more shareable energy.
+
+11. **THE SMALL VICTORY** — they just nailed something and you catch the half-second of private celebration before they reset. The perfect parking job. The cake that didn't collapse. The shot that went in. The recipe that worked. The outfit that finally clicked in the mirror. A tiny private "yes" — fist clench, exhale, head nod, half-smile. The hook is the unguarded reaction to something going *right*. Pairs well with food, drink, hobby, fashion, lifestyle, tech, and beauty products.
+
+12. **THE CURIOUS RITUAL** — character is mid-way through a small private ritual that's slightly unusual or hyper-specific: their exact morning coffee order with three steps, the precise way they fold a fitted sheet, the order they apply their skincare, the way they cut a sandwich. The hook is the precision and the *care* — the viewer gets pulled in because there's clearly a reason behind it. Pairs with food, beauty, hobby, home, and lifestyle products.
 
 **Hook-marriage rule:** The hook must connect to the product's emotional territory, but the connection should only become clear in beat 3 or 4. A spilled drink hooks because it's chaos; a spilled drink that becomes "okay so now I'm trying [product] which doesn't stain" earns the hook. Without the payoff connection, the hook is just random — with it, the whole video clicks.
 
@@ -88,10 +94,10 @@ The product is NEVER the hook. The anomaly is the hook.
 On TikTok, authority is never "as a dermatologist..." said to camera. It's **shown**, not stated. It leaks through environmental detail: the right tools in the background, hands that look like they know what they're doing, a workspace that reads as expertise, a casual reference to having done this many times. Authority on TikTok is the *worn-in* feeling — someone who clearly lives this, not someone performing it. Show the wear, the routine, the muscle memory.
 
 ### T — TRIBE (the "she's like me" signal)
-This is the most important lever for organic feel. The character must read as *one specific person from a specific tribe* — not a generic actor. Tribes on TikTok are micro-identities: the burnt-out grad student, the new mom in the 4am haze, the contractor in his truck, the 60-year-old learning Pilates, the gym bro who reads, the bartender after close. Pick a specific tribe and load the frame with their signals: the specific clothing, the specific space, the specific objects in the background, the specific tiredness or aliveness on their face. The viewer should be able to think "oh she's like ___" in under 2 seconds.
+This is the most important lever for organic feel. The character must read as *one specific person from a specific tribe* — not a generic actor. Tribes on TikTok are micro-identities: the woman who finally got her morning routine dialed in, the dad who took up sourdough on weekends, the college junior with her favorite cafe spot, the 60-year-old learning Pilates and loving it, the gym bro who reads, the bartender prepping their bar before doors, the small-apartment cook who treats every meal like a project, the hobbyist painter on a Saturday afternoon. Pick a specific tribe and load the frame with their signals: the specific clothing, the specific space, the specific objects in the background, the specific *aliveness* on their face. The viewer should be able to think "oh she's like ___" in under 2 seconds. **Default to tribes who are mid-flow / mid-ritual / mid-small-win**, not tribes at their breaking point. The "exhausted ER nurse" tribe is real and powerful — but it's the right choice for a sleep aid or recovery product, not for a snack or a hoodie.
 
 ### E — EMOTION (the closing feeling)
-The ad does not end on the product. It ends on a *feeling*. The product is the cause; the closing frame is the emotional aftermath. Quiet relief. A small private smile. A breath finally let out. A laugh caught off-guard. Something *softened*. The viewer's last impression should be an emotional state, not a CTA. The final beat is purely visual — a held shot of the emotional aftermath. NO text overlay, NO caption, NO subtitle. If a closing audible line is needed, it's one short muttered sentence (3–8 words) said by the character, not narration to the camera.
+The ad does not end on the product. It ends on a *feeling*. The product is the cause; the closing frame is the emotional aftermath. A small private smile. A genuine laugh under the breath. Eyes lighting up for a half-second. A quiet "yes" nod. A satisfied exhale. Sitting back content. Lean toward the *warm* end of the spectrum — pride, satisfaction, delight, contentment, savoring, quiet joy — and only land on relief/release when the opening was genuinely heavy (recovery, comfort, sleep, problem-solved). The viewer's last impression should be an emotional state, not a CTA. The final beat is purely visual — a held shot of the emotional aftermath. NO text overlay, NO caption, NO subtitle. If a closing audible line is needed, it's one short muttered sentence (3–8 words) said by the character, not narration to the camera.
 
 ---
 
@@ -105,9 +111,9 @@ These rules apply to every idea generated:
 
 3. **The product enters in the middle, not the opening.** First 2 seconds = the Focus hook (anomaly, intimacy, intrigue). The product reveals itself between roughly 4–10 seconds. If the product is in frame from second one, the ad reads as a commercial.
 
-4. **One specific tribe, one specific human.** Describe the character with the precision of a casting director: age range, build, hair texture, what they're wearing in actual detail (fabric, fit, era, condition), distinguishing details (paint under fingernails, a bandaid on the thumb, sleep crease on cheek, mascara from yesterday), and most importantly their *current emotional micro-state*. The viewer should be able to picture this exact person. Demographics matter less than *tribe signals* — the clothes, the room, the way they move, the small details that say "she's one of us."
+4. **One specific tribe, one specific human.** Describe the character with the precision of a casting director: age range, build, hair texture, what they're wearing in actual detail (fabric, fit, era, condition), distinguishing details (a friendship bracelet, a small bandaid on the thumb from cooking, a tiny tattoo on the inside of the wrist, freshly-washed hair still air-drying, a streak of flour on the forearm from baking, paint under fingernails from a weekend project), and most importantly their *current emotional micro-state*. The viewer should be able to picture this exact person. Demographics matter less than *tribe signals* — the clothes, the room, the way they move, the small details that say "she's one of us." **Pick neutral or warm character details by default** — flour from baking is great, leftover mascara from a rough night is only great if the product addresses that. Looking *clean and put-together* is also realistic; reserve disheveled/grimy details for products that explicitly help with that state.
 
-5. **Setting is a real place someone lives in, not a set.** Describe the location with sensory specificity: time of day AND quality of light (cold blue 6am light through cheap blinds, not "morning"), what's in the periphery (a half-finished crossword, a dog bed with a chewed corner, three open tabs of supplements on the counter), textures (chipped tile, pilled blanket, a coffee ring on a stack of bills), and ambient sound (a kettle, traffic, a dog's nails on hardwood).
+5. **Setting is a real place someone lives in, not a set.** Describe the location with sensory specificity: time of day AND quality of light (warm late-afternoon sun through linen curtains; bright Saturday-morning kitchen light; soft amber light from a single lamp in the corner — be specific, not "morning"), what's in the periphery (a half-finished crossword, a dog bed in the corner, a houseplant catching the light, a stack of recipe cards, a half-strung guitar on the chair), textures (warm wood grain, a hand-knit blanket, a coffee ring on a wooden coaster, a vintage rug), and ambient sound (a kettle, soft music in the background, a dog's nails on hardwood, birds at the window). Real does not mean grimy — a *clean, warm, lived-in* room is just as real as a cluttered chaotic one, and reads more positive. Match the setting's energy to the character's emotional state, not to "gritty by default."
 
 6. **The hook is a strange specific, not random weirdness.** The opening anomaly must be earned by the product's emotional territory. If the product is a sleep supplement, the hook lives in the world of insomnia. If it's a protein bar, the hook lives in the world of post-workout depletion or the 3pm crash. The novelty creates focus *because* it's already adjacent to the product's truth.
 
@@ -137,7 +143,7 @@ Before generating anything, study the uploaded image (and any provided descripti
 
 - **What it is** — category, form, packaging, materials, price tier signal
 - **Who actually uses it** — not the brand's target persona, but the *real* tribe that would buy it
-- **The emotional territory** — what feeling does this product address? (Anxiety, depletion, loneliness, vanity, control, comfort, ambition, exhaustion, longing, smallness, etc.)
+- **The emotional territory** — what feeling does this product address or create? Lead with the *positive* feeling the product produces, and only invoke a negative starting state if the product directly resolves that state. Positive territories (default): anticipation, delight, focus, flow, satisfaction, curiosity, contentment, quiet pride, playfulness, savoring, comfort, warmth, connection, confidence, mastery. Problem-state territories (use ONLY when product directly addresses them): anxiety/sleep loss (sleep aid), depletion (recovery drink, supplement), discomfort (skincare for breakouts, hand cream), mess/wreckage (cleaner, stain remover), loneliness (community-driven product). For most products — food, drink, fashion, lifestyle, hobby, tech, home — stay in the positive territory.
 - **The single ownable truth** — the one thing about this product that creates a real moment in someone's day. Find the moment, not the feature.
 - **Sensory texture** — what it feels/smells/sounds like in use; the micro-rituals around it
 
@@ -149,13 +155,22 @@ If the user provided a description, weight it heavily — it tells you what THEY
 
 Before designing the scene, pick ONE specific tribe. Not "a woman in her 30s." Specific:
 
-- "An ER nurse on her third night shift this week"
-- "A divorced dad making lunches at 6:15am in a kitchen he's still learning"
-- "A 22-year-old in her first studio apartment, eating ramen out of a thrifted bowl"
-- "A retired contractor who started gardening to fill the hours"
-- "A bride-to-be hiding from her own bachelorette party in the hotel bathroom"
+**Positive / neutral starting-state tribes (default for food, drink, fashion, lifestyle, hobby, tech, home):**
+- "A 28-year-old in her sunlit kitchen finally trying the recipe she's bookmarked for months"
+- "A 35-year-old guy who took up cycling last spring, prepping his Saturday ride"
+- "A college junior at her favorite cafe corner with her sketchbook and a fresh latte"
+- "A retired schoolteacher tending his tomato plants on the balcony, genuinely content"
+- "A 30-something woman getting ready for a Friday dinner with friends, music playing softly"
+- "A dad who took up sourdough on weekends, mid-fold on his Saturday loaf"
+- "A 25-year-old who just moved into her first solo apartment and is *into it*"
+- "A guy in his 40s in his garage workshop on a Sunday, mid-project on a chair he's refinishing"
 
-The tribe choice determines everything else — the setting, the wardrobe, the energy, the hook, the closing feeling. Pick a tribe whose internal monologue *intersects* with the product's emotional territory.
+**Problem-state tribes (use ONLY when the product directly addresses that state — sleep aid, recovery drink, skincare for breakouts, cleaner, stain remover):**
+- "An ER nurse on her third night shift this week" — for a sleep aid or recovery drink
+- "A new mom in the 4am haze" — for a recovery / comfort / sleep product
+- "A bride-to-be hiding from her own bachelorette party" — for a calming product
+
+The tribe choice determines everything else — the setting, the wardrobe, the energy, the hook, the closing feeling. Pick a tribe whose internal monologue *intersects* with the product's emotional territory. **If the product doesn't address a problem state, do NOT pick a problem-state tribe.** A snack ad with an exhausted ER nurse reads as misery; a snack ad with someone genuinely enjoying their Saturday afternoon reads as life.
 
 ---
 
@@ -163,25 +178,28 @@ The tribe choice determines everything else — the setting, the wardrobe, the e
 
 This is where 80% of ads fail. The hook must produce an **involuntary physical "wait WHAT"** in the first second. If you can imagine someone scrolling past it on autopilot, the hook is dead.
 
-**Pick from these 10 viral hook patterns (use the expanded definitions in the FATE > FOCUS section above):**
+**Pick from these 12 viral hook patterns (use the expanded definitions in the FATE > FOCUS section above):**
 
-1. Physical Act of Chaos (spill, drop, break, splash, smoke, mess)
-2. Wrong-Body Hook (weird body position / weird action with body)
-3. Extreme Close-Up Cold Open (macro mystery shot)
-4. The Blurt (one uncensored line said flat)
-5. Before/After in First Second (open on wreckage/aftermath/worst version)
-6. Physical Transformation Mid-Frame (something changing color/state/texture)
-7. The Fourth-Wall Violation (held eye contact too long)
-8. The Number/Claim Slap (big lowercase confession-text on screen)
-9. Physical Discomfort / Mild Body Horror (sweat, breakout, hangover face, cracked hands)
-10. The Interrupted Moment (caught mid-intimate/chaotic moment)
+1. Physical Act of Chaos (spill, drop, splash, splatter, mid-flow chaos — *any product*)
+2. Wrong-Body Hook (unguarded body position / unusual body action — *any product*)
+3. Extreme Close-Up Cold Open (macro mystery shot — *any product*)
+4. The Blurt (one uncensored line said flat — *any product*)
+5. Before/After in First Second (wreckage/mess — *problem-state products ONLY*: cleaner, stain remover, skincare for breakouts, recovery drink, sleep aid)
+6. Physical Transformation Mid-Frame (something changing color/state/texture — *any product*)
+7. The Fourth-Wall Violation (held eye contact too long — *any product*)
+8. The Whisper-Confession (one muttered short line — *any product*)
+9. Physical Discomfort (visible sweat/dry hands/sunburn — *problem-state products ONLY*: skincare, hand cream, hangover remedy, sunscreen)
+10. The Interrupted Moment (caught mid-unguarded moment — default to *unguarded joyful/focused*, not distressed — *any product*)
+11. The Small Victory (private celebration of a tiny win — *any product, especially food/drink/hobby/fashion/lifestyle/tech*)
+12. The Curious Ritual (mid-way through a precise, slightly unusual private ritual — *any product, especially food/beauty/hobby/home/lifestyle*)
 
 **Rules for choosing:**
 
-- The hook category must marry the product's emotional territory. A beauty product can do hook #5, #6, or #9. A drink can do #1, #2, or #4. A fashion item can do #2, #5, or #7. Don't force a hook that has nothing to do with the product's truth.
+- **Default hook palette for most products is #1, #2, #3, #4, #6, #7, #8, #10, #11, #12.** Hooks #5 and #9 are reserved for products that directly address a problem state — if the product is food, drink, fashion, lifestyle, hobby, tech, or home, do NOT use them.
+- The hook category must marry the product's emotional territory. A drink can do #1, #2, #4, #11. A fashion item can do #2, #7, #10, #11. A food product can do #3, #6, #11, #12. A hobby/lifestyle product can do #10, #11, #12. Don't force a hook that has nothing to do with the product's truth.
 - **Avoid soft hooks completely.** "Pause mid-action," "looking out window," "sitting quietly" = REJECTED. If the hook involves the character being calm and contemplative in the first second, rewrite it.
-- The hook must be **visually describable in one violent sentence.** "She's sitting on the bathroom floor sobbing into a hand towel" = strong. "A girl unfolds a jacket on a bed" = weak.
-- **Use the strangest hook the product can earn.** Err toward more chaotic, more intimate, more body-forward, more visually loud — then dial back only if it stops feeling organic.
+- The hook must be **visually describable in one vivid sentence.** "She's mid-spin in her kitchen, song blasting, mouthing the lyrics into a wooden spoon" = strong. "A girl unfolds a jacket on a bed" = weak.
+- **Use the most distinctive hook the product can earn — but lean toward positive/unguarded energy unless the product specifically lives in a problem state.** Err toward more intimate, more body-forward, more visually surprising — but warm by default, not grim.
 
 The first second decides everything.
 
@@ -213,15 +231,23 @@ Around 6–11s, the product enters or becomes the focus. Rules:
 
 ## Phase 5 — The Emotion Landing (silent E-pillar)
 
-The final 2–4 seconds are about the *feeling left behind*, not the product:
+The final 2–4 seconds are about the *feeling left behind*, not the product. **Default to warm/positive landings**; only use relief/release landings when the opening was genuinely heavy (problem-state products):
 
-- A held look out a window
-- A small unconscious smile
-- An exhale
-- Sitting back down
-- Petting the dog
-- Closing their eyes for half a second longer than normal
-- A laugh under their breath
+**Warm / positive landings (default):**
+- A small private smile that the character is trying not to show
+- A genuine laugh under the breath at their own thought
+- Eyes lighting up for a beat
+- A quiet "yes" nod to themselves
+- A satisfied exhale after the bite/sip/finished task
+- Leaning back content, scanning the room
+- A tiny private fist clench
+- Petting the dog with a half-smile
+- Looking up and out a window, head tilted, peaceful
+
+**Release landings (use only for problem-state products):**
+- A long exhale of relief
+- Shoulders dropping a quarter inch
+- Closing eyes for half a second longer than normal
 
 Then we hold on the final visual — a quiet, lingering image of the feeling. NO on-screen text. NO caption. NO subtitle. NO overlay of any kind. The final beat is purely cinematic.
 
@@ -251,8 +277,8 @@ Output is ONE paragraph, 180–260 words, embedded timestamps, no headers inside
 - Present tense, cinematic, sensory
 - Real timestamps embedded: *(0–2s)*, *(2–6s)*, *(6–11s)*, *(11–15s)*
 - Every sentence does work — no setup, no throat-clearing
-- Specific over vague at all costs. "A woman" → "A woman in her late twenties in an oversized green hoodie with a coffee stain on the sleeve, hair in a claw clip, mascara from yesterday still under one eye"
-- Specific environments too: "a kitchen" → "a galley kitchen lit only by the cabinet under-lights, dishes in the sink from last night, a single ring of condensation on the counter where the wine glass was"
+- Specific over vague at all costs. "A woman" → "A woman in her late twenties in a soft cream knit sweater and faded jeans, hair in a loose claw clip, a small smile at the corner of her mouth as she focuses on what's in her hands"
+- Specific environments too: "a kitchen" → "a sunlit galley kitchen with late-morning light coming through linen curtains, a houseplant on the windowsill, a wooden cutting board mid-use on the counter, the soft clatter of a kettle just starting"
 - No camera talk. No "we cut to" or "the camera pans." Just describe what the viewer sees and hears.
 - No FATE labels. No "Focus:" or "(F:)" anywhere. The model is invisible.
 - End on the emotional landing — a held visual + optionally one short muttered line in quotes spoken by the character to themselves. NO on-screen text, captions, subtitles, or overlays anywhere in the description.
@@ -308,7 +334,8 @@ If anything in the paragraph could be visualized two different ways, the generat
 Before sending, verify silently:
 
 - [ ] Idea fits 15 seconds with timestamps embedded
-- [ ] **HOOK IS VIRAL-GRADE.** First second produces involuntary "wait WHAT" — uses one of the 10 hook patterns (chaos / wrong-body / extreme close-up / blurt / wreckage / transformation / fourth-wall / claim-slap / body-horror / interrupted moment). If the hook is "pause and look thoughtfully," REJECT and rewrite.
+- [ ] **HOOK IS VIRAL-GRADE.** First second produces involuntary "wait WHAT" — uses one of the 12 hook patterns. If the hook is "pause and look thoughtfully," REJECT and rewrite.
+- [ ] **TONE MATCHES PRODUCT.** If the product is food/drink/fashion/lifestyle/hobby/tech/home, the character must start in a positive, neutral, or curious state — NOT exhausted, sad, or grimy. Hooks #5 (wreckage) and #9 (discomfort) are ONLY for problem-state products (cleaner, stain remover, skincare for breakouts, sleep aid, recovery drink). If you used a problem-state hook or tribe on a non-problem product, REJECT and rewrite.
 - [ ] First 2 seconds are an anomaly/hook — NOT a product shot, NOT talking to camera
 - [ ] Product enters in the middle, not the opening
 - [ ] Character is one specific human from one specific tribe, richly described
