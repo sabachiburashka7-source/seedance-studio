@@ -55,6 +55,26 @@ There is no Stripe integration — payments live entirely on promo codes.
   - **No batch output** — `sequential_image_generation` (incl. `'disabled'`) must not be sent; `imgCount` is forced to 1
   - First reference image free, $0.003 each after
   - Pro-only extras not wired up yet: interactive editing (`<point>`/`<bbox>` prompt tags), `layer_decomposition`, `background: transparent`, `optimize_prompt_options.mode`
+
+### What BytePlus actually bills (verified via Ark CLI, 2026-09-07)
+The account pays public list price — no contract discount on any model.
+- `seedream-5-0` (lite): **flat $0.035/image**, T2I and I2I alike. NOT tiered by size —
+  the app's $0.02 low / $0.08 high split is a product decision, not a cost passthrough.
+  Low is deliberately sold below cost; the user was asked and chose to keep it (2026-09-07)
+- `dola-seedream-5-0-pro`: $0.045 (≤2.61 MP) / $0.09 (>2.61 MP), +$0.003 per extra reference image
+- `seedream-4-5`: $0.04/image — **172 free images left on the account** (unused since ads moved to gpt-image-2)
+- `dreamina-seedance-2-0`: $0.007/K output tokens (T2V/I2V), $0.0043/K (V2V) — matches the frontend's $7.00 / $4.30 per M
+- Seedance 2.5 / 2.0-fast / 2.0-mini are **not activated** on this account; 2.0 is
+
+### Ark CLI (BytePlus's own tool)
+`@byteplus/ark-cli` is installed globally and logged in (enterprise SSO, ap-southeast-1,
+pay-as-you-go). Its `arkcli-*` skills are installed too. Use it to check live model
+availability, real prices, free quota and usage instead of guessing from docs:
+`arkcli pricing models --modality ComputerVision`, `arkcli usage stats --start <YYYY-MM-DD> --by model`
+(31-day max window), `arkcli usage balance --type free-quota --modality ComputerVision`.
+Split-bill detail (`arkcli billing`) is NOT enabled on this account — derive spend from usage × unit price.
+SSO tokens expire quickly; re-run `arkcli auth login` when a command reports it is logged out.
+**On the user's machine, hand them `arkcli.cmd ...` — plain `arkcli` is blocked by PowerShell's execution policy.**
 - Body accepts either legacy `imageBase64`/`imageMime` (single ref) or `images[]` (multi-ref)
 - Multi-ref payload uses `image_urls`; single-ref uses `image`
 - Response: Seedream returns a URL → server fetches the bytes and re-encodes as a base64 data URL before responding
