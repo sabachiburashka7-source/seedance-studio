@@ -273,6 +273,9 @@ body.mobile-mode .prompt-card textarea { min-height: 130px; font-size: 16px !imp
 .bg-btn:hover:not(.active):not([disabled]) { border-color: var(--accent); color: var(--accent); background: rgba(0,0,0,0.04); }
 .bg-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.15); }
 .bg-btn[disabled] { opacity: 0.32; cursor: not-allowed; }
+/* Three image models don't fit one row in the narrow settings column — let them
+   stretch so whatever lands on each wrapped row fills it evenly. */
+#img-model-group .bg-btn { flex: 1 1 auto; text-align: center; }
 
 .ratio-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 5px; }
 .ratio-btn {
@@ -954,6 +957,7 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
         <div class="setting-group">
           <div class="btn-group" id="img-model-group">
             <button class="bg-btn active" data-value="seedream-5-0-lite" onclick="onBtnGroup(this,'img-model-group');calcImgCost()">Seedream 5.0</button>
+            <button class="bg-btn" data-value="dola-seedream-5-0-pro-260628" onclick="onBtnGroup(this,'img-model-group');calcImgCost()">Seedream 5.0 Pro</button>
             <button class="bg-btn" data-value="gpt-image-2" onclick="onBtnGroup(this,'img-model-group');calcImgCost()">GPT Image 2</button>
           </div>
         </div>
@@ -1812,6 +1816,8 @@ function calcImgCost() {
   const m = getBtnGroupValue('img-model-group')   || 'seedream-5-0-lite';
   const usd = m === 'gpt-image-2'
     ? (q === 'low' ? 0.02 : 0.19)
+    : m.startsWith('dola-seedream-5-0-pro')
+    ? (q === 'low' ? 0.05 : 0.10)
     : (q === 'low' ? 0.02 : 0.08);
   document.getElementById('img-cost-val').textContent  = '$' + usd.toFixed(2);
   document.getElementById('img-cost-mode').textContent = q === 'low' ? 'Low quality' : 'High quality';
@@ -2388,7 +2394,9 @@ async function doGenerateImage() {
 
   const btn = document.getElementById('img-gen-btn');
   btn.disabled = true; btn.textContent = 'Generating...';
-  showImgProg(model === 'gpt-image-2' ? 'Sending to GPT Image 2...' : 'Sending to Seedream...');
+  showImgProg(model === 'gpt-image-2' ? 'Sending to GPT Image 2...'
+            : model.startsWith('dola-seedream-5-0-pro') ? 'Sending to Seedream 5.0 Pro...'
+            : 'Sending to Seedream...');
 
   try {
     const body = { prompt: pt, ratio, quality, model };
@@ -2894,7 +2902,7 @@ function badge() {
 function makeLibCard(item, i) {
   const isImg = item.type === 'image';
   const cls   = (item.ratio==='9:16'||item.ratio==='3:4') ? 'v916' : item.ratio==='1:1' ? 'v11' : '';
-  const mod   = item.model?.includes('fast') ? 'Fast' : item.model === 'gpt-image-2' ? 'GPT Image 2' : item.model?.includes('seedream') ? 'Seedream' : 'Standard';
+  const mod   = item.model?.includes('fast') ? 'Fast' : item.model === 'gpt-image-2' ? 'GPT Image 2' : item.model?.includes('seedream-5-0-pro') ? 'Seedream Pro' : item.model?.includes('seedream') ? 'Seedream' : 'Standard';
   const date  = new Date(item.ts).toLocaleDateString();
   const card  = document.createElement('div'); card.className = 'vid-card';
   const safeUrl = (item.url || '').replace(/"/g, '&quot;');

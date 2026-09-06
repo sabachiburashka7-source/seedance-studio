@@ -1437,6 +1437,9 @@ async function handleRequest(req, res) {
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to generate images.' });
 
     const isGpt = reqModel === 'gpt-image-2';
+    // Seedream 5.0 pro (dola-seedream-5-0-pro-260628): pricier, caps out at ~4.6M px,
+    // and does not support batch output — so it needs its own cost/size handling.
+    const isPro = reqModel === 'seedream-5-0-pro' || (typeof reqModel === 'string' && reqModel.startsWith('dola-seedream-5-0-pro'));
     if (isGpt) {
       if (!OPENAI_API_KEY) return sendJSON(res, 503, { error: 'OpenAI API key not configured on server (OPENAI_API_KEY missing).' });
     } else {
@@ -1444,8 +1447,11 @@ async function handleRequest(req, res) {
     }
 
     // Cost varies by model
-    const imgCost  = isGpt ? (quality === 'low' ? 0.02 : 0.19) : (quality === 'low' ? 0.02 : 0.08);
-    const imgCount = (!isGpt && batchCount && batchCount > 1) ? Math.min(Math.floor(batchCount), 14) : 1;
+    // Seedream pro list price: $0.045 (<=2.61M px) / $0.09 (above) per image
+    const imgCost  = isGpt ? (quality === 'low' ? 0.02 : 0.19)
+                   : isPro ? (quality === 'low' ? 0.05 : 0.10)
+                   : (quality === 'low' ? 0.02 : 0.08);
+    const imgCount = (!isGpt && !isPro && batchCount && batchCount > 1) ? Math.min(Math.floor(batchCount), 14) : 1;
     const totalCost = Math.round(imgCost * imgCount * 100) / 100;
     {
       const db  = loadDB();
@@ -1547,16 +1553,28 @@ async function handleRequest(req, res) {
       }
     }
 
-    // Seedream 5.0: size must be WIDTHxHEIGHT, '2k', '3k', or '4k'
+    // Seedream 5.0 lite: size must be WIDTHxHEIGHT, '2k', '3k', or '4k'
     // low = 2k output (~2048px), high = 3k output (~3072px)
     const SIZE_MAP_LOW  = { '1:1': '2048x2048', '16:9': '2688x1512', '9:16': '1512x2688', '4:3': '2560x1920', '3:4': '1920x2560', '21:9': '2688x1152' };
     const SIZE_MAP_HIGH = { '1:1': '3072x3072', '16:9': '4032x2268', '9:16': '2268x4032', '4:3': '3840x2880', '3:4': '2880x3840', '21:9': '4032x1728' };
-    const SIZE_MAP = quality === 'low' ? SIZE_MAP_LOW : SIZE_MAP_HIGH;
-    const size = SIZE_MAP[ratio] || (quality === 'low' ? '2k' : '3k');
+    // Seedream 5.0 pro only offers 1K/1.5K/2K and rejects anything over ~4.62M px total,
+    // so it gets its own tables: low = 1.5K tier (billed at the <=2.61M px rate), high = 2K tier.
+    const SIZE_MAP_PRO_LOW  = { '1:1': '1536x1536', '16:9': '2048x1152', '9:16': '1152x2048', '4:3': '1792x1344', '3:4': '1344x1792', '21:9': '2352x1008' };
+    const SIZE_MAP_PRO_HIGH = { '1:1': '2048x2048', '16:9': '2816x1584', '9:16': '1584x2816', '4:3': '2368x1776', '3:4': '1776x2368', '21:9': '3136x1344' };
+    const SIZE_MAP = isPro
+      ? (quality === 'low' ? SIZE_MAP_PRO_LOW : SIZE_MAP_PRO_HIGH)
+      : (quality === 'low' ? SIZE_MAP_LOW     : SIZE_MAP_HIGH);
+    const size = SIZE_MAP[ratio] || (isPro ? (quality === 'low' ? '1.5K' : '2K') : (quality === 'low' ? '2k' : '3k'));
     const useRef = refImagesList.length > 0;
-    console.log('[seedream-image]', useRef ? `with ${refImagesList.length} ref(s):` : 'generating:', size, quality, prompt.substring(0, 80));
+    console.log(isPro ? '[seedream-pro-image]' : '[seedream-image]', useRef ? `with ${refImagesList.length} ref(s):` : 'generating:', size, quality, prompt.substring(0, 80));
 
-    const modelId = reqModel || 'seedream-5-0-260128';
+    // The image page sends friendly tags; map those to real ModelArk model IDs.
+    // (Anything already a full model ID — e.g. the ads pipeline's seedream-4-5-251128 — passes through.)
+    const IMG_MODEL_IDS = {
+      'seedream-5-0-lite': 'seedream-5-0-260128',
+      'seedream-5-0-pro' : 'dola-seedream-5-0-pro-260628'
+    };
+    const modelId = IMG_MODEL_IDS[reqModel] || reqModel || 'seedream-5-0-260128';
     const payload = {
       model: modelId,
       prompt,
@@ -1574,7 +1592,8 @@ async function handleRequest(req, res) {
         payload.image = `data:${refImagesList[0].mime};base64,${refImagesList[0].base64}`;
       } else {
         payload.image = refImagesList.map(img => `data:${img.mime};base64,${img.base64}`);
-        if (imgCount === 1) payload.sequential_image_generation = 'disabled';
+        // Pro has no batch output, so it also rejects sequential_image_generation
+        if (imgCount === 1 && !isPro) payload.sequential_image_generation = 'disabled';
       }
     }
     const reqBody = Buffer.from(JSON.stringify(payload));

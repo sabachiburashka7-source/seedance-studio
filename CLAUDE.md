@@ -44,9 +44,17 @@ There is no Stripe integration — payments live entirely on promo codes.
 
 ## Image generation (Seedream 5.0 via BytePlus)
 - Endpoint: `POST /api/generate-image` (server-side `BYTEPLUS_API_KEY`, no user key)
-- Model: `seedream-5-0-260128` (frontend tags as `seedream-5-0-lite`)
-- Quality: `low` → 2k output (~$0.02), `high` → 3k output (~$0.08)
-- Aspect ratios → size strings (e.g. `9:16`→`1512x2688` low, `2268x4032` high)
+- Three models in the picker: **Seedream 5.0** (lite), **Seedream 5.0 Pro**, **GPT Image 2**
+- `IMG_MODEL_IDS` on the server maps friendly UI tags → real ModelArk IDs. Anything already a full ID (e.g. the ads pipeline's `seedream-4-5-251128`) passes straight through
+  - `seedream-5-0-lite` → `seedream-5-0-260128`
+  - `seedream-5-0-pro` → `dola-seedream-5-0-pro-260628` (the frontend sends the full ID directly)
+- **Lite** quality: `low` → 2k output ($0.02 charged), `high` → 3k output ($0.08 charged). Ratios → size strings (e.g. `9:16`→`1512x2688` low, `2268x4032` high)
+- **Pro** (`dola-seedream-5-0-pro-260628`) constraints — differs from lite, don't reuse the lite maps:
+  - Only 1K / 1.5K / 2K tiers; explicit `WxH` must total 921,600–4,624,220 px (aspect ratio within 1/16–16). The lite `high` sizes (e.g. 2268x4032 = 9.1 MP) are **rejected**
+  - `low` → 1.5K table (≤2.61 MP, BytePlus bills $0.045, we charge $0.05); `high` → 2K table (>2.61 MP, bills $0.09, we charge $0.10)
+  - **No batch output** — `sequential_image_generation` (incl. `'disabled'`) must not be sent; `imgCount` is forced to 1
+  - First reference image free, $0.003 each after
+  - Pro-only extras not wired up yet: interactive editing (`<point>`/`<bbox>` prompt tags), `layer_decomposition`, `background: transparent`, `optimize_prompt_options.mode`
 - Body accepts either legacy `imageBase64`/`imageMime` (single ref) or `images[]` (multi-ref)
 - Multi-ref payload uses `image_urls`; single-ref uses `image`
 - Response: Seedream returns a URL → server fetches the bytes and re-encodes as a base64 data URL before responding
