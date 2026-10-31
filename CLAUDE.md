@@ -12,7 +12,8 @@ AI video + image + ad generation app using BytePlus ModelArk (Seedance 2.0 video
 ## Deployment
 - **GitHub**: `sabachiburashka7-source/seedance-studio` (main branch)
 - **Vercel**: auto-deploys on push (moved here after the Render account was suspended)
-- **Vercel env vars**: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `APP_URL`, `BYTEPLUS_API_KEY`, `ANTHROPIC_API_KEY`, `FAL_API_KEY` (optional, for upscale)
+- **Vercel env vars**: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `APP_URL`, `BYTEPLUS_API_KEY`, `ANTHROPIC_API_KEY`
+  (`FAL_API_KEY` is no longer read — the Topaz upscaler was removed; safe to delete from Vercel)
 
 ## Backend key details
 - BytePlus API host: `ark.ap-southeast.bytepluses.com`
@@ -105,7 +106,11 @@ SSO tokens expire quickly; re-run `arkcli auth login` when a command reports it 
 - Frontend sends `res = '480p'`; ratio/duration/audio come from the settings panel
 - T2V/I2V/V2V chosen by what's attached: text-only / + reference image / + reference video
 - BytePlus response shape: `d.content.video_url` (string, not array) — unwrapped server side now
-- After completion, frontend submits to Fal Topaz upscaler in the background; library card shows `↑ Upscaling` then swaps to upscaled URL when complete
+- **No upscaling.** The finished video is stored to R2 and dropped straight into the
+  library. The Fal Topaz pass that used to run in the background is gone, along with
+  `/api/upscale`, `/api/upscale/status`, `falRequest()` and the "Upscaling…" card badge.
+  Old library rows may still carry `upscaling` / `upscaleRequestId` / `res: 'Upscaled'`
+  — dead fields now, ignored by the renderer, no migration needed
 - **One key for both models** — `BYTEPLUS_API_KEY`. 2.0 and 2.5 bill to the same account,
   so polling needs only the task id; don't reintroduce per-model key plumbing
 - **Output is hardcoded to 480p** for both models (`res = '480p'` in `doGenerate`). 2.5 can
@@ -157,7 +162,7 @@ User uploads product photos + optional description → `createAd()` POSTs to `/a
 
 **Frontend ↔ server stages** (both must agree): `idea` → `productRef` → `video` → `done`. `adProgUpdateFromJob` maps these to chip IDs `idea`, `productRef`, `video`.
 
-**Single 15s output, 9:16.** Final video saved to `lib` with `folder: adTitle` (title derived from description or the first sentence of the idea paragraph). Fal Topaz upscale fired and forgotten.
+**Single 15s output, 9:16.** Final video saved to `lib` with `folder: adTitle` (title derived from description or the first sentence of the idea paragraph), then the job is done — no upscale step.
 
 **`claudeApiCall(apiKey, system, messages)` helper** — uses `ANTHROPIC_API_KEY` env var, model `claude-sonnet-4-6`, 240s timeout.
 
@@ -177,7 +182,7 @@ Browser ad blockers (uBlock Origin, EasyList, AdGuard, etc.) match URL paths con
 - `adProg*` family — animated progress bar + chips, driven by `adProgUpdateFromJob(job)` from each poll response
 
 ## Library
-- `lib` items: `{ id, prompt, url, ratio, model, ts, done, type?, folder?, label?, upscaling?, upscaleRequestId?, upscaleStatusUrl?, upscaleResponseUrl? }`
+- `lib` items: `{ id, prompt, url, ratio, model, ts, done, type?, folder?, label? }`
 - `folder` field set by ads pipeline → `renderLib()` groups by folder, then ungrouped items below
 - `libFolderState[name]` tracks collapsed state per folder
 - `makeLibCard(item, i)` is the per-card renderer

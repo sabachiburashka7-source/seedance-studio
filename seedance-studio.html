@@ -509,11 +509,6 @@ input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
 .vid-preview-play { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.18); opacity: 0; transition: opacity 0.18s; pointer-events: none; }
 .vid-preview:hover .vid-preview-play { opacity: 1; }
 .vid-preview-play span { font-size: 38px; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5)); }
-.upscale-badge { position: absolute; top: 8px; left: 8px; display: flex; align-items: center; gap: 6px; padding: 4px 9px 4px 7px; border-radius: 999px; background: rgba(0,0,0,0.62); backdrop-filter: blur(4px); pointer-events: none; z-index: 2; }
-.upscale-badge .spin { width: 10px; height: 10px; border-width: 2px; }
-.upscale-badge span { font-size: 10px; color: #fff; opacity: .92; letter-spacing: .03em; }
-.upscale-skip-btn { position: absolute; top: 8px; right: 8px; font-size: 10px; padding: 4px 9px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.28); background: rgba(0,0,0,0.55); color: #fff; cursor: pointer; letter-spacing: .03em; z-index: 3; }
-.upscale-skip-btn:hover { background: rgba(255,255,255,0.12); }
 .vid-no-url { width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text3);font-size:12px;gap:6px;padding:12px;text-align:center; }
 .vid-body { padding: 14px; }
 
@@ -1175,10 +1170,6 @@ body.mobile-mode .ads-grid { grid-template-columns: 1fr !important; }
     <!-- RIGHT: settings -->
     <div>
       <div class="panel" style="margin-bottom:0">
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;opacity:0.75;margin-bottom:10px;cursor:pointer">
-          <input type="checkbox" id="ad-skip-upscale" style="margin:0">
-          <span>Skip upscaling (test mode)</span>
-        </label>
         <button class="btn-gen" id="ad-gen-btn" onclick="createAd()" data-i18n="ads.createAd">Create Ad</button>
         <button class="btn-stop" id="ad-stop-btn" onclick="stopAd()" style="display:none" data-i18n="ads.stopPipeline">■ Stop Pipeline</button>
       </div>
@@ -1669,11 +1660,10 @@ async function createAd() {
       const comma = processed.indexOf(',');
       return { base64: processed.substring(comma + 1), mime: 'image/jpeg' };
     }));
-    const skipUpscale = !!document.getElementById('ad-skip-upscale')?.checked;
     const r1 = await fetch('/api/gen/ad-run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-      body: JSON.stringify({ images: imagesPayload, description, skipUpscale })
+      body: JSON.stringify({ images: imagesPayload, description })
     });
     const j1 = await r1.json();
     if (!r1.ok) throw new Error(j1.error || 'Failed to start pipeline');
@@ -2288,107 +2278,10 @@ async function finish(job, url, err) {
     } catch(e) { console.warn('[store-video] failed:', e.message); }
   }
   const item = { id: job.id, prompt: job.prompt, url, res: job.res, ratio: job.ratio,
-    dur: job.dur, audio: job.audio, model: job.model, ts: job.ts, done: Date.now(), upscaling: !!url };
+    dur: job.dur, audio: job.audio, model: job.model, ts: job.ts, done: Date.now() };
   lib.unshift(item);
   saveLib(); renderLib(); badge();
-  toast('Video ready! Upscaling…', 'ok');
-  if (url) upscaleVideo(item);
-}
-
-// ══ UPSCALE ═══════════════════════════════════════════════════════════
-async function upscaleVideo(item) {
-  try {
-    const r = await fetch('/api/upscale', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authToken },
-      body: JSON.stringify({ video_url: item.url })
-    });
-    const j = await r.json();
-    if (!r.ok || !j.requestId) throw new Error(j.error || 'submit failed');
-    // Persist requestId + the exact URLs Fal handed us. The status_url Fal
-    // returns is the authoritative one (the namespace differs from the model
-    // path for nested models like fal-ai/topaz/upscale/video) — using a
-    // hardcoded path was hitting a wrong endpoint and never seeing COMPLETED.
-    item.upscaleRequestId = j.requestId;
-    if (j.statusUrl)   item.upscaleStatusUrl   = j.statusUrl;
-    if (j.responseUrl) item.upscaleResponseUrl = j.responseUrl;
-    saveLib();
-    pollUpscale(item);
-  } catch(e) {
-    console.warn('[upscale] submit error:', e.message);
-    item.upscaling = false;
-    saveLib(); renderLib();
-    toast('Upscale unavailable — original video saved', 'warn');
-  }
-}
-
-function cancelUpscale(id) {
-  const item = lib.find(x => x.id === id);
-  if (!item) return;
-  item.upscaling = false;
-  delete item.upscaleRequestId;
-  delete item.upscaleStatusUrl;
-  delete item.upscaleResponseUrl;
-  saveLib(); renderLib();
-  toast('Using original video', 'ok');
-}
-
-function pollUpscale(item) {
-  const requestId = item.upscaleRequestId;
-  if (!requestId) return;
-  let n = 0;
-  let errs = 0;
-  const buildUrl = () => {
-    const qs = new URLSearchParams({ id: requestId });
-    if (item.upscaleStatusUrl)   qs.set('statusUrl', item.upscaleStatusUrl);
-    if (item.upscaleResponseUrl) qs.set('responseUrl', item.upscaleResponseUrl);
-    return '/api/upscale/status?' + qs.toString();
-  };
-  const giveUp = (msg) => {
-    item.upscaling = false;
-    delete item.upscaleRequestId;
-    delete item.upscaleStatusUrl;
-    delete item.upscaleResponseUrl;
-    saveLib(); renderLib();
-    toast(msg, 'warn');
-  };
-  const run = async () => {
-    // User canceled via "Use original" — stop polling.
-    if (!item.upscaling || item.upscaleRequestId !== requestId) return;
-    if (++n > 60) return giveUp('Upscale timed out — original video saved');
-    try {
-      const r = await fetch(buildUrl(), {
-        headers: { 'Authorization': 'Bearer ' + authToken }
-      });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || d.error) {
-        // Treat repeated Fal-side errors (e.g. 502 internal error) as terminal
-        // so items don't sit in "Upscaling…" forever during a Fal outage.
-        if (++errs >= 8) return giveUp('Upscaler unreachable — original video saved');
-        setTimeout(run, 15000);
-        return;
-      }
-      errs = 0;
-      if (d.status === 'COMPLETED' && d.url) {
-        item.url = d.url;
-        item.upscaling = false;
-        item.res = 'Upscaled';
-        delete item.upscaleRequestId;
-        delete item.upscaleStatusUrl;
-        delete item.upscaleResponseUrl;
-        saveLib(); renderLib();
-        toast('Video upscaled!', 'ok');
-      } else if (d.status === 'FAILED') {
-        giveUp('Upscale failed — original video saved');
-      } else {
-        setTimeout(run, 15000);
-      }
-    } catch(e) {
-      if (++errs >= 8) return giveUp('Upscaler unreachable — original video saved');
-      setTimeout(run, 15000);
-    }
-  };
-  setTimeout(run, 10000);
+  toast('Video ready!', 'ok');
 }
 
 // ══ PROGRESS ══════════════════════════════════════════════════════════
@@ -2889,26 +2782,7 @@ async function loadLib(userId) {
       lib = serverLib;
     }
   }
-  resumeUpscaling();
   resumeJobs();
-}
-
-// Resume polling for items whose upscale was in flight when the page closed.
-// Items with a stored upscaleRequestId get their poller restarted; items
-// flagged upscaling but with no requestId are genuinely orphaned (e.g. submit
-// itself failed before the requestId was saved) and get cleared.
-function resumeUpscaling() {
-  let changed = false;
-  lib.forEach(item => {
-    if (!item.upscaling) return;
-    if (item.upscaleRequestId) {
-      pollUpscale(item);
-    } else {
-      item.upscaling = false;
-      changed = true;
-    }
-  });
-  if (changed) saveLib();
 }
 
 function tabOf(item) {
@@ -2954,9 +2828,6 @@ function makeLibCard(item, i) {
             ? `<img src="${item.url}" alt="">`
             : `<video src="${item.url}" preload="metadata"></video>`)
         : `<div class="vid-no-url">No URL returned<br><small style="font-size:10px;opacity:.6">${item.id?.substring(0,20)}...</small></div>`}
-      ${item.upscaling && item.url
-        ? `<div class="upscale-badge"><div class="spin"></div><span>Upscaling…</span></div><button class="upscale-skip-btn" onclick="event.stopPropagation();cancelUpscale('${item.id}')">Skip</button>`
-        : ''}
       ${item.url ? `<div class="vid-preview-play"><span>${isImg ? '🔍' : '▶'}</span></div>` : ''}
     </div>
     <div class="vid-body">
@@ -3201,8 +3072,6 @@ initAuth().then(() => {
   }
 });
 setInterval(() => { if (jobs.length) renderPending(); }, 1000);
-// (removed) periodic renderLib while upscaling — pollUpscale calls renderLib
-// directly when state changes, so the periodic refresh just caused flicker.
 
 // ══ DOWNLOAD ═══════════════════════════════════════════════════════════
 async function dlFile(url, filename) {

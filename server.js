@@ -28,7 +28,6 @@ const RESEND_KEY       = process.env.RESEND_API_KEY       || '';
 const BREVO_KEY        = process.env.BREVO_API_KEY        || '';
 const BREVO_SENDER     = process.env.BREVO_SENDER_EMAIL   || '';
 const APP_URL          = process.env.APP_URL              || 'http://localhost:3000';
-const FAL_KEY          = process.env.FAL_API_KEY          || '';
 const BYTEPLUS_API_KEY = process.env.BYTEPLUS_API_KEY     || '';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY   || '';
 const OPENAI_API_KEY    = process.env.OPENAI_API_KEY       || '';
@@ -621,33 +620,6 @@ function claudeApiCall(apiKey, system, messages, maxTokens = 8192, timeoutMs = 2
 // ── Ad pipeline skill prompt ───────────────────────────────────────────────
 const SKILL_IDEA = fs.readFileSync(path.join(__dirname, 'skills/organic-tiktok-ad-generator.md'), 'utf8').replace(/^---[\s\S]*?---\s*/m, '').trim();
 
-// ── Fal.ai helper ─────────────────────────────────────────────────────────────
-function falRequest(method, falPath, body) {
-  return new Promise((resolve, reject) => {
-    const bodyBuf = body ? Buffer.from(JSON.stringify(body)) : null;
-    const opts = {
-      hostname: 'queue.fal.run', port: 443, path: falPath, method,
-      headers: {
-        'Authorization': 'Key ' + FAL_KEY,
-        'Content-Type': 'application/json',
-        ...(bodyBuf ? { 'Content-Length': bodyBuf.length } : {})
-      }
-    };
-    const r = https.request(opts, resp => {
-      const ch = []; resp.on('data', c => ch.push(c));
-      resp.on('end', () => {
-        const text = Buffer.concat(ch).toString().trim();
-        try { resolve({ status: resp.statusCode, body: text ? JSON.parse(text) : {} }); }
-        catch(e) { reject(new Error('Fal parse error: ' + e.message)); }
-      });
-    });
-    r.setTimeout(30000, () => r.destroy(new Error('Fal timeout')));
-    r.on('error', reject);
-    if (bodyBuf) r.write(bodyBuf);
-    r.end();
-  });
-}
-
 // ── Auth helpers ──────────────────────────────────────────────────────────────
 function hashPass(password, salt) {
   return crypto.pbkdf2Sync(password, salt, 100000, 64, 'sha512').toString('hex');
@@ -1017,14 +989,12 @@ async function runAdPipeline(jobId) {
       } catch(e) { console.warn('[ad-job] R2 store failed:', e.message); }
     }
 
-    const willUpscale = FAL_KEY && storedUrl && !job.skipUpscale;
-
     // Save video to user's library
     const libItem = {
       id: 'ad-' + jobId, prompt: rawPrompt, url: storedUrl,
       res: '480p', ratio: '9:16', dur, audio: false,
       model: 'dreamina-seedance-2-0-260128', ts: job.createdAt || Date.now(), done: Date.now(),
-      folder: adTitle, label: 'Scene 1 video', sceneIndex: 0, upscaling: !!willUpscale,
+      folder: adTitle, label: 'Scene 1 video', sceneIndex: 0,
     };
     const userLib2 = await loadUserLibrary(userId);
     userLib2.unshift(libItem);
@@ -1032,27 +1002,6 @@ async function runAdPipeline(jobId) {
 
     await updateAdJob(jobId, { status: 'done', stage: 'done', stageLabel: 'Done!', progress: 1, videoUrl: storedUrl, libItemId: libItem.id });
     console.log('[ad-job]', jobId, 'complete:', storedUrl?.substring(0, 80));
-
-    if (job.skipUpscale) {
-      console.log('[ad-job]', jobId, 'upscale skipped (test mode)');
-    } else if (willUpscale) {
-      // Upscale (fire-and-forget)
-      falRequest('POST', '/fal-ai/topaz/upscale/video', { video_url: storedUrl, upscale_factor: 2, H264_output: true })
-        .then(async falResult => {
-          const requestId = falResult.body?.request_id;
-          if (!requestId) return;
-          const userLib3 = await loadUserLibrary(userId);
-          const idx = userLib3.findIndex(i => i.id === libItem.id);
-          if (idx >= 0) {
-            userLib3[idx].upscaleRequestId = requestId;
-            userLib3[idx].upscaleStatusUrl = falResult.body?.status_url || null;
-            userLib3[idx].upscaleResponseUrl = falResult.body?.response_url || null;
-            await saveUserLibrary(userId, userLib3);
-          }
-          console.log('[ad-job]', jobId, 'upscale submitted:', requestId);
-        })
-        .catch(e => console.warn('[ad-job] upscale submit failed:', e.message));
-    }
 
   } catch(e) {
     console.error('[ad-job]', jobId, 'pipeline error:', e.message);
@@ -1838,7 +1787,7 @@ async function handleRequest(req, res) {
 
   // ── Ad background job: start full pipeline ───────────────────────────────────
   if (url === '/api/gen/ad-run' && method === 'POST') {
-    const { images, description, skipUpscale } = await readBody(req);
+    const { images, description } = await readBody(req);
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Sign in to use Ads.' });
     if (!images || !images.length) return sendJSON(res, 400, { error: 'Upload at least one product image.' });
@@ -1851,7 +1800,6 @@ async function handleRequest(req, res) {
     await setAdJob(jobId, {
       jobId, userId: sess.userId, status: 'pending', stage: 'pending',
       stageLabel: 'Starting…', progress: 0, images, description: description || '',
-      skipUpscale: !!skipUpscale,
       adTitle: null, videoUrl: null, createdAt: Date.now(), updatedAt: Date.now(),
     });
     runAdPipeline(jobId).catch(e => console.error('[ad-job] unhandled error for', jobId, ':', e.message));
@@ -1874,95 +1822,6 @@ async function handleRequest(req, res) {
     }
     const { images: _, ...safeJob } = job; // don't send image data back
     return sendJSON(res, 200, safeJob);
-  }
-
-  // ── Fal.ai upscale: submit ───────────────────────────────────────────────────
-  if (url === '/api/upscale' && method === 'POST') {
-    const sess = getSession(req);
-    if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
-    if (!FAL_KEY) return sendJSON(res, 503, { error: 'Upscaler not configured' });
-    const { video_url } = await readBody(req);
-    if (!video_url) return sendJSON(res, 400, { error: 'video_url required' });
-    try {
-      const result = await falRequest('POST', '/fal-ai/topaz/upscale/video', { video_url, upscale_factor: 2, H264_output: true });
-      const requestId = result.body?.request_id;
-      if (!requestId) {
-        console.error('[fal] submit failed', result.status, JSON.stringify(result.body).substring(0, 200));
-        return sendJSON(res, 502, { error: 'Fal submit failed: ' + (result.body?.detail || result.status) });
-      }
-      // Fal returns status_url and response_url scoped to the right namespace
-      // (for nested model paths like fal-ai/topaz/upscale/video the URLs Fal
-      // returns differ from the model path — using these directly avoids guessing).
-      const statusUrl = result.body?.status_url || null;
-      const responseUrl = result.body?.response_url || null;
-      console.log('[fal] upscale submitted', requestId, 'statusUrl:', statusUrl);
-      return sendJSON(res, 200, { requestId, statusUrl, responseUrl });
-    } catch(e) {
-      console.error('[fal] submit error:', e.message);
-      return sendJSON(res, 502, { error: 'Upscale failed: ' + e.message });
-    }
-  }
-
-  // ── Fal.ai upscale: poll status ──────────────────────────────────────────────
-  if (url.startsWith('/api/upscale/status') && method === 'GET') {
-    const sess = getSession(req);
-    if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
-    if (!FAL_KEY) return sendJSON(res, 503, { error: 'Upscaler not configured' });
-    const params = new URL('http://x' + url).searchParams;
-    const requestId = params.get('id');
-    if (!requestId) return sendJSON(res, 400, { error: 'id required' });
-
-    // Validate any client-supplied URLs to ensure we only hit Fal's queue host.
-    const safePath = (raw) => {
-      if (!raw) return null;
-      try {
-        const u = new URL(raw);
-        if (u.hostname !== 'queue.fal.run') return null;
-        return u.pathname + u.search;
-      } catch { return null; }
-    };
-    // Prefer the URLs Fal returned at submit time; fall back to legacy guess
-    // for items submitted before this fix shipped.
-    const fallback = '/fal-ai/topaz/upscale/video/requests/' + encodeURIComponent(requestId);
-    const statusPath   = safePath(params.get('statusUrl'))   || (fallback + '/status');
-    const responsePath = safePath(params.get('responseUrl')) || fallback;
-
-    try {
-      const statusRes = await falRequest('GET', statusPath);
-      const rawStatus = String(statusRes.body?.status || '').toUpperCase();
-      console.log('[fal] poll http=' + statusRes.status + ' status=' + rawStatus + ' path=' + statusPath);
-
-      const looksProgress = rawStatus === 'IN_QUEUE' || rawStatus === 'IN_PROGRESS' || rawStatus === 'QUEUED' || rawStatus === 'RUNNING';
-      if (looksProgress) return sendJSON(res, 200, { status: rawStatus });
-
-      // Status is COMPLETED, unknown, or status fetch returned nothing useful —
-      // try the response endpoint. If it has a video URL the job is done,
-      // regardless of what the status field said.
-      const resultRes = await falRequest('GET', responsePath);
-      const videoUrl = resultRes.body?.video?.url || resultRes.body?.output?.video?.url || '';
-      if (videoUrl) {
-        console.log('[fal] upscale complete, url:', videoUrl.substring(0, 80));
-        if (R2_ENABLED) {
-          try {
-            const buf = await downloadBuffer(videoUrl);
-            const key = `vid/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-upscaled.mp4`;
-            const r2Url = await uploadToR2(buf, key, 'video/mp4');
-            console.log('[fal] uploaded upscaled video to R2:', key);
-            return sendJSON(res, 200, { status: 'COMPLETED', url: r2Url });
-          } catch(re) {
-            console.warn('[fal] R2 upload failed, returning Fal URL:', re.message);
-          }
-        }
-        return sendJSON(res, 200, { status: 'COMPLETED', url: videoUrl });
-      }
-      if (rawStatus === 'COMPLETED' || rawStatus === 'OK' || rawStatus === 'SUCCESS') {
-        return sendJSON(res, 502, { error: 'Fal reports complete but no video URL. Body: ' + JSON.stringify(resultRes.body).substring(0, 200) });
-      }
-      return sendJSON(res, 200, { status: rawStatus || 'IN_QUEUE' });
-    } catch(e) {
-      console.error('[fal] status error:', e.message);
-      return sendJSON(res, 502, { error: 'Status check failed: ' + e.message });
-    }
   }
 
   // ── Store video to R2 ────────────────────────────────────────────────────
