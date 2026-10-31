@@ -12,7 +12,7 @@ AI video + image + ad generation app using BytePlus ModelArk (Seedance 2.0 video
 ## Deployment
 - **GitHub**: `sabachiburashka7-source/seedance-studio` (main branch)
 - **Vercel**: auto-deploys on push (moved here after the Render account was suspended)
-- **Vercel env vars**: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `APP_URL`, `BYTEPLUS_API_KEY`, `ANTHROPIC_API_KEY`, `FAL_API_KEY` (optional, for upscale)
+- **Vercel env vars**: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `APP_URL`, `BYTEPLUS_API_KEY`, `ANTHROPIC_API_KEY`, `FAL_API_KEY` (optional, for upscale), `SEEDANCE_25_API_KEY` (optional — only if Seedance 2.5 bills against a different account; falls back to `BYTEPLUS_API_KEY`)
 
 ## Backend key details
 - BytePlus API host: `ark.ap-southeast.bytepluses.com`
@@ -64,7 +64,9 @@ The account pays public list price — no contract discount on any model.
 - `dola-seedream-5-0-pro`: $0.045 (≤2.61 MP) / $0.09 (>2.61 MP), +$0.003 per extra reference image
 - `seedream-4-5`: $0.04/image — **172 free images left on the account** (unused since ads moved to gpt-image-2)
 - `dreamina-seedance-2-0`: $0.007/K output tokens (T2V/I2V), $0.0043/K (V2V) — matches the frontend's $7.00 / $4.30 per M
-- Seedance 2.5 / 2.0-fast / 2.0-mini are **not activated** on this account; 2.0 is
+- Seedance 2.5 went GA and is wired into the app (see Video generation). As of the last
+  Ark CLI check (2026-09-07) 2.5 / 2.0-fast / 2.0-mini were **not activated** on this
+  account — re-check with `arkcli.cmd models list` before assuming 2.5 calls will succeed
 
 ### Ark CLI (BytePlus's own tool)
 `@byteplus/ark-cli` is installed globally and logged in (enterprise SSO, ap-southeast-1,
@@ -80,17 +82,54 @@ SSO tokens expire quickly; re-run `arkcli auth login` when a command reports it 
 - Response: Seedream returns a URL → server fetches the bytes and re-encodes as a base64 data URL before responding
 - Up to 4 attempts with backoff on 429s and 150s timeouts
 
-## Video generation (Seedance 2.0 via BytePlus)
-- Goes through `/proxy/api/v3/contents/generations/tasks` (BytePlus proxy)
-- Frontend hardcodes `model = 'dreamina-seedance-2-0-260128'` and `res = '480p'`
+## Video generation (Seedance 2.0 / 2.5 via BytePlus)
+- `POST /api/generate-video` → submits the task, returns `{ id, model, duration, ratio, resolution }`
+- `GET  /api/video-task?id=<taskId>&model=<tag>` → normalised `{ status, videoUrl, error, errorCode }`
+- Both require a session. They replaced the old `/proxy/` passthrough for video — the
+  BytePlus key never reaches the browser and the payload is validated per model.
+  **The `/proxy/*` route still exists and is still unauthenticated** — nothing in the
+  app uses it for video any more, so it can be locked down or dropped
+- `VID_MODELS` on the server is the single source of truth per model. Picker tags →
+  real IDs: `seedance-2-0` → `dreamina-seedance-2-0-260128`, `seedance-2-5` →
+  `dreamina-seedance-2-5-260628`. Anything else falls back to 2.0
+- **2.0 vs 2.5 differences (verified against BytePlus docs 2026-10-28) — do not mix these up:**
+  - **Aspect ratio field renamed**: 2.0 takes `aspect_ratio`, 2.5 takes `ratio`. Sending
+    the wrong one is the first thing to check if a model starts ignoring the ratio
+  - **Duration**: 2.0 is 4–15s, 2.5 is 4–30s. Server clamps; the frontend slider's `max`
+    follows the picker (`onVidModelChange`) and clamps the current value on switch
+  - **2.5 infers the task type from prompt intent.** If it decides the task is "edit" or
+    "extend" it *requires* `ratio: 'adaptive'` and (for edit) `duration: -1`, and fails
+    asynchronously otherwise. We pin `omni_reference_task_type: 'reference'` whenever a
+    `reference_*` asset is attached so the user's ratio/duration are honoured
+  - 2.5 supports 480p/720p/1080p but **not 4K**; 2.0 does 4K
+- Frontend sends `res = '480p'`; ratio/duration/audio come from the settings panel
 - T2V/I2V/V2V chosen by what's attached: text-only / + reference image / + reference video
-- BytePlus response shape: `d.content.video_url` (string, not array)
+- BytePlus response shape: `d.content.video_url` (string, not array) — unwrapped server side now
 - After completion, frontend submits to Fal Topaz upscaler in the background; library card shows `↑ Upscaling` then swaps to upscaled URL when complete
+- Jobs persist `mtag` (the picker tag) in localStorage so a resumed poll uses the right key
+
+### Video pricing (BytePlus list price, USD per million tokens)
+Tokens ≈ `(input video duration + output duration) × W × H × fps / 1024`.
+Charged price = list × 1.3 markup, rounded to 0.1 credit ($0.033).
+
+| Model | 480p/720p no video in | with video in | 1080p no video in | with video in |
+|---|---|---|---|---|
+| `dreamina-seedance-2-0-260128` | $7.00 | $4.30 | $7.70 | $4.70 |
+| `dreamina-seedance-2-5-260628` | $10.70 | $6.40 | $11.70 | $7.00 |
+
+2.0 also does 4K at $4.00 / $2.40. **2.5 is roughly 1.5× the price of 2.0.**
+
+### Activating Seedance 2.5
+2.5 is generally available, but the account must meet one of these or calls fail:
+BytePlus balance > $30, an AI Savings Plan at the $30 tier or above, or a Seedance 2.5
+resource pack with quota. BytePlus's error message is passed straight through to the toast.
 
 ## Frontend key details
 - Settings use JS button groups (`onBtnGroup`/`getBtnGroupValue`) — no `<select>` elements
 - Mobile mode: auto-detected, toggle in nav (📱/🖥️), saved to localStorage
-- `buildPayload(model, content, audio, ratio, dur, wm, res)` returns the BytePlus task body
+- Video payloads are built **server side** (`/api/generate-video`); the old frontend
+  `buildPayload()` helper is gone. `vidModelTag()` / `vidModelInfo()` read the picker,
+  `VID_MODEL_INFO` mirrors the server's limits and rates for the cost display only
 - Toast: `toast(msg, type='ok', duration=5000)` — types: `ok`, `err`, `warn`
 - `safeJson(r)` — wraps `r.json()` so empty / non-JSON server responses produce a useful error string
 - `saveLib()` is serialized + coalesced: only one POST `/library` in flight; concurrent saves collapse into one trailing POST (prevented ads-pipeline items vanishing after refresh)

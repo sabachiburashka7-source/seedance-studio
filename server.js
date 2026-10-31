@@ -30,6 +30,9 @@ const BREVO_SENDER     = process.env.BREVO_SENDER_EMAIL   || '';
 const APP_URL          = process.env.APP_URL              || 'http://localhost:3000';
 const FAL_KEY          = process.env.FAL_API_KEY          || '';
 const BYTEPLUS_API_KEY = process.env.BYTEPLUS_API_KEY     || '';
+// Optional separate key for the Seedance 2.5 series — it can sit on a different
+// account/resource pack. Unset means 2.5 bills against the main BytePlus key.
+const SEEDANCE_25_KEY  = process.env.SEEDANCE_25_API_KEY  || '';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY   || '';
 const OPENAI_API_KEY    = process.env.OPENAI_API_KEY       || '';
 const R2_ACCOUNT_ID      = process.env.R2_ACCOUNT_ID        || '';
@@ -50,6 +53,44 @@ const PROMO_CODES = {
   'SEED50A': 50, 'SEED50B': 50, 'SEED50C': 50,
   'SEED100A': 100, 'SEED100B': 100, 'SEED100C': 100,
 };
+
+// ── Video models (BytePlus Seedance) ─────────────────────────────────────────
+// Verified against the BytePlus docs on 2026-10-28:
+//  - 2.0 takes `aspect_ratio`; 2.5 renamed the field to `ratio`.
+//  - `rates` is USD per million tokens as [no video input, with video input].
+//    Tokens ≈ (input video duration + output duration) × W × H × fps / 1024.
+//  - 2.5 infers edit/extend intent from the prompt, and those task types force
+//    `ratio: 'adaptive'` + `duration: -1`. We pin `omni_reference_task_type` to
+//    plain reference-to-video so the user's ratio and duration are honoured.
+const VID_MODELS = {
+  'seedance-2-0': {
+    id: 'dreamina-seedance-2-0-260128',
+    label: 'Seedance 2.0',
+    ratioParam: 'aspect_ratio',
+    minDur: 4, maxDur: 15,
+    rates: { '480p': [7.0, 4.3], '720p': [7.0, 4.3], '1080p': [7.7, 4.7] },
+    omniTaskType: false,
+    key: () => BYTEPLUS_API_KEY,
+  },
+  'seedance-2-5': {
+    id: 'dreamina-seedance-2-5-260628',
+    label: 'Seedance 2.5',
+    ratioParam: 'ratio',
+    minDur: 4, maxDur: 30,
+    rates: { '480p': [10.7, 6.4], '720p': [10.7, 6.4], '1080p': [11.7, 7.0] },
+    omniTaskType: true,
+    key: () => SEEDANCE_25_KEY || BYTEPLUS_API_KEY,
+  },
+};
+const VID_MODEL_DEFAULT = 'seedance-2-0';
+const VID_RATIOS      = ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'];
+const VID_RESOLUTIONS = ['480p', '720p', '1080p'];
+
+// Accepts a friendly tag ('seedance-2-5'), a full model ID, or junk.
+function vidModel(tag) {
+  if (VID_MODELS[tag]) return VID_MODELS[tag];
+  return Object.values(VID_MODELS).find(m => m.id === tag) || VID_MODELS[VID_MODEL_DEFAULT];
+}
 
 // ── Cloudflare R2 upload (AWS SigV4, no SDK) ─────────────────────────────────
 function downloadBuffer(url) {
@@ -1406,6 +1447,102 @@ async function handleRequest(req, res) {
     saveDB(db);
     console.log('[promo] ' + upper + ' redeemed by user ' + sess.userId + ' (+$' + amount + ', total: $' + user.balance + ')');
     return sendJSON(res, 200, { balance: user.balance, added: amount });
+  }
+
+  // ── Seedance video generation (BytePlus Ark) ─────────────────────────────
+  // Replaces the open /proxy/ passthrough for video: the key stays server side,
+  // the session is checked, and the payload is validated per model.
+  if (url === '/api/generate-video' && method === 'POST') {
+    const body = await readBody(req); // read before auth — large base64 refs otherwise abort the request
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
+
+    const m = vidModel(body.model);
+    const content = Array.isArray(body.content) ? body.content : [];
+    if (!content.some(c => c && c.type === 'text' && String(c.text || '').trim()))
+      return sendJSON(res, 400, { error: 'A text prompt is required' });
+
+    const ratio      = VID_RATIOS.includes(body.ratio) ? body.ratio : '9:16';
+    const resolution = VID_RESOLUTIONS.includes(body.resolution) ? body.resolution : '480p';
+    const dur        = Math.min(m.maxDur, Math.max(m.minDur, Math.round(Number(body.duration) || 10)));
+
+    const payload = {
+      model: m.id,
+      content,
+      generate_audio: body.audio !== false,
+      duration: dur,
+      resolution,
+      watermark: false,
+    };
+    payload[m.ratioParam] = ratio;
+    if (body.audioPrompt) payload.audio_prompt = String(body.audioPrompt);
+    if (m.omniTaskType && content.some(c => c && /^reference_/.test(c.role || '')))
+      payload.omni_reference_task_type = 'reference';
+
+    // Log the payload with reference blobs elided — base64 refs are megabytes.
+    console.log('[video] payload:', JSON.stringify({
+      ...payload,
+      content: content.map(c => c.type === 'text' ? c : { type: c.type, role: c.role }),
+    }));
+
+    if (!m.key()) return sendJSON(res, 500, { error: `Server is missing an API key for ${m.label}` });
+
+    const taskUrl = `https://${BYTEPLUS}/api/v3/contents/generations/tasks`;
+    const MAX_VID_ATTEMPTS = 3;
+    for (let attempt = 1; attempt <= MAX_VID_ATTEMPTS; attempt++) {
+      let r, j;
+      try {
+        r = await fetch(taskUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + m.key(), 'Accept-Encoding': 'identity' },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(120000),
+        });
+        j = await r.json();
+      } catch (e) {
+        console.error(`[video] submit attempt ${attempt}:`, e.message);
+        if (attempt === MAX_VID_ATTEMPTS) return sendJSON(res, 502, { error: 'Could not reach BytePlus: ' + e.message });
+        await new Promise(s => setTimeout(s, attempt * 3000));
+        continue;
+      }
+      const taskId = j.id || j.task_id;
+      if (taskId) {
+        console.log(`[video] ${m.id} task ${taskId} — ${dur}s ${ratio} ${resolution} (user ${sess.userId})`);
+        return sendJSON(res, 200, { id: taskId, model: m.id, modelTag: body.model || VID_MODEL_DEFAULT, duration: dur, ratio, resolution });
+      }
+      const errMsg = j.error?.message || j.error?.code || JSON.stringify(j).substring(0, 400);
+      console.error(`[video] submit attempt ${attempt} (HTTP ${r.status}):`, errMsg);
+      if (attempt === MAX_VID_ATTEMPTS || !/high demand|try again later|temporar|rate limit/i.test(errMsg))
+        return sendJSON(res, r.status >= 400 ? r.status : 502, { error: errMsg });
+      await new Promise(s => setTimeout(s, attempt * 5000));
+    }
+    return;
+  }
+
+  // Poll a video task. `model` says which key the task was created with.
+  if (url.startsWith('/api/video-task') && method === 'GET') {
+    const sess = getSession(req);
+    if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
+    const id = (new URL('http://x' + url).searchParams.get('id') || '').trim();
+    if (!/^[A-Za-z0-9_-]{4,120}$/.test(id)) return sendJSON(res, 400, { error: 'Bad task id' });
+    const m = vidModel(new URL('http://x' + url).searchParams.get('model'));
+    try {
+      const r = await fetch(`https://${BYTEPLUS}/api/v3/contents/generations/tasks/${id}`, {
+        headers: { 'Authorization': 'Bearer ' + m.key(), 'Accept-Encoding': 'identity' },
+        signal: AbortSignal.timeout(30000),
+      });
+      const d = await r.json();
+      if (!r.ok) return sendJSON(res, r.status, { error: d.error?.message || 'BytePlus HTTP ' + r.status });
+      return sendJSON(res, 200, {
+        status:    (d.status || '').toLowerCase(),
+        videoUrl:  d.content?.video_url || d.content?.[0]?.video_url?.url || d.content?.[0]?.url
+                   || d.outputs?.[0]?.url || d.output?.url || d.result?.url || '',
+        error:     d.error?.message || null,
+        errorCode: d.error?.code || null,
+      });
+    } catch (e) {
+      return sendJSON(res, 502, { error: 'Poll failed: ' + e.message });
+    }
   }
 
   // ── Seedream image generation (BytePlus Ark) ─────────────────────────────
