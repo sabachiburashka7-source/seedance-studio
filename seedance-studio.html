@@ -2194,7 +2194,7 @@ async function doGenerate() {
     }
 
     toast('Task submitted! Polling for result...', 'ok');
-    const job = { id: taskId, prompt: pt, model: j.model || mtag, mtag, res, ratio,
+    const job = { id: taskId, prompt: pt, model: j.model || mtag, res, ratio,
                   dur: j.duration || dur, audio, wm: false, content,
                   cost: costUsd, ts: Date.now(), status: 'running' };
     jobs.push(job);
@@ -2218,10 +2218,8 @@ function poll(job) {
   const run = async () => {
     if (++n > 80) { finish(job, null, 'Timed out'); return; }
     try {
-      // Server normalises the BytePlus shape and picks the right API key.
-      const q = '?id=' + encodeURIComponent(job.id) +
-                '&model=' + encodeURIComponent(job.mtag || job.model || '');
-      const r = await fetch('/api/video-task' + q, {
+      // Server unwraps the BytePlus response into { status, videoUrl, error }.
+      const r = await fetch('/api/video-task?id=' + encodeURIComponent(job.id), {
         headers: { 'Authorization': 'Bearer ' + authToken }
       });
       const d = await safeJson(r);
@@ -2759,7 +2757,7 @@ function saveJobs() {
   try {
     const slim = jobs
       .filter(j => j && j.id && !j.folder)
-      .map(j => ({ id: j.id, prompt: j.prompt, model: j.model, mtag: j.mtag, res: j.res,
+      .map(j => ({ id: j.id, prompt: j.prompt, model: j.model, res: j.res,
                    ratio: j.ratio, dur: j.dur, audio: j.audio, wm: j.wm,
                    cost: j.cost, ts: j.ts, status: j.status }));
     localStorage.setItem(jobsLocalKey(), JSON.stringify(slim));

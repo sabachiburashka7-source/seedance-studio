@@ -30,9 +30,6 @@ const BREVO_SENDER     = process.env.BREVO_SENDER_EMAIL   || '';
 const APP_URL          = process.env.APP_URL              || 'http://localhost:3000';
 const FAL_KEY          = process.env.FAL_API_KEY          || '';
 const BYTEPLUS_API_KEY = process.env.BYTEPLUS_API_KEY     || '';
-// Optional separate key for the Seedance 2.5 series — it can sit on a different
-// account/resource pack. Unset means 2.5 bills against the main BytePlus key.
-const SEEDANCE_25_KEY  = process.env.SEEDANCE_25_API_KEY  || '';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY   || '';
 const OPENAI_API_KEY    = process.env.OPENAI_API_KEY       || '';
 const R2_ACCOUNT_ID      = process.env.R2_ACCOUNT_ID        || '';
@@ -70,7 +67,6 @@ const VID_MODELS = {
     minDur: 4, maxDur: 15,
     rates: { '480p': [7.0, 4.3], '720p': [7.0, 4.3], '1080p': [7.7, 4.7] },
     omniTaskType: false,
-    key: () => BYTEPLUS_API_KEY,
   },
   'seedance-2-5': {
     id: 'dreamina-seedance-2-5-260628',
@@ -79,7 +75,6 @@ const VID_MODELS = {
     minDur: 4, maxDur: 30,
     rates: { '480p': [10.7, 6.4], '720p': [10.7, 6.4], '1080p': [11.7, 7.0] },
     omniTaskType: true,
-    key: () => SEEDANCE_25_KEY || BYTEPLUS_API_KEY,
   },
 };
 const VID_MODEL_DEFAULT = 'seedance-2-0';
@@ -1485,7 +1480,7 @@ async function handleRequest(req, res) {
       content: content.map(c => c.type === 'text' ? c : { type: c.type, role: c.role }),
     }));
 
-    if (!m.key()) return sendJSON(res, 500, { error: `Server is missing an API key for ${m.label}` });
+    if (!BYTEPLUS_API_KEY) return sendJSON(res, 500, { error: 'Server is missing its BytePlus API key' });
 
     const taskUrl = `https://${BYTEPLUS}/api/v3/contents/generations/tasks`;
     const MAX_VID_ATTEMPTS = 3;
@@ -1494,7 +1489,7 @@ async function handleRequest(req, res) {
       try {
         r = await fetch(taskUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + m.key(), 'Accept-Encoding': 'identity' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + BYTEPLUS_API_KEY, 'Accept-Encoding': 'identity' },
           body: JSON.stringify(payload),
           signal: AbortSignal.timeout(120000),
         });
@@ -1508,7 +1503,7 @@ async function handleRequest(req, res) {
       const taskId = j.id || j.task_id;
       if (taskId) {
         console.log(`[video] ${m.id} task ${taskId} — ${dur}s ${ratio} ${resolution} (user ${sess.userId})`);
-        return sendJSON(res, 200, { id: taskId, model: m.id, modelTag: body.model || VID_MODEL_DEFAULT, duration: dur, ratio, resolution });
+        return sendJSON(res, 200, { id: taskId, model: m.id, duration: dur, ratio, resolution });
       }
       const errMsg = j.error?.message || j.error?.code || JSON.stringify(j).substring(0, 400);
       console.error(`[video] submit attempt ${attempt} (HTTP ${r.status}):`, errMsg);
@@ -1519,16 +1514,15 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // Poll a video task. `model` says which key the task was created with.
+  // Poll a video task. Same for every model — BytePlus keys tasks by id alone.
   if (url.startsWith('/api/video-task') && method === 'GET') {
     const sess = getSession(req);
     if (!sess) return sendJSON(res, 401, { error: 'Not authenticated' });
     const id = (new URL('http://x' + url).searchParams.get('id') || '').trim();
     if (!/^[A-Za-z0-9_-]{4,120}$/.test(id)) return sendJSON(res, 400, { error: 'Bad task id' });
-    const m = vidModel(new URL('http://x' + url).searchParams.get('model'));
     try {
       const r = await fetch(`https://${BYTEPLUS}/api/v3/contents/generations/tasks/${id}`, {
-        headers: { 'Authorization': 'Bearer ' + m.key(), 'Accept-Encoding': 'identity' },
+        headers: { 'Authorization': 'Bearer ' + BYTEPLUS_API_KEY, 'Accept-Encoding': 'identity' },
         signal: AbortSignal.timeout(30000),
       });
       const d = await r.json();

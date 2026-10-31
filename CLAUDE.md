@@ -12,7 +12,7 @@ AI video + image + ad generation app using BytePlus ModelArk (Seedance 2.0 video
 ## Deployment
 - **GitHub**: `sabachiburashka7-source/seedance-studio` (main branch)
 - **Vercel**: auto-deploys on push (moved here after the Render account was suspended)
-- **Vercel env vars**: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `APP_URL`, `BYTEPLUS_API_KEY`, `ANTHROPIC_API_KEY`, `FAL_API_KEY` (optional, for upscale), `SEEDANCE_25_API_KEY` (optional — only if Seedance 2.5 bills against a different account; falls back to `BYTEPLUS_API_KEY`)
+- **Vercel env vars**: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `APP_URL`, `BYTEPLUS_API_KEY`, `ANTHROPIC_API_KEY`, `FAL_API_KEY` (optional, for upscale)
 
 ## Backend key details
 - BytePlus API host: `ark.ap-southeast.bytepluses.com`
@@ -84,7 +84,7 @@ SSO tokens expire quickly; re-run `arkcli auth login` when a command reports it 
 
 ## Video generation (Seedance 2.0 / 2.5 via BytePlus)
 - `POST /api/generate-video` → submits the task, returns `{ id, model, duration, ratio, resolution }`
-- `GET  /api/video-task?id=<taskId>&model=<tag>` → normalised `{ status, videoUrl, error, errorCode }`
+- `GET  /api/video-task?id=<taskId>` → normalised `{ status, videoUrl, error, errorCode }`
 - Both require a session. They replaced the old `/proxy/` passthrough for video — the
   BytePlus key never reaches the browser and the payload is validated per model.
   **The `/proxy/*` route still exists and is still unauthenticated** — nothing in the
@@ -106,7 +106,11 @@ SSO tokens expire quickly; re-run `arkcli auth login` when a command reports it 
 - T2V/I2V/V2V chosen by what's attached: text-only / + reference image / + reference video
 - BytePlus response shape: `d.content.video_url` (string, not array) — unwrapped server side now
 - After completion, frontend submits to Fal Topaz upscaler in the background; library card shows `↑ Upscaling` then swaps to upscaled URL when complete
-- Jobs persist `mtag` (the picker tag) in localStorage so a resumed poll uses the right key
+- **One key for both models** — `BYTEPLUS_API_KEY`. 2.0 and 2.5 bill to the same account,
+  so polling needs only the task id; don't reintroduce per-model key plumbing
+- **Output is hardcoded to 480p** for both models (`res = '480p'` in `doGenerate`). 2.5 can
+  do 720p / 1080p (10-bit) and 2.0 can do 4K, but no resolution picker is exposed yet —
+  `VID_MODELS[*].rates` and `VID_MODEL_INFO` already carry the per-tier prices for one
 
 ### Video pricing (BytePlus list price, USD per million tokens)
 Tokens ≈ `(input video duration + output duration) × W × H × fps / 1024`.
